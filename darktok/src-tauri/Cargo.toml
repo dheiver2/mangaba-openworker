@@ -1,0 +1,19 @@
+[package]
+name = "darktok"
+version = "0.1.0"
+description = "DarkTok - TikTok-like app by Mangaba.ai"
+authors = ["Mangaba.ai"]
+edition = "2021"
+
+[lib]
+name = "darktok_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

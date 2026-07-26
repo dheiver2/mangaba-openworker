@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+:root {
+  /* Mangaba.ai Dark Theme */
+  --mangaba-orange: #F5861D;
+  --mangaba-orange-light: #FFB84D;
+  --mangaba-orange-dark: #D4720A;
+  --mangaba-green: #2D7D3A;
+  --mangaba-cream: #FBF6F0;
+  --mangaba-dark: #0D0D0D;
+  --mangaba-dark-surface: #1A1A1A;
+  --mangaba-dark-card: #242424;
+  --mangaba-text: #FFFFFF;
+  --mangaba-text-muted: #A0A0A0;
+}
+
+@theme {
+  --color-mangaba-orange: #F5861D;
+  --color-mangaba-orange-light: #FFB84D;
+  --color-mangaba-green: #2D7D3A;
+  --color-mangaba-cream: #FBF6F0;
+  --color-mangaba-dark: #0D0D0D;
+  --color-mangaba-surface: #1A1A1A;
+  --color-mangaba-card: #242424;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: var(--mangaba-dark);
+  color: var(--mangaba-text);
+  overflow: hidden;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--mangaba-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--mangaba-orange);
+  border-radius: 3px;
+}
+
+/* Video container */
+.video-container {
+  scroll-snap-type: y mandatory;
+  overflow-y: scroll;
+  height: 100vh;
+}
+
+.video-item {
+  scroll-snap-align: start;
+  height: 100vh;
+  position: relative;
+}
+
+/* Animations */
+@keyframes pulse-like {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+}
+
+.like-animation {
+  animation: pulse-like 0.3s ease-in-out;
+}
+
+@keyframes slide-up {
+  from { transform: translateY(100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.slide-up {
+  animation: slide-up 0.3s ease-out;
+}
