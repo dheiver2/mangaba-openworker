@@ -1131,7 +1131,7 @@ export async function mockApi(page: import("@playwright/test").Page) {
       });
     if (p.endsWith("/v1/cloud/status")) return json({ ...CLOUD_STATE });
     if (p.endsWith("/v1/cloud/login") && m === "POST") {
-      Object.assign(CLOUD_STATE, { signed_in: true, account: "rohit@mangaba.com", user_id: "usr_e2e" });
+      Object.assign(CLOUD_STATE, { signed_in: true, account: "rohit@mangaba.ai", user_id: "usr_e2e" });
       return json({ ok: true });
     }
     if (p.endsWith("/v1/cloud/telemetry") && m === "POST") {
@@ -1190,8 +1190,8 @@ export async function mockApi(page: import("@playwright/test").Page) {
       // Outlook managed connect = add the next mailbox (email-keyed accounts).
       if (p.includes("/connectors/outlook/")) {
         outlookState.accounts.push({
-          account_id: `mbx${outlookState.accounts.length + 1}@mangaba.com`,
-          name: `mbx${outlookState.accounts.length + 1}@mangaba.com`,
+          account_id: `mbx${outlookState.accounts.length + 1}@mangaba.ai`,
+          name: `mbx${outlookState.accounts.length + 1}@mangaba.ai`,
           default: outlookState.accounts.length === 0,
           managed: true,
         });

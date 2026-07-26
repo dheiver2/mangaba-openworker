@@ -1304,7 +1304,7 @@ def test_outlook_managed_multi_account_keys_by_email(tmp_path, monkeypatch):
     from mangaba.connectors.setup import managed_connect_connector
 
     secrets = SecretStore(tmp_path / "secrets.json")
-    for email, tok in (("rohit@mangaba.com", "g1"), ("ops@acme.com", "g2")):
+    for email, tok in (("rohit@mangaba.ai", "g1"), ("ops@acme.com", "g2")):
         managed_connect_connector(
             secrets,
             "outlook",
@@ -1313,7 +1313,7 @@ def test_outlook_managed_multi_account_keys_by_email(tmp_path, monkeypatch):
             ),
         )
     ids = [a for a, _ in accounts.list_accounts(secrets, "outlook")]
-    assert ids == ["ops@acme.com", "rohit@mangaba.com"], ids
+    assert ids == ["ops@acme.com", "rohit@mangaba.ai"], ids
 
     calls = []
 
@@ -1328,7 +1328,7 @@ def test_outlook_managed_multi_account_keys_by_email(tmp_path, monkeypatch):
     assert calls[-1]["headers"]["Authorization"] == "Bearer g2"
     # default account = first connected (rohit@ was added first)
     out = tools["outlook_list_events"]()
-    assert out["account"] == "rohit@mangaba.com"
+    assert out["account"] == "rohit@mangaba.ai"
     # Bare list = the next-7-days calendarView (recurrences expanded), not /me/events.
     assert calls[-1]["url"] == "https://graph.microsoft.com/v1.0/me/calendarView"
 
@@ -1349,7 +1349,7 @@ def test_outlook_calendar_tools_hit_the_right_graph_endpoints(tmp_path, monkeypa
         managed_profile_from_callback(
             {
                 "access_token": "tok",
-                "account": "rohit@mangaba.com",
+                "account": "rohit@mangaba.ai",
                 "provider": "microsoft",
             }
         ),

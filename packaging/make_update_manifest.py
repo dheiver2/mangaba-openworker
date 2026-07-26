@@ -18,7 +18,7 @@ or a half-published release would mix versions. Platforms whose artifact or .sig
 missing are SKIPPED with a warning (e.g. a mac-only hotfix release), so shipped apps
 on other platforms simply see no update rather than a broken one.
 
-The desktop app finds this file through https://download.mangaba.com/latest.json
+The desktop app finds this file through https://download.mangaba.ai/latest.json
 (branded redirect) falling back to the repo's releases/latest/download/latest.json —
 see tauri.conf.json `plugins.updater.endpoints`.
 """

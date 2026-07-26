@@ -140,5 +140,5 @@ def test_cloud_endpoints_default_to_production():
     from mangaba.config import Config
 
     cfg = Config()
-    assert cfg.cloud_base_url == "https://api.mangaba.com"
+    assert cfg.cloud_base_url == "https://api.mangaba.ai"
     assert cfg.cloud_relay_ws_url.startswith("wss://")

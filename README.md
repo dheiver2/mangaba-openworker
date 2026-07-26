@@ -1,6 +1,6 @@
 # Mangaba
 
-**[mangaba.com](https://mangaba.com)** · [Download](#download) · [Issues](https://github.com/andrewyng/mangaba/issues)
+**[mangaba.ai](https://mangaba.ai)** · [Download](#download) · [Issues](https://github.com/andrewyng/mangaba/issues)
 
 > **Beta** - Mangaba is in open beta: fully usable, updates itself, and we're actively polishing rough edges. [Issues](https://github.com/andrewyng/mangaba/issues) welcome.
 
@@ -8,14 +8,14 @@
 
 It runs on your machine and doesn't lock you into any model: bring your own API key for OpenAI, Anthropic, Google, or an open-weight provider, or run fully local with Ollama. Your data leaves your machine only through the model and integrations *you* choose.
 
-[![How Mangaba works](docs/assets/how-it-works.png)](https://mangaba.com)
+[![How Mangaba works](docs/assets/how-it-works.png)](https://mangaba.ai)
 
 ## Download
 
-[**⬇ macOS (Apple Silicon)**](https://download.mangaba.com/mac)
+[**⬇ macOS (Apple Silicon)**](https://download.mangaba.ai/mac)
 <sub>macOS 12+ · signed & notarized · auto-updates</sub>
 
-[**⬇ Windows 10/11 (x64)**](https://download.mangaba.com/windows)
+[**⬇ Windows 10/11 (x64)**](https://download.mangaba.ai/windows)
 <sub>builds are not yet code-signed, so SmartScreen will warn; signing is in progress</sub>
 
 Open the app, add a model key (or point it at Ollama), and ask for something real.

@@ -15,33 +15,33 @@
 
 :root {
   color-scheme: light;
-  --paper: #f5f6f7;          /* cool light gray — reads "tool", not "writing app" */
+  --paper: #FBF6F0;          /* mangaba cream background */
   --panel: #ffffff;
-  --ink: #17191c;
+  --ink: #2C2C2C;            /* mangaba dark text */
   --muted: #5b616b;
   --faint: #9aa1aa;
   --line: #e8eaed;
   --line-strong: #d8dce1;
-  --accent: #2563eb; /* cobalt — our signature, distinct from the coral-leaning tools */
-  --accent-soft: #e9f0fd;
-  --ok: #2f7d57;
+  --accent: #F5861D;         /* mangaba orange */
+  --accent-soft: #FFF3E6;    /* light orange tint */
+  --ok: #2D7D3A;             /* mangaba green (leaf) */
   --ok-soft: #eef6f0;
   --ok-line: #cfe6d6;
-  --ok-dot: #3f9c5a;          /* brighter green for small status dots */
+  --ok-dot: #3f9c5a;
   --warn-ink: #b45309;
   --warn-soft: #fef3c7;
   --danger: #b91c1c;
   --danger-soft: #f9e7e5;
-  --teal-ink: #0f766e;        /* connector approval badges */
+  --teal-ink: #0f766e;
   --teal-line: #cfebea;
   --teal-soft: #edfafa;
-  --solid: #e9ebf0;           /* user bubble — a soft neutral fill (was near-black; too heavy in light) */
+  --solid: #e9ebf0;
   --on-solid: #1f2227;
-  --glass: rgba(255, 255, 255, 0.9);        /* frosted bars over content */
+  --glass: rgba(255, 255, 255, 0.9);
   --glass-strong: rgba(255, 255, 255, 0.96);
   --glass-soft: rgba(255, 255, 255, 0.78);
-  --scrim: rgba(29, 27, 24, 0.32);          /* modal / gate overlays */
-  --check-a: #f0f1f3;         /* image-viewer checkerboard */
+  --scrim: rgba(29, 27, 24, 0.32);
+  --check-a: #f0f1f3;
   --check-b: #fafbfc;
   /* Headings are sans now (was a Palatino serif) — less editorial, more product. */
   --serif: var(--sans);
@@ -62,9 +62,9 @@ html[data-theme="dark"] {
   --faint: #62686f;
   --line: #2a2d33;
   --line-strong: #3a3e46;
-  --accent: #4c8dff;          /* lifted cobalt — keeps contrast on dark panels */
-  --accent-soft: #1c2a44;
-  --ok: #58b07f;
+  --accent: #F5861D;          /* mangaba orange */
+  --accent-soft: #2a1f0d;
+  --ok: #2D7D3A;              /* mangaba green */
   --ok-soft: #1a2b21;
   --ok-line: #2c4736;
   --ok-dot: #4dac72;

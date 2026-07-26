@@ -166,7 +166,7 @@ jobs:
 
       - name: Compose the auto-update manifest (latest.json)
         # Shipped apps poll releases/latest/download/latest.json (via the branded
-        # download.mangaba.com redirect) — publishing this release IS pushing the
+        # download.mangaba.ai redirect) — publishing this release IS pushing the
         # update. The tag must match tauri.conf.json's version or installed apps would
         # see a permanent phantom update; fail loudly on drift. Runs only when signed
         # updater artifacts exist (i.e. the TAURI_SIGNING_PRIVATE_KEY secret is set).

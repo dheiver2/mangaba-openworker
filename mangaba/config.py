@@ -41,7 +41,7 @@ class Config:
     web_search_provider: str = "duckduckgo"
     # Mangaba Cloud (sign-in + managed connectors). Config, never constants:
     # dev/staging/BYO-VPC deployments point these at their own instances.
-    cloud_base_url: str = "https://api.mangaba.com"
+    cloud_base_url: str = "https://api.mangaba.ai"
     # Auth0 tenant + API audience are registered identifiers, not branding: the
     # tenant name can never be renamed, and the audience must match the API
     # identifier registered in Auth0 — both keep the legacy value on purpose.

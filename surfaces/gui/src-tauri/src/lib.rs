@@ -487,7 +487,7 @@ fn show_main(app: &tauri::AppHandle) {
 // else — no global plugin JS): check, background pre-download, install. Update
 // artifacts are minisign-verified against the pubkey in tauri.conf.json before
 // anything is installed; the manifest lives at the endpoints configured there
-// (download.mangaba.com → GitHub Releases).
+// (download.mangaba.ai → GitHub Releases).
 
 #[derive(serde::Serialize)]
 struct UpdateInfo {

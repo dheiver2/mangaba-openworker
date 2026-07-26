@@ -57,7 +57,7 @@ test("signed in: account row shows the name; one-click appears; sign out from th
   // The menu header carries the email; Sign out flips the row back.
   await page.getByTestId("account-row").click();
   const menu = page.getByTestId("account-menu");
-  await expect(menu).toContainText("rohit@mangaba.com");
+  await expect(menu).toContainText("rohit@mangaba.ai");
   await menu.getByRole("button", { name: "Sign out" }).click();
   await page.getByTestId("account-row").click(); // reopen → status refetch
   await expect(page.getByTestId("account-row")).toContainText("Not signed in");
