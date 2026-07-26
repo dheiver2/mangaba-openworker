@@ -69,10 +69,10 @@ export function itemsFromMessages(messages: ConversationMessage[]): Item[] {
       // the Transcript only offers the button when it's the transcript tail.
       items.push(
         m.kind === "interrupted"
-          ? { kind: "notice", tone: "warn", text: "Interrupted." }
+          ? { kind: "notice", tone: "warn", text: "Interrompido." }
           : m.kind === "model_switch"
-            ? { kind: "notice", tone: "info", text: m.text || "Model switched" }
-            : { kind: "notice", tone: "warn", text: "Error: " + (m.text || "unknown"), retriable: true },
+            ? { kind: "notice", tone: "info", text: m.text || "Modelo alterado" }
+            : { kind: "notice", tone: "warn", text: "Erro: " + (m.text || "desconhecido"), retriable: true },
       );
     }
     // system messages are omitted; tool-result messages are folded into the tool row above

@@ -14,8 +14,8 @@ type IntTab = "connectors" | "mcp";
 // Fixed sub-nav (UX-DECISIONS §21): connector detail lives as a SUBPAGE under
 // Connectors, never as a nav item — the nav must not grow per connector.
 const INT_TABS: { key: IntTab; label: string; icon: "plug" | "code" }[] = [
-  { key: "connectors", label: "Connectors", icon: "plug" },
-  { key: "mcp", label: "MCP servers", icon: "code" },
+  { key: "connectors", label: "Conectores", icon: "plug" },
+  { key: "mcp", label: "Servidores MCP", icon: "code" },
 ];
 
 export function IntegrationsView() {
@@ -36,7 +36,7 @@ export function IntegrationsView() {
     <main className="flex-1 min-w-0 flex bg-paper">
       <nav className="page-subnav w-[208px] shrink-0 border-r border-line bg-panel/40 px-3 py-4">
         <div className="px-2 text-[13.5px] font-semibold mb-3 flex items-center gap-2">
-          <Icon name="plug" size={16} /> Connectors
+          <Icon name="plug" size={16} /> Conectores
         </div>
         {INT_TABS.map((t) => {
           const active = tab === t.key;
@@ -69,16 +69,16 @@ export function IntegrationsView() {
           {tab === "connectors" ? (
             <section>
               <PanelHead
-                title="Connectors"
-                sub="Apps and tools your mangabas can use. Connected ones come first."
+                title="Conectores"
+                sub="Aplicativos e ferramentas que suas personas podem usar. Os conectados vêm primeiro."
               />
               <ConnectorsSection />
             </section>
           ) : (
             <section>
               <PanelHead
-                title="MCP servers"
-                sub="External tool servers (stdio or HTTP), shared across all agents."
+                title="Servidores MCP"
+                sub="Servidores externos de ferramentas (stdio ou HTTP), compartilhados por todos os agentes."
               />
               <McpTab />
             </section>

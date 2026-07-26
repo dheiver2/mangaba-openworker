@@ -238,7 +238,7 @@ class SessionManager:
                 return {
                     "path": str(resolved),
                     "ok": False,
-                    "error": "folder does not exist",
+                    "error": "a pasta não existe",
                 }
             try:
                 resolved.mkdir(parents=True, exist_ok=True)
@@ -279,10 +279,10 @@ class SessionManager:
         self, path: str | Path, *, trusted: bool
     ) -> dict[str, Any]:
         if not str(path).strip():
-            return {"ok": False, "error": "workspace path is required"}
+            return {"ok": False, "error": "o caminho da área de trabalho é obrigatório"}
         candidate = Path(path).expanduser()
         if trusted and not candidate.is_dir():
-            return {"ok": False, "error": "workspace is not a directory"}
+            return {"ok": False, "error": "a área de trabalho não é uma pasta"}
         canonical = self.workspace_trust.set_trusted(candidate, trusted)
         effective = load_config(
             canonical, workspace_trusted=trusted
@@ -789,7 +789,7 @@ class SessionManager:
                 return {"granted": False, "reason": "the user declined the request"}
             path = (resp.get("path") or args.get("path") or "").strip()
             if not path:
-                return {"granted": False, "error": "no directory was provided"}
+                return {"granted": False, "error": "nenhuma pasta foi informada"}
             writable = bool(resp.get("writable", args.get("writable", False)))
             res = self.add_root(session_id, path, writable)
             if not res.get("ok"):
@@ -1286,7 +1286,7 @@ class SessionManager:
             if target.stat().st_size > self.MAX_BINARY_PREVIEW:
                 return {
                     "ok": False,
-                    "error": "file too large to preview — use Reveal to open it",
+                    "error": "arquivo grande demais para visualizar — use Mostrar na pasta para abri-lo",
                 }
             mime = {
                 ".png": "image/png",
@@ -1308,7 +1308,7 @@ class SessionManager:
         try:
             text = target.read_text(encoding="utf-8")
         except UnicodeDecodeError:
-            return {"ok": False, "error": "binary file cannot be previewed"}
+            return {"ok": False, "error": "não é possível visualizar um arquivo binário"}
         return {
             "ok": True,
             "path": path,
@@ -1457,7 +1457,7 @@ class SessionManager:
         try:
             out = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         except (OSError, subprocess.TimeoutExpired):
-            return {"ok": False, "error": "no native folder picker available"}
+            return {"ok": False, "error": "nenhum seletor de pastas nativo disponível"}
         path = (out.stdout or "").strip()
         if out.returncode != 0 or not path:
             return {"ok": False, "canceled": True}
@@ -1825,7 +1825,7 @@ class SessionManager:
         try:
             self._prefs["sessions_peek"] = max(1, min(int(n), 50))
         except (TypeError, ValueError):
-            return {"ok": False, "error": "sessions_peek must be a number"}
+            return {"ok": False, "error": "sessions_peek precisa ser um número"}
         self._save_prefs()
         return {"ok": True, "sessions_peek": self.sessions_peek()}
 
@@ -1863,7 +1863,7 @@ class SessionManager:
 
         if fallback is not None:
             if fallback not in FALLBACK_MODES:
-                return {"ok": False, "error": "pdf_fallback must be 'text' or 'images'"}
+                return {"ok": False, "error": "pdf_fallback precisa ser 'text' ou 'images'"}
             self._prefs["pdf_fallback"] = fallback
         for key, value, ceiling in (
             ("pdf_max_pages", max_pages, 100),
@@ -1980,7 +1980,7 @@ class SessionManager:
         """
         user_id = str(user_id).strip()
         if not user_id:
-            return {"ok": False, "error": "user_id required"}
+            return {"ok": False, "error": "user_id obrigatório"}
         profile = self.secrets.get("slack:default")
         if not profile:
             return {"ok": False, "error": "Slack is not connected in Manual mode."}
@@ -2090,7 +2090,7 @@ class SessionManager:
         without, the flat `<name>:default` list (manual single-workspace mode)."""
         user_id = str(user_id).strip()
         if not user_id:
-            return {"ok": False, "error": "user_id required"}
+            return {"ok": False, "error": "user_id obrigatório"}
         scope = "install" if name == "github" else "team"
         profile_key = f"{name}:{scope}:{team_id}" if team_id else f"{name}:default"
         profile = self.secrets.get(profile_key)
@@ -2098,7 +2098,7 @@ class SessionManager:
             return {
                 "ok": False,
                 "error": (
-                    "workspace not connected" if team_id else "connector not connected"
+                    "área de trabalho não conectada" if team_id else "connector not connected"
                 ),
             }
         allowed = set(profile.get("allowed_users") or [])
@@ -2125,7 +2125,7 @@ class SessionManager:
         team_id = str(team_id).strip()
         profile_key = f"slack:team:{team_id}"
         if not team_id or not self.secrets.get(profile_key):
-            return {"ok": False, "error": "workspace not connected"}
+            return {"ok": False, "error": "área de trabalho não conectada"}
         from .. import cloud
         from ..config import load_config
 
@@ -2211,7 +2211,7 @@ class SessionManager:
         if not installation_id or not self.secrets.get(
             github_installs.PREFIX + installation_id
         ):
-            return {"ok": False, "error": "installation not connected"}
+            return {"ok": False, "error": "instalação não conectada"}
         await asyncio.to_thread(
             lambda: cloud.github_disconnect_installation(
                 self.secrets, load_config(), installation_id
@@ -2872,9 +2872,9 @@ class SessionManager:
         if subs:
             # The user connected a mangaba to this channel — it answers tags; no spawn.
             msg = (
-                f"🔔 You were tagged by {who} in {chan}: {event.text}\n"
-                f"(You are subscribed to this channel and were mentioned directly — you must "
-                f"respond. Reply in the thread with the send_message tool, target "
+                f"🔔 Você foi marcado por {who} em {chan}: {event.text}\n"
+                f"(Você assina este canal e foi mencionado diretamente — você precisa "
+                f"responder. Responda na thread com a ferramenta send_message, alvo "
                 f'"{thread_target}".)'
             )
             for sub in subs:
@@ -3110,13 +3110,13 @@ class SessionManager:
         timezone = (payload.get("timezone") or "").strip() or "local"
 
         if not title:
-            return {"ok": False, "error": "title is required"}
+            return {"ok": False, "error": "o título é obrigatório"}
         if not instructions:
-            return {"ok": False, "error": "instructions are required"}
+            return {"ok": False, "error": "as instruções são obrigatórias"}
         if not cron and not fire_at:
             return {
                 "ok": False,
-                "error": "provide a cron (recurring) or a fire_at ISO datetime (one-time)",
+                "error": "informe um cron (recorrente) ou um fire_at em ISO (uma vez)",
             }
         if cron and not croniter.is_valid(cron):
             return {"ok": False, "error": f"invalid cron expression: {cron}"}
@@ -3481,7 +3481,7 @@ class SessionManager:
             if engine.roots and engine.roots[0].path == resolved:
                 return {
                     "ok": False,
-                    "error": "cannot remove the primary scratch directory",
+                    "error": "não é possível remover a pasta de trabalho primária",
                 }
             engine.roots[:] = [r for r in engine.roots if r.path != resolved]
             self.session_store.set_extra_roots(session_id, self._extra_roots_of(engine))
@@ -3494,7 +3494,7 @@ class SessionManager:
             ):
                 return {
                     "ok": False,
-                    "error": "cannot remove the primary scratch directory",
+                    "error": "não é possível remover a pasta de trabalho primária",
                 }
             extra = [
                 r
@@ -3526,7 +3526,7 @@ class SessionManager:
 
     def rename_session(self, session_id: str, title: str) -> dict[str, Any]:
         if session_id.startswith("__"):
-            return {"ok": False, "error": "internal sessions cannot be renamed"}
+            return {"ok": False, "error": "sessões internas não podem ser renomeadas"}
         ok = self.session_store.rename(session_id, title)
         return {
             "ok": ok,
@@ -3542,13 +3542,13 @@ class SessionManager:
         archived: Optional[bool] = None,
     ) -> dict[str, Any]:
         if session_id.startswith("__"):
-            return {"ok": False, "error": "internal sessions cannot be modified here"}
+            return {"ok": False, "error": "sessões internas não podem ser modificadas aqui"}
         ok = self.session_store.set_flags(session_id, pinned=pinned, archived=archived)
         return {"ok": ok, "session_id": session_id}
 
     def delete_session(self, session_id: str) -> dict[str, Any]:
         if session_id.startswith("__"):
-            return {"ok": False, "error": "internal sessions cannot be deleted here"}
+            return {"ok": False, "error": "sessões internas não podem ser excluídas aqui"}
         engine = self._engines.pop(session_id, None)
         if engine is not None:
             try:

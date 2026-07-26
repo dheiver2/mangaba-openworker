@@ -43,7 +43,7 @@ export function GmailDetail({ c, cloud, slack: _slack, onChanged }: DetailProps)
                 </span>
               </>
             ) : (
-              <span>Not connected</span>
+              <span>Não conectado</span>
             )}
           </div>
         </div>
@@ -54,20 +54,20 @@ export function GmailDetail({ c, cloud, slack: _slack, onChanged }: DetailProps)
           disabled={busy || !cloud?.signed_in || c.managed_paused}
           title={
             c.managed_paused
-              ? "One-click Google sign-in is coming soon"
+              ? "O login Google com um clique chega em breve"
               : cloud?.signed_in
                 ? ""
-                : "Sign in to Mangaba Cloud first"
+                : "Entre no Mangaba Cloud primeiro"
           }
         >
-          {c.managed_paused ? "＋ Add account · Coming soon" : busy ? "Check your browser…" : "＋ Add account"}
+          {c.managed_paused ? "＋ Adicionar conta · Em breve" : busy ? "Confira seu navegador…" : "＋ Adicionar conta"}
         </button>
       </div>
 
       {!c.connected && (
         <div className={GRP}>
           <div className={ROW + " text-[12.5px] text-muted"}>
-            Sign in with Google — each mailbox stays separate, agents say which one they use.
+            Entre com o Google — cada caixa fica separada e os agentes dizem qual estão usando.
             {cloud?.signed_in ? "" : " Requires cloud sign-in."}
           </div>
         </div>
@@ -75,7 +75,7 @@ export function GmailDetail({ c, cloud, slack: _slack, onChanged }: DetailProps)
 
       {accounts.length > 0 && (
         <>
-          <div className={GRP_H + " !mt-0"}>Accounts</div>
+          <div className={GRP_H + " !mt-0"}>Contas</div>
           <div className={GRP} data-testid="gmail-accounts">
             {accounts.map((a) => (
               <AccountRow key={a.email} a={a} onChanged={onChanged} />
@@ -88,8 +88,8 @@ export function GmailDetail({ c, cloud, slack: _slack, onChanged }: DetailProps)
 
       <ToolsDisclosure c={c} onChanged={onChanged} />
       <div className={FOOT + " mt-2"}>
-        Filters are enforced on this computer, before an agent sees results. Hidden counts show
-        on the tool card and in Activity — never the content.
+        Os filtros são aplicados neste computador, antes de um agente ver os resultados. As contagens do que
+        foi ocultado aparecem no cartão da ferramenta e em Atividade — nunca o conteúdo.
       </div>
     </div>
   );
@@ -101,7 +101,7 @@ function AccountRow({ a, onChanged }: { a: GmailAccount; onChanged: () => void }
     <div className={ROW} data-testid={`gmail-account-${a.email}`}>
       <span className="min-w-0 flex-1 flex items-center gap-2">
         <span className="text-[13px] font-medium truncate">{a.email}</span>
-        {a.default && <span className={TAG_ACCENT}>Default</span>}
+        {a.default && <span className={TAG_ACCENT}>Padrão</span>}
         {a.needs_reauth && <span className={TAG_WARN}>⚠ Sign in again</span>}
       </span>
       {!a.default && (
@@ -118,7 +118,7 @@ function AccountRow({ a, onChanged }: { a: GmailAccount; onChanged: () => void }
       )}
       <button
         className={XBTN}
-        title="Disconnect this mailbox"
+        title="Desconectar esta caixa de correio"
         data-testid={`gmail-disconnect-${a.email}`}
         disabled={busy}
         onClick={async () => {
@@ -138,12 +138,12 @@ function FiltersGroup({ c, onChanged }: Pick<DetailProps, "c" | "onChanged">) {
   const filters = c.filters ?? { senders: [], labels: [] };
   return (
     <>
-      <div className={GRP_H}>Never show agents</div>
+      <div className={GRP_H}>Nunca mostrar aos agentes</div>
       <div className={GRP} data-testid="gmail-filters">
         <ChipListRow
-          label="Senders"
+          label="Remetentes"
           testid="gmail-filter-senders"
-          placeholder="name@example.com or @domain.com"
+          placeholder="nome@exemplo.com ou @dominio.com"
           values={filters.senders}
           onSave={async (senders) => {
             await setGmailFilters({ senders });
@@ -151,9 +151,9 @@ function FiltersGroup({ c, onChanged }: Pick<DetailProps, "c" | "onChanged">) {
           }}
         />
         <ChipListRow
-          label="Labels"
+          label="Marcadores"
           testid="gmail-filter-labels"
-          placeholder="Label name, e.g. Personal"
+          placeholder="Nome do marcador, ex.: Pessoal"
           values={filters.labels}
           onSave={async (labels) => {
             await setGmailFilters({ labels });
@@ -200,7 +200,7 @@ function ChipListRow({
             {v}
             <button
               className={XBTN}
-              title="remove"
+              title="remover"
               onClick={() => onSave(values.filter((x) => x !== v))}
             >
               ×

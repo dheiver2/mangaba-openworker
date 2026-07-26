@@ -88,7 +88,7 @@ export function UpdateBanner() {
       role="status"
       data-testid="update-banner"
     >
-      <div className="text-[13px] font-semibold">Update available</div>
+      <div className="text-[13px] font-semibold">Atualização disponível</div>
       <div className="text-[12px] text-muted mt-0.5">
         Mangaba v{update.version} is ready to install.
       </div>
@@ -104,7 +104,7 @@ export function UpdateBanner() {
           disabled={busy}
           data-testid="update-install"
         >
-          {busy ? "Downloading…" : "Restart to update"}
+          {busy ? "Baixando…" : "Reiniciar para atualizar"}
         </button>
         <button
           className="px-2 py-1.5 text-[12.5px] text-faint hover:text-muted"

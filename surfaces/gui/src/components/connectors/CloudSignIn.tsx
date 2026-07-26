@@ -26,10 +26,10 @@ export function CloudSignInInline({ blurb }: { blurb?: string }) {
           });
         }}
       >
-        {waiting ? "Check your browser…" : "Sign in to Mangaba Cloud"}
+        {waiting ? "Confira seu navegador…" : "Entrar no Mangaba Cloud"}
       </button>
       <div className="text-[11.5px] text-faint">
-        {blurb || "Sign-in unlocks one-click connects — or switch to Manual, which works without it."}
+        {blurb || "Entrar libera as conexões com um clique — ou mude para Manual, que funciona sem isso."}
       </div>
     </div>
   );

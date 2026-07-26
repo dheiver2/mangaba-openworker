@@ -60,7 +60,7 @@ def test_create_automation_missing_instructions(tmp_path, monkeypatch):
         }
     )
     assert out["ok"] is False
-    assert "instructions" in out["error"]
+    assert "instruções" in out["error"]
     assert manager.task_store.list() == []
 
 

@@ -58,14 +58,14 @@ export function AddConnectionModal({
       <div
         className="absolute left-1/2 top-[14%] -translate-x-1/2 w-[480px] max-w-[calc(100vw-2rem)] bg-panel rounded-2xl border border-line shadow-2xl"
         role="dialog"
-        aria-label={title || `Connect ${c.title}`}
+        aria-label={title || `Conectar ${c.title}`}
       >
         <div className="flex items-center gap-3 px-5 pt-5">
           <ConnectorBadge connector={c} size={34} title={c.title} />
           <div className="flex-1 font-semibold text-[16px] tracking-tight">
             {title || `Connect ${c.title}`}
           </div>
-          <button className="text-faint hover:text-ink text-[18px] leading-none" onClick={onClose} title="Close">
+          <button className="text-faint hover:text-ink text-[18px] leading-none" onClick={onClose} title="Fechar">
             ×
           </button>
         </div>
@@ -84,7 +84,7 @@ export function AddConnectionModal({
                     }
                     onClick={() => setPane(p)}
                   >
-                    {p === "one" ? "One click" : "Manual"}
+                    {p === "one" ? "Um clique" : "Manual"}
                   </button>
                 ))}
               </div>
@@ -151,9 +151,9 @@ function McpOneClick({ c, onConnected }: { c: Connector; onConnected: () => void
   return (
     <div className="px-5 py-4 space-y-3">
       <p className="text-[13px] text-muted">
-        Opens {c.title} in your browser — sign in and approve access there. No tokens
-        typed, and no Mangaba account needed: the sign-in runs entirely on this
-        computer.
+        Abre o {c.title} no seu navegador — entre e aprove o acesso por lá. Sem digitar tokens
+        e sem precisar de conta Mangaba: o login roda inteiramente neste
+        computador.
       </p>
       <button
         className={PILL_ACCENT + " w-full !py-2"}
@@ -161,11 +161,11 @@ function McpOneClick({ c, onConnected }: { c: Connector; onConnected: () => void
         onClick={go}
         disabled={waiting}
       >
-        {waiting ? "Check your browser…" : `Connect ${c.title}`}
+        {waiting ? "Confira seu navegador…" : `Conectar ${c.title}`}
       </button>
       {error && <div className="text-[12.5px] text-danger">{error}</div>}
       <p className="text-[12px] text-faint text-center flex items-center justify-center gap-1.5">
-        <span className={TAG_ACCENT}>Recommended</span> agents get a curated set of{" "}
+        <span className={TAG_ACCENT}>Recomendado</span> os agentes recebem um conjunto selecionado de{" "}
         {c.title} tools · tokens stay on this computer
       </p>
     </div>
@@ -196,7 +196,7 @@ function GenericOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null
           onClick={go}
           disabled={waiting}
         >
-          {waiting ? "Check your browser…" : `Connect ${c.title}`}
+          {waiting ? "Confira seu navegador…" : `Conectar ${c.title}`}
         </button>
       ) : cloud ? (
         <CloudSignInInline />
@@ -205,7 +205,7 @@ function GenericOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null
       )}
       {error && <div className="text-[12.5px] text-danger">{error}</div>}
       <p className="text-[12px] text-faint text-center flex items-center justify-center gap-1.5">
-        <span className={TAG_ACCENT}>Recommended</span> tokens stay on this computer
+        <span className={TAG_ACCENT}>Recomendado</span> os tokens ficam neste computador
       </p>
     </div>
   );
@@ -228,7 +228,7 @@ function SlackOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null }
       </p>
       {cloud?.signed_in ? (
         <button className={PILL_ACCENT + " w-full !py-2"} data-testid="modal-add-to-slack" onClick={go} disabled={waiting}>
-          {waiting ? "Check your browser…" : "Add to Slack"}
+          {waiting ? "Confira seu navegador…" : "Adicionar ao Slack"}
         </button>
       ) : cloud ? (
         <CloudSignInInline />
@@ -237,7 +237,7 @@ function SlackOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null }
       )}
       {error && <div className="text-[12.5px] text-danger">{error}</div>}
       <p className="text-[12px] text-faint text-center flex items-center justify-center gap-1.5">
-        <span className={TAG_ACCENT}>Recommended</span> relay · tokens stay on this computer
+        <span className={TAG_ACCENT}>Recomendado</span> relay · os tokens ficam neste computador
       </p>
     </div>
   );
@@ -264,7 +264,7 @@ function GithubOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null 
            redirects the same tab on to the install page (the old "Already installed? Link
            it" question and the Configure dead-end are gone). */
         <button className={PILL_ACCENT + " w-full !py-2"} data-testid="modal-install-github-app" onClick={() => go()} disabled={waiting}>
-          {waiting ? "Check your browser…" : "Connect GitHub"}
+          {waiting ? "Confira seu navegador…" : "Conectar o GitHub"}
         </button>
       ) : cloud ? (
         <CloudSignInInline />
@@ -273,7 +273,7 @@ function GithubOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null 
       )}
       {error && <div className="text-[12.5px] text-danger">{error}</div>}
       <p className="text-[12px] text-faint text-center flex items-center justify-center gap-1.5">
-        <span className={TAG_ACCENT}>Recommended</span> relay · short-lived tokens, never stored
+        <span className={TAG_ACCENT}>Recomendado</span> relay · tokens de curta duração, nunca armazenados
       </p>
     </div>
   );
@@ -292,14 +292,14 @@ function HubSpotOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null
   return (
     <div className="px-5 py-4 space-y-3">
       <p className="text-[13px] text-muted">
-        Opens HubSpot in your browser — pick the portal there. What agents may do is chosen
-        NOW, at consent:
+        Abre o HubSpot no seu navegador — escolha o portal por lá. O que os agentes podem fazer é decidido
+        AGORA, no consentimento:
       </p>
       <div className="space-y-1.5" data-testid="hubspot-access">
         {(
           [
-            ["read", "Read-only", "search and read contacts, companies, deals, tickets"],
-            ["write", "Read & write", "adds: log notes and tasks, update records, create contacts — never delete"],
+            ["read", "Somente leitura", "buscar e ler contatos, empresas, negócios e tickets"],
+            ["write", "Leitura e escrita", "inclui: registrar notas e tarefas, atualizar registros, criar contatos — nunca excluir"],
           ] as const
         ).map(([value, label, blurb]) => (
           <label key={value} className="flex items-start gap-2 text-[13px] cursor-pointer">
@@ -320,7 +320,7 @@ function HubSpotOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null
       </div>
       {cloud?.signed_in ? (
         <button className={PILL_ACCENT + " w-full !py-2"} data-testid="modal-connect-hubspot" onClick={go} disabled={waiting}>
-          {waiting ? "Check your browser…" : "Connect HubSpot"}
+          {waiting ? "Confira seu navegador…" : "Conectar o HubSpot"}
         </button>
       ) : cloud ? (
         <CloudSignInInline />
@@ -329,7 +329,7 @@ function HubSpotOneClick({ c, cloud }: { c: Connector; cloud: CloudStatus | null
       )}
       {error && <div className="text-[12.5px] text-danger">{error}</div>}
       <p className="text-[12px] text-faint text-center">
-        Works for any number of portals · tokens stay on this computer
+        Funciona com qualquer número de portais · os tokens ficam neste computador
       </p>
     </div>
   );
@@ -351,18 +351,18 @@ function SlackManual({ onConnected }: { onConnected: () => void }) {
   return (
     <div className="px-5 py-4 space-y-3">
       <ol className="list-decimal pl-4 text-[13px] text-muted space-y-1">
-        <li>Create an app at api.slack.com/apps</li>
-        <li>Enable Socket Mode, add bot scopes, install it to your workspace</li>
-        <li>Paste both tokens</li>
+        <li>Crie um app em api.slack.com/apps</li>
+        <li>Ative o Socket Mode, adicione os escopos do bot e instale no seu workspace</li>
+        <li>Cole os dois tokens</li>
       </ol>
-      <input className={INPUT} type="password" placeholder="Bot token · xoxb-…" value={bot} spellCheck={false} onChange={(e) => setBot(e.target.value)} />
-      <input className={INPUT} type="password" placeholder="App token · xapp-…" value={app} spellCheck={false} onChange={(e) => setApp(e.target.value)} />
+      <input className={INPUT} type="password" placeholder="Token do bot · xoxb-…" value={bot} spellCheck={false} onChange={(e) => setBot(e.target.value)} />
+      <input className={INPUT} type="password" placeholder="Token do app · xapp-…" value={app} spellCheck={false} onChange={(e) => setApp(e.target.value)} />
       <button className={PILL_LINE + " w-full !py-2"} onClick={submit} disabled={busy || !bot.trim() || !app.trim()}>
-        {busy ? "Validating…" : "Connect"}
+        {busy ? "Validando…" : "Conectar"}
       </button>
       {error && <div className="text-[12.5px] text-danger">{error}</div>}
       <p className="text-[12px] text-warnInk text-center">
-        One mode at a time — this pauses any relay workspaces.
+        Um modo por vez — isto pausa quaisquer workspaces via relay.
       </p>
     </div>
   );

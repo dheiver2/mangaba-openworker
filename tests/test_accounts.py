@@ -174,4 +174,4 @@ def test_generic_account_routes(acme, secrets, tmp_path, monkeypatch):
     assert [a for a, _ in accounts.list_accounts(manager.secrets, "acmeapp")] == ["p2"]
 
     out = client.post("/v1/connectors/linear/accounts/x/default").json()
-    assert not out["ok"] and "not a multi-account" in out["error"]
+    assert not out["ok"] and "múltiplas contas" in out["error"]

@@ -231,20 +231,20 @@ describe("New-session split button", () => {
     expect(baseProps.onNewSession).toHaveBeenCalledWith("cowork");
 
     // ▾ opens the persona menu: enabled personas appear, the disabled one does not, plus a manage entry.
-    fireEvent.click(screen.getByLabelText("Choose a persona"));
+    fireEvent.click(screen.getByLabelText("Escolher uma persona"));
     const menu = (await screen.findByText("Start a session as")).closest(".newsplit-menu") as HTMLElement;
     const w = within(menu);
     expect(w.getByText("Ops")).toBeTruthy();
     expect(w.getByText("Code")).toBeTruthy();
     expect(w.queryByText("Disabled One")).toBeNull();
-    expect(w.getByText("Manage personas…")).toBeTruthy();
+    expect(w.getByText("Gerenciar personas…")).toBeTruthy();
 
     // Selecting a persona starts a session as that persona.
     fireEvent.click(w.getByText("Ops"));
     expect(baseProps.onNewSession).toHaveBeenCalledWith("ops");
 
     // "Manage personas…" opens the persona management surface.
-    fireEvent.click(screen.getByLabelText("Choose a persona"));
+    fireEvent.click(screen.getByLabelText("Escolher uma persona"));
     fireEvent.click(await screen.findByText("Manage personas…"));
     expect(baseProps.onManagePersonas).toHaveBeenCalled();
   });
@@ -257,7 +257,7 @@ describe("New-session split button", () => {
     ]);
     render(<Sidebar {...baseProps} />);
     await screen.findByLabelText("Group and filter conversations");
-    fireEvent.click(screen.getByLabelText("Choose a persona"));
+    fireEvent.click(screen.getByLabelText("Escolher uma persona"));
     const menu = (await screen.findByText("Start a session as")).closest(".newsplit-menu") as HTMLElement;
     expect(within(menu).getByText("Ops")).toBeTruthy();
     expect(within(menu).queryByText("Manage personas…")).toBeNull();

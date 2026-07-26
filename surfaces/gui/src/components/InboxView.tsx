@@ -25,8 +25,8 @@ const ICON_FOR: Record<string, "diamond" | "chat" | "code"> = {
 
 const KIND_TABS: { key: string; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "approval", label: "Approvals" },
-  { key: "question", label: "Questions" },
+  { key: "approval", label: "Aprovações" },
+  { key: "question", label: "Perguntas" },
 ];
 
 const CHIP = (active: boolean) =>
@@ -122,7 +122,7 @@ export function InboxView({
     return (
       <button
         className="inbox-session-chip"
-        title={exists ? `Open “${label}”` : "Session unavailable"}
+        title={exists ? `Abrir “${label}”` : "Sessão indisponível"}
         disabled={!exists}
         onClick={() =>
           exists && onOpenSession(it.session_id, it.session_workspace || "", it.session_agent || "cowork")
@@ -145,8 +145,8 @@ export function InboxView({
       <div className="flex-1 min-w-0 overflow-y-auto hairline-scroll">
         <div className="max-w-4xl mx-auto px-7 py-6">
           <PanelHead
-            title="Inbox"
-            sub="Approvals, questions, and notifications from your mangabas — including sessions running unattended."
+            title="Caixa de entrada"
+            sub="Aprovações, perguntas e avisos das suas personas — inclusive de sessões rodando sem supervisão."
           />
 
           <div className="flex gap-5 border-b border-line mb-4">
@@ -189,18 +189,18 @@ export function InboxView({
               <div className="text-[12px] text-faint -mt-1 mb-4" data-testid="inbox-routing">
                 {routing ? (
                   <span>
-                    Also delivered to{" "}
+                    Também entregue em{" "}
                     <span className="text-muted" title={routing}>
                       {routingLabel}
                     </span>{" "}
-                    — replies there resolve items here.{" "}
+                    — respostas por lá resolvem os itens aqui.{" "}
                   </span>
                 ) : slackConnected ? (
-                  <span>Delivered here only. </span>
+                  <span>Entregue apenas aqui. </span>
                 ) : (
                   <span>
-                    Delivered here only. Connect Slack (Connectors page) to also get these in a
-                    channel — more platforms later.{" "}
+                    Entregue apenas aqui. Conecte o Slack (página de Conectores) para receber isto também em um
+                    canal — mais plataformas em breve.{" "}
                   </span>
                 )}
                 <button
@@ -208,7 +208,7 @@ export function InboxView({
                   data-testid="inbox-route-configure"
                   onClick={() => setTab("configure")}
                 >
-                  Configure ›
+                  Configurar ›
                 </button>
               </div>
 
@@ -225,7 +225,7 @@ export function InboxView({
                       className={CHIP(personaFilter === "all")}
                       onClick={() => setPersonaFilter("all")}
                     >
-                      All mangabas
+                      Todas as personas
                     </button>
                     {personasWithItems.map((p) => (
                       <button
@@ -242,7 +242,7 @@ export function InboxView({
 
               {visible.length === 0 ? (
                 <div className="manage-empty">
-                  {items.length === 0 ? "Nothing pending." : "Nothing pending for this filter."}
+                  {items.length === 0 ? "Nada pendente." : "Nada pendente para este filtro."}
                 </div>
               ) : null}
 

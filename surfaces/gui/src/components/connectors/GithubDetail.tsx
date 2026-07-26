@@ -29,14 +29,14 @@ const LABEL = "text-[12.5px] text-muted w-24 shrink-0";
 
 /** The relay status line, one honest layer at a time (the Slack rule). */
 function relayHealth(gh: GithubStatus | null): { dot: string; text: string } {
-  if (!gh) return { dot: "bg-ok", text: "Live · managed relay" };
+  if (!gh) return { dot: "bg-ok", text: "Ativo · relay gerenciado" };
   if (!gh.signed_in)
-    return { dot: "bg-warnInk", text: "Sign-in needed — relaying is paused" };
+    return { dot: "bg-warnInk", text: "Login necessário — o relay está pausado" };
   if (gh.relay.state === "offline")
-    return { dot: "bg-faint/60", text: "Offline — can't reach the relay" };
+    return { dot: "bg-faint/60", text: "Offline — sem contato com o relay" };
   if (gh.relay.state === "reconnecting")
-    return { dot: "bg-warnInk", text: "Reconnecting to the relay…" };
-  return { dot: "bg-ok", text: "Live · managed relay" };
+    return { dot: "bg-warnInk", text: "Reconectando ao relay…" };
+  return { dot: "bg-ok", text: "Ativo · relay gerenciado" };
 }
 
 export function GithubDetail({ c, cloud, onChanged }: DetailProps) {
@@ -76,11 +76,11 @@ export function GithubDetail({ c, cloud, onChanged }: DetailProps) {
                 <span data-testid="github-mode-badge">
                   {relay
                     ? relayHealth(status).text
-                    : "Connected · personal access token"}
+                    : "Conectado · token de acesso pessoal"}
                 </span>
               </>
             ) : (
-              <span>Not connected</span>
+              <span>Não conectado</span>
             )}
           </div>
         </div>
@@ -98,9 +98,9 @@ export function GithubDetail({ c, cloud, onChanged }: DetailProps) {
       {!c.connected && (
         <div className={GRP}>
           <div className={ROW + " text-[12.5px] text-muted"}>
-            One @ocw-agent App, installed per account or org — you pick the repos on
-            GitHub; each installation keeps its own allow-list.
-            {cloud?.signed_in ? "" : " One-click needs cloud sign-in; a PAT works without it."}
+            Um App @ocw-agent, instalado por conta ou organização — você escolhe os repositórios no
+            GitHub; cada instalação mantém sua própria lista de permitidos.
+            {cloud?.signed_in ? "" : " O clique único exige login na nuvem; um PAT funciona sem ele."}
           </div>
         </div>
       )}
@@ -120,15 +120,15 @@ export function GithubDetail({ c, cloud, onChanged }: DetailProps) {
       {c.connected && !relay && (
         <div className={GRP} data-testid="github-manual-card">
           <div className={ROW + " text-[12.5px] text-muted"}>
-            Personal access token · tools only. Install the GitHub App to let
-            @-mentions and the agent label reach this computer.
+            Token de acesso pessoal · só ferramentas. Instale o App do GitHub para que
+            as @menções e o rótulo do agente cheguem a este computador.
           </div>
         </div>
       )}
 
       {relay && listening.length > 0 && (
         <>
-          <div className={GRP_H}>Listening</div>
+          <div className={GRP_H}>Ouvindo</div>
           <div className={GRP}>
             <ListeningRows subs={listening} onChanged={changed} />
           </div>
@@ -138,7 +138,7 @@ export function GithubDetail({ c, cloud, onChanged }: DetailProps) {
       <ToolsDisclosure c={c} onChanged={onChanged} />
       {c.connected && relay && (
         <div className={FOOT + " mt-2"}>
-          Triggers: @ocw-agent mentions and the “ocw-agent” label. The agent replies as
+          Gatilhos: menções a @ocw-agent e o rótulo “ocw-agent”. O agente responde como
           ocw-agent[bot].
         </div>
       )}
@@ -147,7 +147,7 @@ export function GithubDetail({ c, cloud, onChanged }: DetailProps) {
         <AddConnectionModal
           c={c}
           cloud={cloud}
-          title="Add an installation"
+          title="Adicionar uma instalação"
           onClose={() => setAdding(false)}
           onChanged={changed}
         />
@@ -197,7 +197,7 @@ function InstallationGroup({
         {empty ? (
           <div className={ROW}>
             <span className="min-w-0 flex-1 text-[12.5px] text-muted">
-              No one allowed yet — @ocw-agent mentions show up here for your OK.
+              Ninguém autorizado ainda — as menções a @ocw-agent aparecem aqui para o seu OK.
             </span>
             <DisconnectBtn id={inst.installation_id} busy={busy} onClick={disconnect} />
           </div>
@@ -227,11 +227,11 @@ function DisconnectBtn({ id, busy, onClick }: { id: string; busy: boolean; onCli
     <button
       className="text-[12.5px] text-danger/80 hover:text-danger shrink-0"
       data-testid={`disconnect-install-${id}`}
-      title="Stops relaying this installation to this computer. The App stays installed on GitHub."
+      title="Interrompe o relay desta instalação para este computador. O App continua instalado no GitHub."
       onClick={onClick}
       disabled={busy}
     >
-      {busy ? "Disconnecting…" : "Disconnect installation"}
+      {busy ? "Desconectando…" : "Desconectar instalação"}
     </button>
   );
 }
@@ -247,7 +247,7 @@ function PeopleRow({
 }) {
   return (
     <div className={ROW}>
-      <span className={LABEL}>People</span>
+      <span className={LABEL}>Pessoas</span>
       <span className="min-w-0 flex-1 flex flex-wrap items-center gap-1.5">
         {allowed.length === 0 && (
           <span className="text-[12px] text-faint">nobody yet — approve a waiting sender below</span>
@@ -261,7 +261,7 @@ function PeopleRow({
             @{login}
             <button
               className={XBTN}
-              title="remove"
+              title="remover"
               onClick={() => disallowUser("github", login, installationId).then(onChanged)}
             >
               ×
@@ -280,7 +280,7 @@ function WaitingRow({ m, onChanged }: { m: ParkedMessage; onChanged: () => void 
   };
   return (
     <div className={ROW + " bg-warnSoft/25"} data-testid={`waiting-${m.id}`}>
-      <span className={LABEL}>Waiting</span>
+      <span className={LABEL}>Aguardando</span>
       <span className="min-w-0 flex-1">
         <span className="font-medium text-[13px]">@{m.user_name || m.user_id}</span>{" "}
         <span className="text-[12.5px] text-muted">in {m.chat_name || m.chat_id}</span>
@@ -289,7 +289,7 @@ function WaitingRow({ m, onChanged }: { m: ParkedMessage; onChanged: () => void 
       <button
         className={PILL_ACCENT + " !py-1"}
         data-testid={`parked-allow-deliver-${m.id}`}
-        title="Allow the sender and deliver this mention now"
+        title="Permitir o remetente e entregar esta menção agora"
         onClick={() => act("allow_deliver")}
       >
         Allow & deliver
@@ -297,12 +297,12 @@ function WaitingRow({ m, onChanged }: { m: ParkedMessage; onChanged: () => void 
       <button
         className={PILL_LINE + " !py-1"}
         data-testid={`parked-allow-${m.id}`}
-        title="Allow the sender; this mention is discarded"
+        title="Permitir o remetente; esta menção é descartada"
         onClick={() => act("allow")}
       >
         Allow
       </button>
-      <button className={XBTN + " px-1"} data-testid={`parked-dismiss-${m.id}`} title="Dismiss" onClick={() => act("dismiss")}>
+      <button className={XBTN + " px-1"} data-testid={`parked-dismiss-${m.id}`} title="Descartar" onClick={() => act("dismiss")}>
         ×
       </button>
     </div>
@@ -312,7 +312,7 @@ function WaitingRow({ m, onChanged }: { m: ParkedMessage; onChanged: () => void 
 function ListeningRows({ subs, onChanged }: { subs: Subscription[]; onChanged: () => void }) {
   return (
     <div className={ROW} data-testid="listening-github">
-      <span className={LABEL}>Listening</span>
+      <span className={LABEL}>Ouvindo</span>
       <span className="min-w-0 flex-1 space-y-1">
         {subs.map((s) => (
           <span key={s.session_id + s.channel} className="flex items-center gap-2 text-[12.5px]">
@@ -325,7 +325,7 @@ function ListeningRows({ subs, onChanged }: { subs: Subscription[]; onChanged: (
             </span>
             <button
               className={XBTN + " ml-auto"}
-              title="Unsubscribe this session"
+              title="Cancelar a assinatura desta sessão"
               onClick={async () => {
                 await unsubscribeChannel(s.session_id, s.channel);
                 onChanged();

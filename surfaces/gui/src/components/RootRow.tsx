@@ -23,7 +23,7 @@ export function RootRow({
 }) {
   const label = root.primary
     ? scratchPrimary
-      ? "Temporary space"
+      ? "Espaço temporário"
       : baseName(root.path)
     : root.label;
   return (
@@ -47,12 +47,12 @@ export function RootRow({
         className={"root-access" + (root.writable ? " rw" : " ro")}
         onClick={() => onToggle(root)}
         disabled={busy || root.primary}
-        title={root.primary ? "The main workspace is always read-write" : "Toggle read-only / read-write"}
+        title={root.primary ? "A área de trabalho principal é sempre leitura e escrita" : "Alternar entre somente leitura e leitura/escrita"}
       >
-        {root.writable ? "Read-write" : "Read-only"}
+        {root.writable ? "Leitura e escrita" : "Somente leitura"}
       </button>
       {!root.primary && (
-        <button className="root-x" onClick={() => onRemove(root.path)} disabled={busy} title="Remove">
+        <button className="root-x" onClick={() => onRemove(root.path)} disabled={busy} title="Remover">
           ×
         </button>
       )}

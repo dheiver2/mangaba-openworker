@@ -187,7 +187,7 @@ def test_gallery_install_requires_sign_in(client, monkeypatch):
     monkeypatch.setattr(cloud, "gallery_manifest", lambda s, c, slug: None)
     body = client.post("/v1/personas/install", json={"gallery_slug": "sales"}).json()
     assert not body["ok"]
-    assert "sign-in" in body["error"]
+    assert "login" in body["error"]
 
 
 def test_cloud_gallery_endpoint_signed_out(client):

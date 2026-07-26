@@ -1,4 +1,4 @@
-// UX-015 (§33): tool calls render as English one-liners. The model does NOT emit a purpose
+// UX-015 (§33): chamadas de ferramenta viram frases de uma linha em PT-BR. The model does NOT emit a purpose
 // per call — the stream is name+args+result — so the sentence is synthesized here from
 // per-tool templates. `run_shell` is the exception: its optional `description` argument is
 // model-written intent and is preferred when present. Fallback: "Used <tool> — <short args>".
@@ -32,7 +32,7 @@ export function humanizeTool(name: string, args: any): HumanLine {
     case "run_shell": {
       const cmd = trunc(String(a.command ?? ""), 60);
       const desc = typeof a.description === "string" && a.description.trim() ? a.description.trim() : "";
-      const pre = a.run_in_background ? "Started in the background: " : "Ran ";
+      const pre = a.run_in_background ? "Iniciou em segundo plano: " : "Executou ";
       return {
         pre,
         obj: cmd,
@@ -40,21 +40,21 @@ export function humanizeTool(name: string, args: any): HumanLine {
       };
     }
     case "shell_task_output":
-      return { pre: "Checked on a background command" };
+      return { pre: "Verificou um comando em segundo plano" };
     case "shell_task_kill":
-      return { pre: "Stopped a background command" };
+      return { pre: "Parou um comando em segundo plano" };
     case "read_file":
-      return { pre: "Read ", obj: baseName(String(a.path ?? "a file")) };
+      return { pre: "Leu ", obj: baseName(String(a.path ?? "um arquivo")) };
     case "write_file":
-      return { pre: "Wrote ", obj: baseName(String(a.path ?? "a file")) };
+      return { pre: "Escreveu ", obj: baseName(String(a.path ?? "um arquivo")) };
     case "replace_in_file":
     case "apply_patch":
     case "apply_unified_diff":
-      return { pre: "Edited ", obj: a.path ? baseName(String(a.path)) : "files" };
+      return { pre: "Editou ", obj: a.path ? baseName(String(a.path)) : "arquivos" };
     case "grep":
-      return { pre: "Searched the code for ", obj: `“${trunc(String(a.pattern ?? ""), 40)}”` };
+      return { pre: "Buscou no código por ", obj: `“${trunc(String(a.pattern ?? ""), 40)}”` };
     case "git_log":
-      return { pre: "Looked through recent git history" };
+      return { pre: "Consultou o histórico recente do git" };
     case "todo_write": {
       // `todos` is current; `items` renders histories from before the rename (the old
       // key breaks Together's GLM-5.2 chat template — see mangaba/tools/todo.py).
@@ -63,20 +63,20 @@ export function humanizeTool(name: string, args: any): HumanLine {
         const it = items[0] || {};
         const status = String(it.status || "").replace(/_/g, " ");
         return {
-          pre: "Updated the plan — ",
+          pre: "Atualizou o plano — ",
           obj: `“${trunc(String(it.content ?? ""), 70)}”`,
           ...(status ? { post: ` → ${status}` } : {}),
         };
       }
-      return { pre: `Updated the plan — ${items.length} items` };
+      return { pre: `Atualizou o plano — ${items.length} itens` };
     }
     case "send_message": {
       const { platform, tail } = messageTarget(String(a.target ?? ""));
-      if (!tail) return { pre: "Sent a message" };
-      return { pre: `Sent a ${platform} message to `, obj: tail };
+      if (!tail) return { pre: "Enviou uma mensagem" };
+      return { pre: `Enviou uma mensagem no ${platform} para `, obj: tail };
     }
     case "web_search":
-      return { pre: "Searched the web — ", obj: `“${trunc(String(a.query ?? ""), 60)}”` };
+      return { pre: "Pesquisou na web — ", obj: `“${trunc(String(a.query ?? ""), 60)}”` };
     case "web_fetch": {
       let host = String(a.url ?? "");
       try {
@@ -84,19 +84,19 @@ export function humanizeTool(name: string, args: any): HumanLine {
       } catch {
         /* keep raw */
       }
-      return { pre: "Read a web page — ", obj: trunc(host, 50) };
+      return { pre: "Leu uma página web — ", obj: trunc(host, 50) };
     }
     case "explore":
-      return { pre: "Sent a sub-agent to explore — ", obj: `“${trunc(String(a.task ?? a.prompt ?? ""), 60)}”` };
+      return { pre: "Enviou um subagente para explorar — ", obj: `“${trunc(String(a.task ?? a.prompt ?? ""), 60)}”` };
     case "ask_user":
-      return { pre: "Asked you a question" };
+      return { pre: "Fez uma pergunta a você" };
     case "propose_plan":
-      return { pre: "Proposed a plan" };
+      return { pre: "Propôs um plano" };
     case "request_directory":
-      return { pre: "Asked for folder access — ", obj: String(a.path ?? "") };
+      return { pre: "Pediu acesso a uma pasta — ", obj: String(a.path ?? "") };
     default: {
       const rest = trunc(shortArgs(a), 80);
-      return { pre: `Used ${name}`, ...(rest ? { post: ` — ${rest}` } : {}) };
+      return { pre: `Usou ${name}`, ...(rest ? { post: ` — ${rest}` } : {}) };
     }
   }
 }
@@ -107,32 +107,32 @@ export function humanizeApprovalTitle(name: string, args: any): HumanLine {
   const a = args && typeof args === "object" ? args : {};
   switch (name) {
     case "write_file":
-      return { pre: "Write ", obj: baseName(String(a.path ?? "a file")) };
+      return { pre: "Escrever ", obj: baseName(String(a.path ?? "um arquivo")) };
     case "replace_in_file":
     case "apply_patch":
     case "apply_unified_diff":
-      return { pre: "Edit ", obj: a.path ? baseName(String(a.path)) : "files" };
+      return { pre: "Editar ", obj: a.path ? baseName(String(a.path)) : "arquivos" };
     case "run_shell": {
       const desc = typeof a.description === "string" && a.description.trim() ? a.description.trim() : "";
       return {
-        pre: "Run a command",
+        pre: "Rodar um comando",
         ...(desc ? { post: ` — ${desc.charAt(0).toLowerCase()}${desc.slice(1)}` } : {}),
       };
     }
     case "send_message": {
       const { tail } = messageTarget(String(a.target ?? ""));
-      return tail ? { pre: "Send a message to ", obj: tail } : { pre: "Send a message" };
+      return tail ? { pre: "Enviar uma mensagem para ", obj: tail } : { pre: "Enviar uma mensagem" };
     }
     case "send_file": {
       const { tail } = messageTarget(String(a.target ?? ""));
-      return tail ? { pre: "Send a file to ", obj: tail } : { pre: "Send a file" };
+      return tail ? { pre: "Enviar um arquivo para ", obj: tail } : { pre: "Enviar um arquivo" };
     }
     case "create_scheduled_task":
       return a.title
-        ? { pre: "Create the automation ", obj: `“${trunc(String(a.title), 60)}”` }
-        : { pre: "Create an automation" };
+        ? { pre: "Criar a automação ", obj: `“${trunc(String(a.title), 60)}”` }
+        : { pre: "Criar uma automação" };
     default:
-      return { pre: `Use ${name}` };
+      return { pre: `Usar ${name}` };
   }
 }
 
@@ -141,19 +141,19 @@ export function humanizeAsk(name: string, args: any): HumanLine {
   const a = args && typeof args === "object" ? args : {};
   switch (name) {
     case "run_shell":
-      return { pre: "Wanted to run ", obj: trunc(String(a.command ?? ""), 60) };
+      return { pre: "Queria executar ", obj: trunc(String(a.command ?? ""), 60) };
     case "write_file":
-      return { pre: "Wanted to write ", obj: baseName(String(a.path ?? "a file")) };
+      return { pre: "Queria escrever ", obj: baseName(String(a.path ?? "um arquivo")) };
     case "replace_in_file":
     case "apply_patch":
     case "apply_unified_diff":
-      return { pre: "Wanted to edit ", obj: a.path ? baseName(String(a.path)) : "files" };
+      return { pre: "Queria editar ", obj: a.path ? baseName(String(a.path)) : "arquivos" };
     case "send_message": {
       const { platform, tail } = messageTarget(String(a.target ?? ""));
-      if (!tail) return { pre: "Wanted to send a message" };
-      return { pre: `Wanted to message `, obj: tail, post: ` on ${platform}` };
+      if (!tail) return { pre: "Queria enviar uma mensagem" };
+      return { pre: `Queria mandar mensagem para `, obj: tail, post: ` no ${platform}` };
     }
     default:
-      return { pre: `Wanted to use ${name}` };
+      return { pre: `Queria usar ${name}` };
   }
 }

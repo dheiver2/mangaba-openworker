@@ -26,17 +26,17 @@ export function DirectoryRequestCard({
     <div className="dirreq-card">
       <div className="dirreq-head">
         <Icon name="folderPlus" size={16} className="ico" />
-        <span>The agent is requesting access to a folder</span>
+        <span>O agente está pedindo acesso a uma pasta</span>
       </div>
       {item.reason && <div className="dirreq-reason">“{item.reason}”</div>}
       <div className="dirreq-pathrow">
         <input
           className="dirreq-path"
-          placeholder="Choose or paste a folder path…"
+          placeholder="Escolha ou cole o caminho de uma pasta…"
           value={path}
           onChange={(e) => setPath(e.target.value)}
         />
-        <button className="btn icon-only" onClick={browse} title="Choose location" aria-label="Choose location">
+        <button className="btn icon-only" onClick={browse} title="Escolher local" aria-label="Escolher local">
           <Icon name="folder" size={15} />
         </button>
       </div>

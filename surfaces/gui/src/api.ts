@@ -18,6 +18,30 @@ const apiToken = (): string =>
   (import.meta as any).env?.VITE_MANGABA_API_TOKEN ||
   (typeof __MANGABA_DEV_TOKEN__ === "string" ? __MANGABA_DEV_TOKEN__ : "");
 
+// A sessão da senha local (segunda camada, acima do token do sidecar). Fica no
+// localStorage porque o servidor só a mantém em memória: reiniciar o servidor invalida
+// o que estiver guardado aqui, e o gate volta a pedir a senha.
+const SESSION_KEY = "mangaba:session:v1";
+export const PASSCODE_CHANGED = "mangaba-passcode-changed";
+
+export const sessionToken = (): string => {
+  try {
+    return localStorage.getItem(SESSION_KEY) || "";
+  } catch {
+    return "";
+  }
+};
+
+export const setSessionToken = (token: string | null): void => {
+  try {
+    if (token) localStorage.setItem(SESSION_KEY, token);
+    else localStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* modo privado do navegador: a sessão vale só enquanto a aba viver */
+  }
+  window.dispatchEvent(new CustomEvent(PASSCODE_CHANGED));
+};
+
 // All local REST calls pass through this module, so a module-local wrapper applies launch
 // authentication without asking every endpoint helper to remember the security header.
 const fetch = (
@@ -27,15 +51,92 @@ const fetch = (
   const headers = new Headers(init.headers);
   const token = apiToken();
   if (token) headers.set("X-Mangaba-Token", token);
-  return globalThis.fetch(input, { ...init, headers });
+  const session = sessionToken();
+  if (session) headers.set("X-Mangaba-Session", session);
+  return globalThis.fetch(input, { ...init, headers }).then((res) => {
+    // A sessão expirou (ou o servidor reiniciou): derruba o token local para o
+    // LoginGate reaparecer, em vez de deixar a UI num 401 silencioso.
+    if (res.status === 401 && session) {
+      res
+        .clone()
+        .json()
+        .then((body) => {
+          if (body?.code === "passcode_required") setSessionToken(null);
+        })
+        .catch(() => {});
+    }
+    return res;
+  });
 };
 
 const openWebSocket = (url: string): WebSocket => {
   const token = apiToken();
-  return token
-    ? new WebSocket(url, ["mangaba", token])
-    : new WebSocket(url);
+  // O navegador não deixa passar headers no handshake do WebSocket, então token e
+  // sessão viajam como subprotocolos (o servidor responde apenas "mangaba").
+  const protocols = ["mangaba", token, sessionToken()].filter(Boolean) as string[];
+  return protocols.length > 1 ? new WebSocket(url, protocols) : new WebSocket(url);
 };
+
+export interface AuthStatus {
+  configured: boolean;
+  authenticated: boolean;
+  locked_for: number;
+}
+
+export async function getAuthStatus(): Promise<AuthStatus> {
+  const res = await fetch(`${httpBase()}/v1/auth/status`);
+  return res.json();
+}
+
+/** Primeira definição da senha (só passa enquanto nenhuma existir). */
+export async function setupPasscode(
+  passcode: string,
+): Promise<{ ok: boolean; session?: string; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/auth/setup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ passcode }),
+  });
+  const out = await res.json();
+  if (out.ok && out.session) setSessionToken(out.session);
+  return out;
+}
+
+export async function loginPasscode(
+  passcode: string,
+): Promise<{ ok: boolean; session?: string; error?: string; locked_for?: number }> {
+  const res = await fetch(`${httpBase()}/v1/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ passcode }),
+  });
+  const out = await res.json();
+  if (out.ok && out.session) setSessionToken(out.session);
+  return out;
+}
+
+export async function logoutPasscode(): Promise<void> {
+  try {
+    await fetch(`${httpBase()}/v1/auth/logout`, { method: "POST" });
+  } catch {
+    /* mesmo sem resposta do servidor, a sessão local sai */
+  }
+  setSessionToken(null);
+}
+
+export async function changePasscode(
+  current: string,
+  passcode: string,
+): Promise<{ ok: boolean; session?: string; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/auth/change`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ current, passcode }),
+  });
+  const out = await res.json();
+  if (out.ok && out.session) setSessionToken(out.session);
+  return out;
+}
 
 export interface Health {
   status: string;

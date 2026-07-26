@@ -97,8 +97,8 @@ export function PersonasTab({ onOpenPersona }: { onOpenPersona?: (id: string) =>
   return (
     <div>
       <p className="text-[12.5px] text-muted mb-3 leading-relaxed">
-        Enable a mangaba, then choose whether it appears in the new-session picker. The starred persona
-        is the default for new sessions.
+        Habilite uma persona e escolha se ela aparece no seletor de nova sessão. A persona com estrela
+        é a padrão para novas sessões.
       </p>
 
       <div className={CARD + " divide-y divide-line mb-6"}>
@@ -108,7 +108,7 @@ export function PersonasTab({ onOpenPersona }: { onOpenPersona?: (id: string) =>
             <div className="min-w-0 flex-1">
               <div className="text-[13.5px] font-medium flex items-center gap-1.5">
                 <span className="truncate">{p.name}</span>
-                {p.default && <span className="text-accent" title="Default for new sessions">★</span>}
+                {p.default && <span className="text-accent" title="Padrão para novas sessões">★</span>}
                 {p.builtin && <span className="text-[11px] text-faint font-normal">· built-in</span>}
               </div>
               <div className="text-[12px] text-muted truncate">{p.tagline}</div>
@@ -142,8 +142,8 @@ export function PersonasTab({ onOpenPersona }: { onOpenPersona?: (id: string) =>
             {onOpenPersona && (
               <button
                 className="text-faint hover:text-ink shrink-0 p-1"
-                title={`Configure ${p.name}`}
-                aria-label={`Configure ${p.name}`}
+                title={`Configurar ${p.name}`}
+                aria-label={`Configurar ${p.name}`}
                 data-testid={`persona-configure-${p.id}`}
                 onClick={() => onOpenPersona(p.id)}
               >
@@ -167,8 +167,8 @@ export function PersonasTab({ onOpenPersona }: { onOpenPersona?: (id: string) =>
               ) : (
                 <button
                   className="text-faint hover:text-danger shrink-0 p-1"
-                  title="Delete this persona"
-                  aria-label={`Delete ${p.name}`}
+                  title="Excluir esta persona"
+                  aria-label={`Excluir ${p.name}`}
                   data-testid={`persona-delete-${p.id}`}
                   onClick={() => setConfirmDel(p.id)}
                 >
@@ -205,26 +205,26 @@ export function PersonasTab({ onOpenPersona }: { onOpenPersona?: (id: string) =>
         ))}
       </div>
 
-      <div className={SEC_H + " mb-1.5"}>Add personas</div>
+      <div className={SEC_H + " mb-1.5"}>Adicionar personas</div>
       <p className="text-[12px] text-muted mb-3 leading-relaxed">
-        Load from a local directory or a public GitHub repo. Files are copied into a managed area (a
-        snapshot), so the persona stays stable even if the source changes. No code runs — a persona only
-        composes vetted tools.
+        Carregue de uma pasta local ou de um repositório público do GitHub. Os arquivos são copiados para
+        uma área gerenciada (um snapshot), então a persona continua estável mesmo se a origem mudar.
+        Nenhum código é executado — uma persona apenas compõe ferramentas homologadas.
       </p>
       <div className="flex items-center gap-2">
         <select className={SELECT} value={mode} onChange={(e) => setMode(e.target.value as "git" | "dir")}>
-          <option value="git">GitHub URL</option>
-          <option value="dir">Local directory</option>
+          <option value="git">URL do GitHub</option>
+          <option value="dir">Pasta local</option>
         </select>
         <input
           className={INPUT}
-          placeholder={mode === "git" ? "https://github.com/acme/ops-persona" : "/path/to/personas"}
+          placeholder={mode === "git" ? "https://github.com/acme/ops-persona" : "/caminho/das/personas"}
           value={src}
           onChange={(e) => setSrc(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && install()}
         />
         <button className={BTN_ACCENT} disabled={busy || !src.trim()} onClick={install}>
-          {busy ? "Installing…" : "Install"}
+          {busy ? "Instalando…" : "Instalar"}
         </button>
       </div>
       {msg && <div className="text-[12.5px] text-muted mt-2.5">{msg}</div>}
@@ -235,7 +235,7 @@ export function PersonasTab({ onOpenPersona }: { onOpenPersona?: (id: string) =>
             <div key={c.id} className={CARD + " p-3.5"}>
               <div className="text-[13.5px] font-medium">{c.name}</div>
               <div className="text-[12px] text-muted mt-0.5 mb-2">{c.description}</div>
-              <div className="text-[12px] text-ink">Tools: {c.tools.join(", ") || "—"}</div>
+              <div className="text-[12px] text-ink">Ferramentas: {c.tools.join(", ") || "—"}</div>
               <div className="text-[12px] text-ink">
                 Risk: {c.risk.join(", ") || "read"}
                 {c.connectors ? " · connectors" : ""}

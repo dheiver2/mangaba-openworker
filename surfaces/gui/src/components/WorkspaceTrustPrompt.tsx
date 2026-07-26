@@ -17,7 +17,7 @@ export function WorkspaceTrustPrompt({
     const result = await setWorkspaceTrusted(request.workspace, true).catch(() => null);
     setSaving(false);
     if (!result?.ok) {
-      setError(result?.error || "Could not save workspace trust.");
+      setError(result?.error || "Não foi possível salvar a confiança da área de trabalho.");
       return;
     }
     onClose();
@@ -27,10 +27,10 @@ export function WorkspaceTrustPrompt({
     <div className="gate-overlay" role="dialog" aria-modal="true" aria-labelledby="workspace-trust-title">
       <div className="gate max-w-[560px]">
         <div className="gate-mark">✦</div>
-        <h2 id="workspace-trust-title">Trust this workspace&rsquo;s commands?</h2>
+        <h2 id="workspace-trust-title">Confiar nos comandos desta área de trabalho?</h2>
         <p className="gate-sub">
-          This project asks Mangaba to run the commands below without individual approval.
-          Trust applies to future configuration changes at this exact folder until you revoke it
+          Este projeto pede que o Mangaba rode os comandos abaixo sem aprovação individual.
+          A confiança vale para futuras mudanças de configuração exatamente nesta pasta até você revogá-la
           in Settings.
         </p>
         <div className="rounded-lg border border-line bg-paper px-3 py-2.5 max-h-48 overflow-y-auto">
@@ -47,7 +47,7 @@ export function WorkspaceTrustPrompt({
             Keep asking
           </button>
           <button className="btn primary" onClick={() => void trust()} disabled={saving}>
-            {saving ? "Saving…" : "Trust workspace"}
+            {saving ? "Salvando…" : "Confiar na área de trabalho"}
           </button>
         </div>
       </div>

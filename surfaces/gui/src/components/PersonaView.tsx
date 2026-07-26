@@ -51,7 +51,7 @@ export function PersonaView({
     setError(null);
     getPersonaDetail(personaId)
       .then((d) => live && setDetail(d))
-      .catch(() => live && setError("Could not load this persona."));
+      .catch(() => live && setError("Não foi possível carregar esta persona."));
     getConnectors()
       .then((list) => live && setByName(indexConnectors(list)))
       .catch(() => {});
@@ -96,7 +96,7 @@ export function PersonaView({
     return (
       <main className="flex-1 min-w-0 flex flex-col bg-paper">
         {header}
-        <div className="p-12 text-center text-faint text-[13px]">{error || "Loading…"}</div>
+        <div className="p-12 text-center text-faint text-[13px]">{error || "Carregando…"}</div>
       </main>
     );
   }
@@ -118,15 +118,15 @@ export function PersonaView({
               <p className="text-[13px] text-muted mt-0.5">{detail.tagline}</p>
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <span className="text-[12px] text-muted">{detail.enabled ? "Enabled" : "Disabled"}</span>
-              <Toggle checked={detail.enabled} onChange={toggleEnabled} title="Enable this persona" />
+              <span className="text-[12px] text-muted">{detail.enabled ? "Habilitada" : "Desabilitada"}</span>
+              <Toggle checked={detail.enabled} onChange={toggleEnabled} title="Habilitar esta persona" />
             </div>
           </header>
 
           {/* about */}
           {detail.description && (
             <section>
-              <div className={`${SEC_H} mb-1.5`}>About</div>
+              <div className={`${SEC_H} mb-1.5`}>Sobre</div>
               <p className="text-[14px] leading-relaxed text-ink/90">{detail.description}</p>
             </section>
           )}
@@ -134,7 +134,7 @@ export function PersonaView({
           {/* tools */}
           {detail.tools.length > 0 && (
             <section>
-              <div className={`${SEC_H} mb-2`}>Built-in capabilities</div>
+              <div className={`${SEC_H} mb-2`}>Recursos nativos</div>
               <div className="flex flex-wrap gap-1.5">
                 {detail.tools.map((t) => (
                   <span
@@ -151,7 +151,7 @@ export function PersonaView({
           {/* connections for full benefit (manifest recommends) */}
           {detail.recommends.length > 0 && (
             <section>
-              <div className={`${SEC_H} mb-1`}>Connections for full benefit</div>
+              <div className={`${SEC_H} mb-1`}>Conexões para aproveitar por completo</div>
               <p className="text-[12.5px] text-muted mb-2.5">
                 Declared by the persona — wire {shortPersonaName(detail.name, personaId)} into these
                 to unlock its full workflow.
@@ -188,7 +188,7 @@ export function PersonaView({
                           className={r.tier === "core" && !isMcp ? BTN_ACCENT : BTN_BORDERED}
                           onClick={onOpenIntegrations}
                         >
-                          {isMcp ? "Add" : "Connect"}
+                          {isMcp ? "Adicionar" : "Conectar"}
                         </button>
                       )}
                     </div>
@@ -201,10 +201,10 @@ export function PersonaView({
           {/* persona-default connections (persona → session default) */}
           {detail.default_connections.length > 0 && (
             <section>
-              <div className={`${SEC_H} mb-1`}>New sessions get by default</div>
+              <div className={`${SEC_H} mb-1`}>Novas sessões recebem por padrão</div>
               <p className="text-[12.5px] text-muted mb-2.5">
-                When you start a {shortPersonaName(detail.name, personaId)} session these are enabled
-                automatically. You can still mute any of them per session.
+                Ao iniciar uma sessão {shortPersonaName(detail.name, personaId)}, estes são habilitados
+                automaticamente. Você ainda pode silenciar qualquer um por sessão.
               </p>
               <div className="space-y-1.5">
                 {detail.default_connections.map((c) => (
@@ -226,7 +226,7 @@ export function PersonaView({
                       checked={c.enabled}
                       disabled={!c.connected}
                       onChange={(next) => toggleDefault(c.connector, next)}
-                      title={c.connected ? "On by default for new sessions" : "Connect this first"}
+                      title={c.connected ? "Ligado por padrão em novas sessões" : "Conecte isto primeiro"}
                     />
                   </div>
                 ))}
@@ -238,7 +238,7 @@ export function PersonaView({
           <section className="flex flex-wrap gap-x-8 gap-y-2 text-[12.5px]">
             {detail.recommended_models.length > 0 && (
               <div>
-                <span className="text-faint">Models</span> ·{" "}
+                <span className="text-faint">Modelos</span> ·{" "}
                 {detail.recommended_models.map((m, i) => (
                   <span key={m}>
                     <span className="font-mono">{m}</span>
@@ -249,12 +249,12 @@ export function PersonaView({
             )}
             {detail.default_permission_mode && (
               <div>
-                <span className="text-faint">Default mode</span> · {detail.default_permission_mode}
+                <span className="text-faint">Modo padrão</span> · {detail.default_permission_mode}
               </div>
             )}
             {detail.workspace && (
               <div>
-                <span className="text-faint">Workspace</span> · {detail.workspace}
+                <span className="text-faint">Área de trabalho</span> · {detail.workspace}
               </div>
             )}
           </section>

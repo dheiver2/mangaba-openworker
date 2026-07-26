@@ -162,13 +162,13 @@ export function RightRail({
         />
       ) : (
         <>
-          <RailSection title="Progress" open={open.progress} onToggle={() => setOpen({ ...open, progress: !open.progress })}>
+          <RailSection title="Progresso" open={open.progress} onToggle={() => setOpen({ ...open, progress: !open.progress })}>
             <ProgressSummary running={running} toolNames={toolNames} todo={todo} />
           </RailSection>
 
           {showArtifacts && (
           <RailSection
-            title={`Artifacts${artifacts.length ? ` (${artifacts.length})` : ""}`}
+            title={`Artefatos${artifacts.length ? ` (${artifacts.length})` : ""}`}
             open={open.artifacts}
             onToggle={() => setOpen({ ...open, artifacts: !open.artifacts })}
             action={
@@ -177,17 +177,17 @@ export function RightRail({
                   <button
                     className="rail-mini-btn"
                     onClick={(e) => { e.stopPropagation(); revealArtifact(sessionId, artifacts[0].path, "reveal"); }}
-                    title="Show the folder where these files are saved"
+                    title="Mostrar a pasta onde estes arquivos são salvos"
                   >
                     <Icon name="folder" size={13} />
                   </button>
                 )}
-                <button className="rail-mini-btn" onClick={(e) => { e.stopPropagation(); refreshArtifacts(); }} title="Refresh artifacts"><Icon name="refresh" size={13} /></button>
+                <button className="rail-mini-btn" onClick={(e) => { e.stopPropagation(); refreshArtifacts(); }} title="Atualizar artefatos"><Icon name="refresh" size={13} /></button>
               </>
             }
           >
             {artifacts.length === 0 ? (
-              <div className="rail-muted">No previewable files yet.</div>
+              <div className="rail-muted">Nenhum arquivo visualizável ainda.</div>
             ) : (
               <div className="artifact-list">
                 {artifacts.slice(0, 16).map((a) => (
@@ -199,7 +199,7 @@ export function RightRail({
                       {a.name}
                       <span className="artifact-row-meta">{formatBytes(a.size)} · {formatTime(a.modified_at)}</span>
                     </span>
-                    <span className="artifact-open">Open</span>
+                    <span className="artifact-open">Abrir</span>
                   </button>
                 ))}
               </div>
@@ -238,7 +238,7 @@ function ProgressSummary({ running, toolNames, todo }: { running: boolean; toolN
         ))}
         {running && (
           <div className="rail-muted">
-            {toolNames.length ? `${toolNames.length} tool call${toolNames.length === 1 ? "" : "s"} so far.` : "Working..."}
+            {toolNames.length ? `${toolNames.length} chamada${toolNames.length === 1 ? "" : "s"} de ferramenta até agora.` : "Trabalhando..."}
           </div>
         )}
       </div>
@@ -247,13 +247,13 @@ function ProgressSummary({ running, toolNames, todo }: { running: boolean; toolN
   if (running) {
     return (
       <div className="rail-muted">
-        Working on this task{toolNames.length ? ` with ${toolNames.length} tool call${toolNames.length === 1 ? "" : "s"} so far.` : "."}
+        Trabalhando nesta tarefa{toolNames.length ? ` com ${toolNames.length} chamada${toolNames.length === 1 ? "" : "s"} de ferramenta até agora.` : "."}
       </div>
     );
   }
   return (
     <div className="rail-muted">
-      For longer multi-step tasks, progress will appear here while Mangaba plans, uses tools, waits for approval, and produces artifacts.
+      Em tarefas longas de várias etapas, o progresso aparece aqui enquanto o Mangaba planeja, usa ferramentas, aguarda aprovação e produz artefatos.
     </div>
   );
 }
@@ -306,11 +306,11 @@ function ArtifactViewer({
   return (
     <div className="artifact-viewer">
       <div className="artifact-head">
-        <button className="artifact-icon-btn" onClick={onBack} aria-label="Back to artifacts" title="Back">
+        <button className="artifact-icon-btn" onClick={onBack} aria-label="Voltar aos artefatos" title="Voltar">
           <Icon name="arrowLeft" size={16} />
         </button>
         <div className="artifact-heading">
-          <div className="artifact-title"><span>Artifacts</span><span className="artifact-sep">/</span><span>{artifact.name}</span></div>
+          <div className="artifact-title"><span>Artefatos</span><span className="artifact-sep">/</span><span>{artifact.name}</span></div>
           <div className="artifact-path">{artifact.path}</div>
         </div>
         <div className="rail-actions">
@@ -321,8 +321,8 @@ function ArtifactViewer({
                 await onReload();
                 setReloadKey((k) => k + 1);
               }}
-              aria-label="Reload preview"
-              title="Reload"
+              aria-label="Recarregar prévia"
+              title="Recarregar"
             >
               <Icon name="refresh" size={16} />
             </button>
@@ -331,8 +331,8 @@ function ArtifactViewer({
             <button
               className="artifact-icon-btn"
               onClick={() => revealArtifact(sessionId, artifact.path, "open")}
-              aria-label="Open in default app"
-              title="Open in default app"
+              aria-label="Abrir no app padrão"
+              title="Abrir no app padrão"
             >
               <Icon name="panelOpen" size={16} />
             </button>
@@ -342,16 +342,16 @@ function ArtifactViewer({
           <button
             className="artifact-icon-btn"
             onClick={() => navigator.clipboard?.writeText(artifact.abs_path || artifact.path)}
-            aria-label="Copy path"
-            title="Copy full path"
+            aria-label="Copiar caminho"
+            title="Copiar caminho completo"
           >
             <Icon name="copy" size={16} />
           </button>
           <button
             className="artifact-icon-btn"
             onClick={() => revealArtifact(sessionId, artifact.path, "reveal")}
-            aria-label="Show in folder"
-            title="Show in folder"
+            aria-label="Mostrar na pasta"
+            title="Mostrar na pasta"
           >
             <Icon name="folder" size={16} />
           </button>
@@ -359,7 +359,7 @@ function ArtifactViewer({
       </div>
       <div className="artifact-preview">
         {!content ? (
-          <div className="rail-muted">Loading...</div>
+          <div className="rail-muted">Carregando...</div>
         ) : content.error ? (
           <div className="rail-error">{content.error}</div>
         ) : content.kind === "html" ? (
@@ -384,9 +384,9 @@ function ArtifactViewer({
         ) : content.kind === "office" ? (
           <div className="artifact-open-prompt">
             <Icon name="panelOpen" size={28} />
-            <p>This {/\.pptx?$/i.test(artifact.name) ? "PowerPoint" : "Word"} file can’t be previewed here.</p>
+            <p>Este arquivo do {/\.pptx?$/i.test(artifact.name) ? "PowerPoint" : "Word"} não pode ser visualizado aqui.</p>
             <button className="btn sm" onClick={() => revealArtifact(sessionId, artifact.path, "open")}>
-              Open in default app
+              Abrir no app padrão
             </button>
           </div>
         ) : (
@@ -418,7 +418,7 @@ function GridTable({ rows, note }: { rows: unknown[][]; note?: string }) {
       {(note || body.length > MAX_TABLE_ROWS) && (
         <div className="rail-muted artifact-table-note">
           {note}
-          {body.length > MAX_TABLE_ROWS ? ` Showing first ${MAX_TABLE_ROWS} of ${body.length} rows.` : ""}
+          {body.length > MAX_TABLE_ROWS ? ` Mostrando as primeiras ${MAX_TABLE_ROWS} de ${body.length} linhas.` : ""}
         </div>
       )}
     </div>
@@ -462,7 +462,7 @@ function parseCsv(text: string): string[][] {
 
 function CsvTable({ text }: { text: string }) {
   const rows = parseCsv(text);
-  if (!rows.length) return <div className="rail-muted artifact-table-note">Empty file.</div>;
+  if (!rows.length) return <div className="rail-muted artifact-table-note">Arquivo vazio.</div>;
   return <GridTable rows={rows} />;
 }
 
@@ -513,7 +513,7 @@ function PdfViewer({ dataUrl }: { dataUrl: string }) {
   if (error) return <div className="rail-error artifact-table-note">Could not render PDF: {error}</div>;
   return (
     <div className="artifact-pdfjs">
-      {loading && <div className="rail-muted artifact-table-note">Rendering PDF…</div>}
+      {loading && <div className="rail-muted artifact-table-note">Renderizando PDF…</div>}
       <div ref={holder} />
     </div>
   );
@@ -548,7 +548,7 @@ function SheetViewer({ dataUrl }: { dataUrl: string }) {
   }, [dataUrl]);
 
   if (error) return <div className="rail-error artifact-table-note">Could not parse spreadsheet: {error}</div>;
-  if (!sheets) return <div className="rail-muted artifact-table-note">Parsing spreadsheet…</div>;
+  if (!sheets) return <div className="rail-muted artifact-table-note">Lendo a planilha…</div>;
   const sheet = sheets[active];
   return (
     <div className="sheet-viewer">
@@ -561,7 +561,7 @@ function SheetViewer({ dataUrl }: { dataUrl: string }) {
           ))}
         </div>
       )}
-      {sheet.rows.length ? <GridTable rows={sheet.rows} /> : <div className="rail-muted artifact-table-note">Empty sheet.</div>}
+      {sheet.rows.length ? <GridTable rows={sheet.rows} /> : <div className="rail-muted artifact-table-note">Planilha vazia.</div>}
     </div>
   );
 }

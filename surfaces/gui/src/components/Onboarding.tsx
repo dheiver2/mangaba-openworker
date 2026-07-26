@@ -28,12 +28,12 @@ import { Spinner } from "./AutomationQuickstart";
 // combined grayed "Coming soon" row — both ride the same Google app, gated on
 // Google verification/CASA; give them rows when it lands.
 const TOOL_ROWS = [
-  { name: "outlook", benefit: "Stay on top of email", detail: "Outlook — triage mail, draft replies, run your calendar." },
-  { name: "slack", benefit: "Keep up with Slack", detail: "Slack — catch up, answer mentions, post updates." },
-  { name: "github", benefit: "Ship code", detail: "GitHub — review PRs, watch issues, reply to @mentions." },
-  { name: "notion", benefit: "Keep your notes in reach", detail: "Notion — search pages, query databases, draft docs." },
-  { name: "hubspot", benefit: "Keep the CRM current", detail: "HubSpot — update deals, log notes, prep calls." },
-  { name: "attio", benefit: "Track every relationship", detail: "Attio — search records, read timelines, log notes." },
+  { name: "outlook", benefit: "Fique em dia com o e-mail", detail: "Outlook — triar mensagens, redigir respostas, cuidar da agenda." },
+  { name: "slack", benefit: "Acompanhe o Slack", detail: "Slack — colocar em dia, responder menções, publicar novidades." },
+  { name: "github", benefit: "Entregue código", detail: "GitHub — revisar PRs, acompanhar issues, responder @menções." },
+  { name: "notion", benefit: "Tenha suas notas à mão", detail: "Notion — buscar páginas, consultar bases, redigir documentos." },
+  { name: "hubspot", benefit: "Mantenha o CRM em dia", detail: "HubSpot — atualizar negócios, registrar notas, preparar calls." },
+  { name: "attio", benefit: "Acompanhe cada relacionamento", detail: "Attio — buscar registros, ler linhas do tempo, registrar notas." },
 ];
 const TOOLS_SOON = ["gmail", "google_calendar"];
 
@@ -119,10 +119,10 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
         {step === 0 && (
           <section data-testid="ob-step-model" className="flex-1 min-h-0 flex flex-col">
             {/* Persistent header — stays put while the region below swaps (§39). */}
-            <h1 className="text-[19px] font-semibold">Welcome to Mangaba<span className="beta-tag">BETA</span></h1>
+            <h1 className="text-[19px] font-semibold">Bem-vindo ao Mangaba<span className="beta-tag">BETA</span></h1>
             <p className="text-[13px] text-muted mt-0.5 mb-4">
-              Pick a model provider to get started — Mangaba runs on your own key, and your
-              key and your data stay on this Mac.
+              Escolha um provedor de modelo para começar — o Mangaba usa a sua própria chave, e
+              tanto a chave quanto seus dados ficam neste Mac.
             </p>
 
             {!ps.sel ? (
@@ -141,13 +141,13 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
             <div className="flex items-center gap-3 pt-5">
               {!skipConfirm ? (
                 <button className="text-[12.5px] text-faint hover:text-muted" onClick={() => setSkipConfirm(true)}>
-                  Skip setup
+                  Pular configuração
                 </button>
               ) : (
                 <span className="text-[12.5px] text-muted">
-                  Nothing works without a model —{" "}
+                  Nada funciona sem um modelo —{" "}
                   <button className="text-accent" onClick={() => finish()}>
-                    skip anyway
+                    pular mesmo assim
                   </button>
                 </span>
               )}
@@ -157,11 +157,11 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                 onClick={advance}
                 data-testid="ob-continue"
               >
-                {ps.verify.state === "testing" ? "Checking…" : "Next"}
+                {ps.verify.state === "testing" ? "Verificando…" : "Avançar"}
               </button>
             </div>
             <p className="text-[11px] text-faint mt-3">
-              Models can be enabled or hidden anytime in Settings ▸ Models.
+              Você pode habilitar ou ocultar modelos quando quiser em Configurações ▸ Modelos.
             </p>
           </section>
         )}
@@ -173,9 +173,9 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
              slot keeps its place but flips to a green congrats, and every row grows a quiet
              Connect pill. The gated Google pair is ONE combined grayed row. */
           <section data-testid="ob-step-tools" className="flex-1 min-h-0 flex flex-col">
-            <h1 className="text-[19px] font-semibold">Connect your everyday tools</h1>
+            <h1 className="text-[19px] font-semibold">Conecte suas ferramentas do dia a dia</h1>
             <p className="text-[13px] text-muted mt-0.5 mb-3">
-              Chat can only advise. Connected, your mangaba does the actual work:
+              Um chat só aconselha. Conectada, sua persona faz o trabalho de verdade:
             </p>
 
             <div className="flex-1 min-h-0 overflow-y-auto pr-1" data-testid="ob-tool-gallery">
@@ -195,15 +195,15 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                     </span>
                     {cloud?.signed_in &&
                       (c.connected ? (
-                        <span className="text-[12px] text-ok font-medium shrink-0">✓ Connected</span>
+                        <span className="text-[12px] text-ok font-medium shrink-0">✓ Conectado</span>
                       ) : pendingTool === name ? (
-                        <span className="text-[12px] text-muted shrink-0">Check your browser…</span>
+                        <span className="text-[12px] text-muted shrink-0">Confira seu navegador…</span>
                       ) : (
                         <button
                           className="shrink-0 rounded-full border border-line px-4 py-1.5 text-[12.5px] font-medium hover:border-lineStrong"
                           onClick={() => startTool(name)}
                         >
-                          Connect
+                          Conectar
                         </button>
                       ))}
                   </div>
@@ -222,10 +222,10 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                     Gmail &amp; Google Calendar
                   </span>
                   <span className="block text-[12px] text-faint truncate">
-                    Coming soon — pending Google&rsquo;s app verification.
+                    Em breve — aguardando a verificação do app pelo Google.
                   </span>
                 </span>
-                {cloud?.signed_in && <span className="text-[11.5px] text-faint shrink-0">Coming soon</span>}
+                {cloud?.signed_in && <span className="text-[11.5px] text-faint shrink-0">Em breve</span>}
               </div>
             </div>
 
@@ -236,25 +236,25 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
               <div className="mt-3.5 rounded-xl border border-line bg-paper px-4 py-3 flex items-center gap-3.5 shrink-0">
                 <span className="flex-1 text-[12.5px] text-muted leading-snug">
                   <span className="block text-[13px] font-semibold text-ink mb-0.5">
-                    Sign in for one-click connections
+                    Entre para ter conexões com um clique
                   </span>
-                  Mangaba handles the OAuth for 20+ tools — no dev consoles, no pasted keys.
-                  Tokens stay on this Mac.
+                  O Mangaba cuida do OAuth de mais de 20 ferramentas — sem consoles de dev, sem colar chaves.
+                  Os tokens ficam neste Mac.
                 </span>
                 {signinPhase ? (
                   <span className="inline-flex items-center gap-2 text-[12.5px] text-muted shrink-0">
                     <Spinner />
                     {signinPhase === "opening" ? (
-                      "Opening browser…"
+                      "Abrindo o navegador…"
                     ) : (
                       <>
-                        Waiting…{" "}
+                        Aguardando…{" "}
                         <button
                           className="underline hover:text-ink"
                           onClick={() => setSigninPhase(null)}
                           data-testid="ob-signin-cancel"
                         >
-                          Cancel
+                          Cancelar
                         </button>
                       </>
                     )}
@@ -269,7 +269,7 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                     }}
                     data-testid="ob-cloud-signin"
                   >
-                    Sign in
+                    Entrar
                   </button>
                 )}
               </div>
@@ -279,11 +279,11 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                 data-testid="ob-tools-signedin"
               >
                 <span className="block text-[13px] font-semibold text-ok mb-0.5">
-                  🎉 You&rsquo;re signed in{cloud.account ? ` as ${cloud.account}` : ""}
+                  🎉 Você está conectado{cloud.account ? ` como ${cloud.account}` : ""}
                 </span>
                 <span className="block text-[12.5px] text-muted">
-                  Connect a tool above with one click — or add them anytime later from the
-                  Connectors page.
+                  Conecte uma ferramenta acima com um clique — ou adicione depois pela
+                  página de Conectores.
                 </span>
               </div>
             )}
@@ -296,7 +296,7 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                   onClick={() => setStep(2)}
                   data-testid="ob-continue-tools"
                 >
-                  Next
+                  Avançar
                 </button>
               ) : (
                 <button
@@ -304,13 +304,13 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                   onClick={() => setStep(2)}
                   data-testid="ob-tools-skip"
                 >
-                  Continue without sign-in
+                  Continuar sem entrar
                 </button>
               )}
             </div>
             <p className="text-[11px] text-faint mt-3">
-              30+ more tools on the Connectors page — add or remove anytime. Tokens stay on
-              this Mac.
+              Mais de 30 ferramentas na página de Conectores — adicione ou remova quando quiser. Os tokens
+              ficam neste Mac.
             </p>
           </section>
         )}
@@ -321,8 +321,8 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
               <div className="w-12 h-12 rounded-full bg-okSoft text-ok grid place-items-center mx-auto mb-3 text-[22px]">
                 ✓
               </div>
-              <h1 className="text-[19px] font-semibold mb-1">You're set up</h1>
-              <p className="text-[13px] text-muted mb-5">Two good ways to start:</p>
+              <h1 className="text-[19px] font-semibold mb-1">Tudo pronto</h1>
+              <p className="text-[13px] text-muted mb-5">Dois bons jeitos de começar:</p>
             </div>
 
             <button
@@ -334,9 +334,9 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                 ◷
               </span>
               <span className="flex-1 min-w-0 text-left">
-                <b className="block text-[13.5px]">Create your first automation</b>
+                <b className="block text-[13.5px]">Crie sua primeira automação</b>
                 <span className="text-[12px] text-muted">
-                  A weekly digest, a morning brief — pick a template, running in two minutes.
+                  Um resumo semanal, um briefing matinal — escolha um modelo e rode em dois minutos.
                 </span>
               </span>
               <span className="text-faint self-center">›</span>
@@ -350,9 +350,9 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                 ✦
               </span>
               <span className="flex-1 min-w-0 text-left">
-                <b className="block text-[13.5px]">Start working with Mangaba</b>
+                <b className="block text-[13.5px]">Comece a trabalhar com o Mangaba</b>
                 <span className="text-[12px] text-muted">
-                  Open a session and just ask — analyze files, draft, research, build.
+                  Abra uma sessão e simplesmente peça — analisar arquivos, redigir, pesquisar, construir.
                 </span>
               </span>
               <span className="text-faint self-center">›</span>
@@ -362,7 +362,7 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                 (owner call 2026-07-12); the finish("gallery") plumbing remains for their return. */}
 
             <p className="text-[11px] text-faint text-center mt-auto pt-5">
-              Replay this setup anytime: Settings ▸ Appearance ▸ Run setup again.
+              Refaça esta configuração quando quiser: Configurações ▸ Geral ▸ Rodar a configuração de novo.
             </p>
           </section>
         )}

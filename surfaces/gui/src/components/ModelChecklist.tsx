@@ -72,7 +72,7 @@ export function ModelChecklist({
                 type="checkbox"
                 checked={checked(id)}
                 disabled={isDefault}
-                title={isDefault ? "The default model is always shown — make another model default first" : undefined}
+                title={isDefault ? "O modelo padrão está sempre visível — defina outro como padrão primeiro" : undefined}
                 onChange={(e) => tick(id, e.target.checked)}
               />
               <span className="mlist-name" title={id}>
@@ -91,7 +91,7 @@ export function ModelChecklist({
       })}
       <div className="mlist-add">
         <input
-          placeholder="Add another model…"
+          placeholder="Adicionar outro modelo…"
           value={draft}
           spellCheck={false}
           autoComplete="off"

@@ -185,7 +185,7 @@ def test_subscribed_mangaba_overrides_router(tmp_path, monkeypatch):
     assert len(captured) == 1
     sid, message, _ = captured[0]
     assert sid == "sA"
-    assert "must" in message and "respond" in message
+    assert "precisa" in message and "responder" in message
     assert "slack:C1:1700000010.000100" in message
     # …and the router spawned nothing.
     assert mgr.mention_sessions.all() == []

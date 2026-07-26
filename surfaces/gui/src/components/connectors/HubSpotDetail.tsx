@@ -38,7 +38,7 @@ export function HubSpotDetail({ c, cloud, slack: _slack, onChanged }: DetailProp
                 </span>
               </>
             ) : (
-              <span>Not connected</span>
+              <span>Não conectado</span>
             )}
           </div>
         </div>
@@ -58,7 +58,7 @@ export function HubSpotDetail({ c, cloud, slack: _slack, onChanged }: DetailProp
 
       {portals.length > 0 && (
         <>
-          <div className={GRP_H + " !mt-0"}>Portals</div>
+          <div className={GRP_H + " !mt-0"}>Portais</div>
           <div className={GRP} data-testid="hubspot-portals">
             {portals.map((p) => (
               <PortalRow key={p.hub_id} p={p} onChanged={onChanged} />
@@ -71,15 +71,15 @@ export function HubSpotDetail({ c, cloud, slack: _slack, onChanged }: DetailProp
 
       <ToolsDisclosure c={c} onChanged={onChanged} />
       <div className={FOOT + " mt-2"}>
-        Hidden fields never reach an agent; stripped counts land in Activity. To limit what a
-        HUMAN teammate could ask for, use HubSpot permission sets on the connected user.
+        Campos ocultos nunca chegam a um agente; a contagem do que foi removido aparece em Atividade. Para
+        limitar o que um colega HUMANO pode pedir, use os conjuntos de permissão do HubSpot no usuário conectado.
       </div>
 
       {adding && (
         <AddConnectionModal
           c={c}
           cloud={cloud}
-          title="Add a portal"
+          title="Adicionar um portal"
           onClose={() => setAdding(false)}
           onChanged={onChanged}
         />
@@ -96,7 +96,7 @@ function PortalRow({ p, onChanged }: { p: HubSpotPortal; onChanged: () => void }
         <span className="text-[13px] font-medium truncate" title={`hub ${p.hub_id}`}>
           {p.name}
         </span>
-        {p.default && <span className={TAG_ACCENT}>Default</span>}
+        {p.default && <span className={TAG_ACCENT}>Padrão</span>}
         {p.sandbox && <span className={TAG_WARN}>Sandbox</span>}
         {p.access && (
           <span className={TAG_QUIET} data-testid={`hubspot-access-tag-${p.hub_id}`}>
@@ -119,7 +119,7 @@ function PortalRow({ p, onChanged }: { p: HubSpotPortal; onChanged: () => void }
       )}
       <button
         className={XBTN}
-        title="Disconnect this portal"
+        title="Desconectar este portal"
         data-testid={`hubspot-disconnect-${p.hub_id}`}
         disabled={busy}
         onClick={async () => {
@@ -150,10 +150,10 @@ function PrivacyGroup({ c, onChanged }: Pick<DetailProps, "c" | "onChanged">) {
   };
   return (
     <>
-      <div className={GRP_H}>Access &amp; privacy</div>
+      <div className={GRP_H}>Acesso e privacidade</div>
       <div className={GRP}>
         <div className={ROW} data-testid="hubspot-hidden-fields">
-          <span className={LABEL}>Hidden fields</span>
+          <span className={LABEL}>Campos ocultos</span>
           <span className="min-w-0 flex-1 flex flex-wrap items-center gap-1.5">
             {fields.map((f) => (
               <span
@@ -161,14 +161,14 @@ function PrivacyGroup({ c, onChanged }: Pick<DetailProps, "c" | "onChanged">) {
                 className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-paper border border-line text-[12.5px] font-mono"
               >
                 {f}
-                <button className={XBTN} title="remove" onClick={() => save(fields.filter((x) => x !== f))}>
+                <button className={XBTN} title="remover" onClick={() => save(fields.filter((x) => x !== f))}>
                   ×
                 </button>
               </span>
             ))}
             <input
               className="flex-1 min-w-[140px] bg-transparent text-[12.5px] outline-none placeholder:text-faint"
-              placeholder="Property name, e.g. salary"
+              placeholder="Nome da propriedade, ex.: salario"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => {
@@ -179,7 +179,7 @@ function PrivacyGroup({ c, onChanged }: Pick<DetailProps, "c" | "onChanged">) {
           </span>
         </div>
       </div>
-      <div className={FOOT}>Stripped from every record agents read, across all portals.</div>
+      <div className={FOOT}>Removidos de todo registro que os agentes leem, em todos os portais.</div>
     </>
   );
 }

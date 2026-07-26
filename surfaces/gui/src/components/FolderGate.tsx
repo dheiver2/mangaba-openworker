@@ -40,33 +40,33 @@ export function FolderGate({ onChoose, onCancel, create }: Props) {
     <div className="gate-overlay">
       <div className="gate">
         <div className="gate-mark">✦</div>
-        <h2>{create ? "New project" : "Choose a project folder"}</h2>
+        <h2>{create ? "Novo projeto" : "Escolha a pasta do projeto"}</h2>
         <p className="gate-sub">
           {create
-            ? "Pick a folder or enter a path. If the path doesn't exist, it will be created."
-            : "This mangaba needs a workspace to read, edit, and run in."}
+            ? "Escolha uma pasta ou digite um caminho. Se o caminho não existir, ele será criado."
+            : "Esta persona precisa de uma área de trabalho para ler, editar e executar."}
         </p>
 
         <div className="gate-input">
           <input
-            placeholder="/path/to/your/project"
+            placeholder="/caminho/do/seu/projeto"
             value={path}
             onChange={(e) => setPath(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && open(path, create)}
             autoFocus
           />
-          <button className="btn" onClick={browse} title="Pick a folder">
+          <button className="btn" onClick={browse} title="Escolher uma pasta">
             Browse…
           </button>
           <button className="btn primary" onClick={() => open(path, create)} disabled={!path.trim()}>
-            {create ? "Create" : "Open"}
+            {create ? "Criar" : "Abrir"}
           </button>
         </div>
         {error && <div className="gate-error">{error}</div>}
 
         {recents.length > 0 && (
           <>
-            <div className="gate-label">Recent</div>
+            <div className="gate-label">Recentes</div>
             <div className="gate-recents">
               {recents.map((w) => (
                 <div className="gate-recent" key={w.path} onClick={() => open(w.path)} title={w.path}>

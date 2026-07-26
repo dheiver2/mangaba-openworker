@@ -143,9 +143,9 @@ export function GalleryModal({
       <div className="flex items-center gap-2 mb-4">
         {(
           [
-            ["all", "All"],
-            ["mangaba", "From Mangaba"],
-            ["team", "From your team"],
+            ["all", "Todas"],
+            ["mangaba", "Do Mangaba"],
+            ["team", "Do seu time"],
           ] as [Source, string][]
         ).map(([key, label]) => (
           <button
@@ -229,9 +229,9 @@ export function GalleryModal({
               </div>
               <div className="shrink-0 flex items-center">
                 {isInstalled ? (
-                  <span className="text-[12px] text-muted">Installed</span>
+                  <span className="text-[12px] text-muted">Instalada</span>
                 ) : (
-                  <span className="text-[12.5px] text-accent">View & install →</span>
+                  <span className="text-[12.5px] text-accent">Ver e instalar →</span>
                 )}
               </div>
             </div>
@@ -240,17 +240,17 @@ export function GalleryModal({
         {visible.length === 0 && !unavailable && (
           <div className="text-[12.5px] text-muted py-4">
             {source === "team"
-              ? "Nothing shared with your team yet."
+              ? "Nada compartilhado com seu time ainda."
               : q
-              ? "No personas match your search."
-              : "No personas published yet."}
+              ? "Nenhuma persona corresponde à sua busca."
+              : "Nenhuma persona publicada ainda."}
           </div>
         )}
       </div>
 
       {source !== "team" && teamCount === 0 && (
         <div className="mt-5 pt-3 border-t border-line text-[12px] text-faint" data-testid="gallery-team-teaser">
-          From your team — nothing shared yet. Publishing a persona to your teammates is coming soon.
+          Do seu time — nada compartilhado ainda. Publicar uma persona para os colegas chega em breve.
         </div>
       )}
     </div>
@@ -267,7 +267,7 @@ export function GalleryModal({
         ← Gallery
       </button>
       {!detail ? (
-        <div className="text-[12.5px] text-muted">Loading…</div>
+        <div className="text-[12.5px] text-muted">Carregando…</div>
       ) : !detail.ok || !card ? (
         <div className="text-[12.5px] text-danger">{detail.error || "could not load details"}</div>
       ) : (
@@ -288,7 +288,7 @@ export function GalleryModal({
                 <span className="text-[12.5px] text-muted">Installed</span>
               ) : (
                 <button className={BTN_ACCENT} onClick={() => install(detailSlug)} disabled={busy}>
-                  {busy ? "Installing…" : "Install"}
+                  {busy ? "Instalando…" : "Instalar"}
                 </button>
               )}
             </div>
@@ -317,29 +317,29 @@ export function GalleryModal({
           {caps && (
             <div className={CARD + " p-4"} data-testid="gallery-capabilities">
               <div className="text-[13px] font-semibold mb-2">
-                What it can do — verified from its manifest
+                O que ela faz — verificado no manifesto
               </div>
               <div className="text-[12px] text-faint mb-3">
-                Read by this app&rsquo;s own parser, so it matches exactly what the install
-                consent will ask you to approve. No executable code is installed.
+                Lido pelo parser do próprio app, então corresponde exatamente ao que o consentimento
+                de instalação vai pedir que você aprove. Nenhum código executável é instalado.
               </div>
               <div className="space-y-2 text-[12.5px]">
                 <div>
-                  <span className="text-muted">Tools: </span>
-                  {caps.tools.join(", ") || "none"}
+                  <span className="text-muted">Ferramentas: </span>
+                  {caps.tools.join(", ") || "nenhuma"}
                   {caps.risk.length > 0 && (
-                    <span className="text-faint"> · risk: {caps.risk.join(", ")}</span>
+                    <span className="text-faint"> · risco: {caps.risk.join(", ")}</span>
                   )}
                 </div>
                 <div>
-                  <span className="text-muted">Permissions: </span>
-                  {caps.recommended_mode} mode
-                  {caps.messaging ? " · can use messaging" : ""}
+                  <span className="text-muted">Permissões: </span>
+                  modo {caps.recommended_mode}
+                  {caps.messaging ? " · pode usar mensageria" : ""}
                   {caps.mcp.length > 0 ? ` · MCP: ${caps.mcp.join(", ")}` : ""}
                 </div>
                 {(detail.recommends?.length ?? 0) > 0 && (
                   <div>
-                    <div className="text-muted mb-1.5">Works with these connections:</div>
+                    <div className="text-muted mb-1.5">Funciona com estas conexões:</div>
                     <div className="space-y-1.5">
                       {detail.recommends!.map((r) => (
                         <div key={r.kind + r.ref} className="flex items-baseline gap-2">
@@ -372,23 +372,23 @@ export function GalleryModal({
       <div className="absolute left-1/2 top-[6vh] -translate-x-1/2 w-[720px] max-w-[94vw] max-h-[88vh] rounded-xl2 border border-line bg-panel shadow-2xl overflow-hidden flex flex-col">
         <div className="px-5 pt-4 pb-3 border-b border-line flex items-center gap-3 shrink-0">
           <div className="min-w-0 flex-1">
-            <div className="text-[15px] font-semibold">Persona Gallery</div>
+            <div className="text-[15px] font-semibold">Galeria de Personas</div>
             <div className="text-[12px] text-muted">
-              Curated mangabas · installs stay disabled until you approve them
+              Personas selecionadas · as instalações ficam desativadas até você aprovar
             </div>
           </div>
           {cloud?.signed_in && !detailSlug && (
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search personas"
+              placeholder="Buscar personas"
               className="w-[180px] px-3 py-1.5 rounded-lg border border-line bg-paper text-[12.5px] text-ink outline-none focus:border-accent"
             />
           )}
           <button
             className="text-faint hover:text-ink shrink-0"
             onClick={onClose}
-            aria-label="Close gallery"
+            aria-label="Fechar a galeria"
             data-testid="gallery-close"
           >
             <Icon name="x" size={16} />
@@ -398,7 +398,7 @@ export function GalleryModal({
         <div className="overflow-y-auto hairline-scroll p-5">
           {loading ? (
             <div className="space-y-2" data-testid="gallery-loading" aria-busy="true">
-              <div className="text-[12.5px] text-muted mb-3">Loading the gallery…</div>
+              <div className="text-[12.5px] text-muted mb-3">Carregando a galeria…</div>
               {[0, 1, 2].map((i) => (
                 <div key={i} className={CARD + " p-3.5 animate-pulse"}>
                   <div className="h-3.5 w-44 rounded bg-line mb-2.5" />
@@ -409,15 +409,15 @@ export function GalleryModal({
           ) : cloud && !cloud.signed_in ? (
             <div className={CARD + " p-5 flex items-center gap-4"} data-testid="gallery-signin">
               <div className="min-w-0 flex-1">
-                <div className="font-semibold text-[14px] mb-1">Sign in to browse the Gallery</div>
+                <div className="font-semibold text-[14px] mb-1">Entre para explorar a Galeria</div>
                 <div className="text-[12.5px] text-muted leading-relaxed">
-                  The Gallery is a curated set of mangabas from Mangaba Cloud and needs a
-                  (free) cloud sign-in. Installing personas from a folder or Git URL — on the
-                  Personas page — always works without an account.
+                  A Galeria é um conjunto selecionado de personas do Mangaba Cloud e exige um
+                  login (gratuito) na nuvem. Instalar personas de uma pasta ou URL do Git — na
+                  página de Personas — sempre funciona sem conta.
                 </div>
               </div>
               <button className={BTN_ACCENT} onClick={signIn} disabled={signingIn}>
-                {signingIn ? "Check your browser…" : "Sign in"}
+                {signingIn ? "Confira seu navegador…" : "Entrar"}
               </button>
             </div>
           ) : detailSlug ? (

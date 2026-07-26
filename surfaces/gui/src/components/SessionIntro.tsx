@@ -14,11 +14,11 @@ import { AddFolderForm } from "./AddFolderForm";
 // composer. Not ready → "Configure ›" always visible (for a gated row the setup action IS the
 // row's meaning), opening the §23 Session settings drawer — no second setup surface here.
 
-const FOLDER_PROMPT = "Analyze the files in this folder and summarize what matters.";
+const FOLDER_PROMPT = "Analise os arquivos desta pasta e resuma o que importa.";
 const HUBSPOT_PROMPT =
-  "Create a report on my recent HubSpot leads: sources, stages, and who needs follow-up.";
+  "Crie um relatório dos meus leads recentes do HubSpot: origens, estágios e quem precisa de follow-up.";
 const GH_SLACK_PROMPT =
-  "Set up a weekly progress report: summarize activity in my GitHub repos and post it to Slack every Friday morning.";
+  "Configure um relatório semanal de progresso: resuma a atividade dos meus repositórios do GitHub e publique no Slack toda sexta de manhã.";
 
 export function SessionIntro({
   sessionId,
@@ -65,20 +65,20 @@ export function SessionIntro({
   return (
     <div className="intro">
       <h1 className="greeting">
-        <span className="mark">✦</span> What should we produce?
+        <span className="mark">✦</span> O que vamos produzir?
       </h1>
       <p className="intro-lede">
-        Pick a task to start — I'll do the work and save the result. Or just type what you need
-        below.
+        Escolha uma tarefa para começar — eu faço o trabalho e salvo o resultado. Ou simplesmente
+        digite abaixo o que você precisa.
       </p>
 
       <div className="intro-tasks">
         <button className="task-card" data-testid="intro-task-folder" onClick={pickFolder}>
           <span className="task-card-body">
-            <span className="task-card-title">Analyze the files in a directory</span>
-            <span className="task-card-sub">I'll read them and summarize what matters</span>
+            <span className="task-card-title">Analisar os arquivos de uma pasta</span>
+            <span className="task-card-sub">Eu leio tudo e resumo o que importa</span>
           </span>
-          <span className="task-card-act">Pick a folder →</span>
+          <span className="task-card-act">Escolher uma pasta →</span>
         </button>
         {addingFolder && (
           <div className="intro-addfolder">
@@ -102,13 +102,13 @@ export function SessionIntro({
           onClick={() => (hubspotReady ? onPrefill(HUBSPOT_PROMPT) : onOpenSessionSettings())}
         >
           <span className="task-card-body">
-            <span className="task-card-title">Create a report from my HubSpot leads</span>
+            <span className="task-card-title">Criar um relatório dos meus leads do HubSpot</span>
             <span className="task-card-sub">
               {dot("hubspot", hubspotReady)}
-              Sources, stages, and who needs follow-up
+              Origens, estágios e quem precisa de follow-up
             </span>
           </span>
-          <span className="task-card-act">{hubspotReady ? "Start →" : "Configure ›"}</span>
+          <span className="task-card-act">{hubspotReady ? "Começar →" : "Configurar ›"}</span>
         </button>
 
         <button
@@ -117,14 +117,14 @@ export function SessionIntro({
           onClick={() => (ghSlackReady ? onPrefill(GH_SLACK_PROMPT) : onOpenSessionSettings())}
         >
           <span className="task-card-body">
-            <span className="task-card-title">Automate a weekly GitHub progress report to Slack</span>
+            <span className="task-card-title">Automatizar um relatório semanal do GitHub no Slack</span>
             <span className="task-card-sub">
               {dot("github", live.has("github"))}
               {dot("slack", live.has("slack"))}
-              Repo activity, summarized and posted every Friday
+              Atividade dos repositórios, resumida e publicada toda sexta
             </span>
           </span>
-          <span className="task-card-act">{ghSlackReady ? "Start →" : "Configure ›"}</span>
+          <span className="task-card-act">{ghSlackReady ? "Começar →" : "Configurar ›"}</span>
         </button>
       </div>
     </div>

@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mangaba — IA que entrega o trabalho pronto</title>
+    <meta
+      name="description"
+      content="O Mangaba é uma IA de código aberto que vive no seu desktop e entrega trabalho pronto: documentos, relatórios, respostas no Slack e a agenda em dia. Roda na sua máquina, com a sua chave."
+    />
+    <link rel="icon" type="image/png" href="assets/favicon.png" />
+    <meta property="og:title" content="Mangaba — IA que entrega o trabalho pronto" />
+    <meta
+      property="og:description"
+      content="Agente de IA open source que roda no seu computador, com o seu modelo e os seus dados."
+    />
+    <meta property="og:image" content="assets/mangaba-logo.png" />
+    <meta property="og:type" content="website" />
+    <style>
+      /* Paleta oficial Mangaba: creme, grafite e o laranja da fruta. */
+      :root {
+        --creme: #fbf6f0;
+        --creme-forte: #f6ede2;
+        --painel: #ffffff;
+        --tinta: #2c2c2c;
+        --suave: #5b616b;
+        --fraco: #9aa1aa;
+        --linha: #ece4da;
+        --laranja: #f5861d;
+        --laranja-claro: #fff3e6;
+        --verde: #3f7d20;
+        --raio: 18px;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --creme: #131417;
+          --creme-forte: #17181c;
+          --painel: #1c1e22;
+          --tinta: #e6e8eb;
+          --suave: #a6adb6;
+          --fraco: #767d87;
+          --linha: #2a2d33;
+          --laranja-claro: #2a1f0d;
+        }
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--creme);
+        color: var(--tinta);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui,
+          sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      img { max-width: 100%; display: block; }
+      a { color: inherit; }
+      .envelope { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+      /* -- topo -------------------------------------------------------------- */
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        backdrop-filter: saturate(180%) blur(12px);
+        background: color-mix(in srgb, var(--creme) 82%, transparent);
+        border-bottom: 1px solid var(--linha);
+      }
+      .barra {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 0;
+      }
+      .marca-topo {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 700;
+        font-size: 17px;
+        letter-spacing: -0.015em;
+        text-decoration: none;
+      }
+      .marca-topo img { height: 30px; width: auto; }
+      .menu {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 22px;
+        font-size: 14px;
+        color: var(--suave);
+      }
+      .menu a { text-decoration: none; }
+      .menu a:hover { color: var(--tinta); }
+      .botao {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 20px;
+        border-radius: 999px;
+        background: var(--laranja);
+        color: #fff;
+        font-weight: 600;
+        font-size: 14.5px;
+        text-decoration: none;
+        border: none;
+        cursor: pointer;
+        transition: filter 0.15s;
+      }
+      .botao:hover { filter: brightness(1.06); }
+      .botao.vazado {
+        background: transparent;
+        color: var(--tinta);
+        border: 1px solid var(--linha);
+      }
+      .botao.vazado:hover { border-color: var(--laranja); color: var(--laranja); }
+
+      /* -- herói ------------------------------------------------------------- */
+      .heroi {
+        text-align: center;
+        padding: 74px 0 64px;
+      }
+      .heroi picture { display: block; }
+      .heroi img.logo {
+        width: min(360px, 78vw);
+        margin: 0 auto 30px;
+      }
+      .rodape-linha picture { display: flex; }
+      .selo {
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: var(--laranja);
+        background: var(--laranja-claro);
+        padding: 5px 12px;
+        border-radius: 999px;
+        margin-bottom: 20px;
+      }
+      h1 {
+        font-size: clamp(31px, 5.2vw, 50px);
+        line-height: 1.12;
+        letter-spacing: -0.025em;
+        margin: 0 0 18px;
+        font-weight: 700;
+      }
+      h1 .destaque { color: var(--laranja); }
+      .chamada {
+        font-size: clamp(16px, 2.2vw, 19px);
+        color: var(--suave);
+        max-width: 620px;
+        margin: 0 auto 30px;
+      }
+      .acoes {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      .nota-acoes {
+        font-size: 13px;
+        color: var(--fraco);
+        margin-top: 16px;
+      }
+
+      /* -- seções ------------------------------------------------------------ */
+      section { padding: 60px 0; }
+      .titulo-secao {
+        font-size: clamp(23px, 3.4vw, 31px);
+        letter-spacing: -0.02em;
+        margin: 0 0 10px;
+        font-weight: 700;
+      }
+      .sub-secao {
+        color: var(--suave);
+        max-width: 620px;
+        margin: 0 0 34px;
+      }
+      .grade {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+        gap: 18px;
+      }
+      .cartao {
+        background: var(--painel);
+        border: 1px solid var(--linha);
+        border-radius: var(--raio);
+        padding: 24px;
+      }
+      .cartao h3 {
+        font-size: 16.5px;
+        margin: 0 0 8px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      .cartao p {
+        margin: 0;
+        font-size: 14.5px;
+        color: var(--suave);
+      }
+      .icone {
+        width: 38px;
+        height: 38px;
+        border-radius: 11px;
+        background: var(--laranja-claro);
+        color: var(--laranja);
+        display: grid;
+        place-items: center;
+        font-size: 19px;
+        margin-bottom: 14px;
+      }
+
+      /* -- passos ------------------------------------------------------------ */
+      .passos { counter-reset: passo; display: grid; gap: 16px; }
+      .passo {
+        display: flex;
+        gap: 16px;
+        align-items: flex-start;
+        background: var(--painel);
+        border: 1px solid var(--linha);
+        border-radius: var(--raio);
+        padding: 20px 22px;
+      }
+      .passo::before {
+        counter-increment: passo;
+        content: counter(passo);
+        flex: none;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        background: var(--laranja);
+        color: #fff;
+        font-weight: 700;
+        font-size: 14px;
+        display: grid;
+        place-items: center;
+      }
+      .passo h3 { margin: 2px 0 5px; font-size: 15.5px; font-weight: 650; }
+      .passo p { margin: 0; color: var(--suave); font-size: 14.5px; }
+
+      /* -- privacidade ------------------------------------------------------- */
+      .faixa {
+        background: var(--creme-forte);
+        border-top: 1px solid var(--linha);
+        border-bottom: 1px solid var(--linha);
+      }
+      .lista-privacidade {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+        gap: 14px 28px;
+      }
+      .lista-privacidade li {
+        display: flex;
+        gap: 10px;
+        font-size: 14.5px;
+        color: var(--suave);
+      }
+      .lista-privacidade b { color: var(--tinta); font-weight: 620; }
+      .tique { color: var(--verde); flex: none; font-weight: 700; }
+
+      /* -- modelos ----------------------------------------------------------- */
+      .modelos {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+      }
+      .pilula {
+        font-size: 13.5px;
+        color: var(--suave);
+        background: var(--painel);
+        border: 1px solid var(--linha);
+        border-radius: 999px;
+        padding: 6px 14px;
+      }
+
+      /* -- fechamento + rodapé ----------------------------------------------- */
+      .fechamento {
+        text-align: center;
+        padding: 66px 0;
+      }
+      .fechamento img { width: 74px; margin: 0 auto 20px; }
+      footer {
+        border-top: 1px solid var(--linha);
+        padding: 26px 0 40px;
+        font-size: 13px;
+        color: var(--fraco);
+      }
+      .rodape-linha {
+        display: flex;
+        gap: 16px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .rodape-linha img { height: 22px; width: auto; opacity: 0.85; }
+      .rodape-linha .direita { margin-left: auto; display: flex; gap: 18px; }
+      footer a { text-decoration: none; }
+      footer a:hover { color: var(--tinta); }
+
+      @media (max-width: 640px) {
+        .menu a:not(.botao) { display: none; }
+        .heroi { padding: 48px 0 44px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="envelope barra">
+        <a class="marca-topo" href="#topo">
+          <img src="assets/mangaba-mark.png" alt="" />
+          Mangaba
+        </a>
+        <nav class="menu">
+          <a href="#recursos">Recursos</a>
+          <a href="#como-funciona">Como funciona</a>
+          <a href="#privacidade">Privacidade</a>
+          <a class="botao" href="#baixar">Baixar</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="topo">
+      <div class="envelope heroi">
+        <picture>
+          <source srcset="assets/mangaba-logo-dark.png" media="(prefers-color-scheme: dark)" />
+          <img class="logo" src="assets/mangaba-logo.png" alt="mangaba.ai" />
+        </picture>
+        <span class="selo">Beta aberto</span>
+        <h1>
+          A IA que entrega o trabalho <span class="destaque">pronto</span> —
+          não só a conversa.
+        </h1>
+        <p class="chamada">
+          O Mangaba vive no seu desktop, trabalha com seus arquivos, seu terminal e mais de
+          30 ferramentas conectadas. Você pede o resultado; ele devolve o documento, o
+          relatório, a resposta no Slack e a agenda organizada.
+        </p>
+        <div class="acoes">
+          <a class="botao" href="#baixar">Baixar para macOS</a>
+          <a class="botao vazado" href="#como-funciona">Ver como funciona</a>
+        </div>
+        <p class="nota-acoes">
+          Código aberto · roda na sua máquina · use a sua chave de modelo ou o Ollama local
+        </p>
+      </div>
+
+      <section id="recursos" class="envelope">
+        <h2 class="titulo-secao">Feito para entregar, não para responder</h2>
+        <p class="sub-secao">
+          Cada sessão termina com um arquivo, uma mensagem enviada ou uma tarefa concluída —
+          e você aprova o que for irreversível antes de acontecer.
+        </p>
+        <div class="grade">
+          <div class="cartao">
+            <div class="icone">📄</div>
+            <h3>Entregáveis de verdade</h3>
+            <p>
+              Documentos, planilhas, relatórios e páginas web que aparecem como arquivos
+              prontos para abrir e compartilhar.
+            </p>
+          </div>
+          <div class="cartao">
+            <div class="icone">🔌</div>
+            <h3>Mais de 30 conectores</h3>
+            <p>
+              Slack, GitHub, Gmail, Google Agenda, Jira, Notion, HubSpot, Linear e qualquer
+              ferramenta que fale MCP — com controle por ferramenta.
+            </p>
+          </div>
+          <div class="cartao">
+            <div class="icone">⏰</div>
+            <h3>Automações no horário</h3>
+            <p>
+              Um briefing matinal, um resumo semanal do funil, uma vigília num canal. Cada
+              execução vira uma conversa com transcrição completa.
+            </p>
+          </div>
+          <div class="cartao">
+            <div class="icone">✋</div>
+            <h3>Pergunta antes de agir</h3>
+            <p>
+              Envios, escritas e comandos de shell passam por aprovação. Rodando sem
+              supervisão, os pedidos ficam na caixa de entrada em vez de agir sozinhos.
+            </p>
+          </div>
+          <div class="cartao">
+            <div class="icone">💬</div>
+            <h3>Trabalhe pelo Slack</h3>
+            <p>
+              Mencione o @Mangaba num canal: a sessão abre no seu desktop, o trabalho
+              acontece com as suas ferramentas e a resposta volta na thread.
+            </p>
+          </div>
+          <div class="cartao">
+            <div class="icone">🔐</div>
+            <h3>Senha na porta</h3>
+            <p>
+              O app abre com senha local, guardada como hash só neste computador. Sem ela,
+              nem o token do sidecar destrava suas conversas.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="como-funciona" class="envelope">
+        <h2 class="titulo-secao">Como funciona</h2>
+        <p class="sub-secao">
+          Do pedido ao entregável, em quatro passos — com você no comando dos que importam.
+        </p>
+        <div class="passos">
+          <div class="passo">
+            <div>
+              <h3>Diga o resultado que você quer</h3>
+              <p>
+                “Prepare um resumo do cliente”, “desembarace minha agenda”, “veja como está
+                o release entre o Jira e o GitHub”.
+              </p>
+            </div>
+          </div>
+          <div class="passo">
+            <div>
+              <h3>Ele divide em etapas e trabalha</h3>
+              <p>
+                Lê seus arquivos, roda comandos, pesquisa na web e usa os aplicativos que
+                você conectou — tudo visível no painel de progresso.
+              </p>
+            </div>
+          </div>
+          <div class="passo">
+            <div>
+              <h3>Pede aprovação no que é sério</h3>
+              <p>
+                Antes de mandar uma mensagem, mudar sua agenda ou rodar um comando, ele
+                mostra o que vai fazer e espera o seu OK.
+              </p>
+            </div>
+          </div>
+          <div class="passo">
+            <div>
+              <h3>Você recebe o entregável</h3>
+              <p>
+                O arquivo final, com um resumo curto do que foi feito e onde ficou — não uma
+                lista de tarefas para você executar.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="faixa">
+        <section id="privacidade" class="envelope">
+          <h2 class="titulo-secao">Seus dados ficam com você</h2>
+          <p class="sub-secao">
+            O Mangaba roda inteiro na sua máquina. Só sai daqui o que você escolher mandar,
+            para o modelo e as integrações que você conectar.
+          </p>
+          <ul class="lista-privacidade">
+            <li>
+              <span class="tique">✓</span>
+              <span><b>Servidor local.</b> O agente roda no seu computador, não numa nuvem nossa.</span>
+            </li>
+            <li>
+              <span class="tique">✓</span>
+              <span><b>Sua chave, seu modelo.</b> OpenAI, Anthropic, Gemini, DeepSeek, Qwen — ou tudo local com o Ollama.</span>
+            </li>
+            <li>
+              <span class="tique">✓</span>
+              <span><b>Tokens no seu Mac.</b> As credenciais dos conectores ficam no armazenamento local, com permissão restrita.</span>
+            </li>
+            <li>
+              <span class="tique">✓</span>
+              <span><b>Filtros de privacidade.</b> Remetentes e campos sensíveis são removidos antes de o agente ver os resultados.</span>
+            </li>
+            <li>
+              <span class="tique">✓</span>
+              <span><b>Trilha de auditoria.</b> Cada chamada de conector fica registrada na aba Atividade.</span>
+            </li>
+            <li>
+              <span class="tique">✓</span>
+              <span><b>Código aberto.</b> Dá para ler exatamente o que o agente faz — nada de caixa-preta.</span>
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <section class="envelope">
+        <h2 class="titulo-secao">Use o modelo que quiser</h2>
+        <p class="sub-secao">
+          Escolha o provedor, cole a chave, troque quando quiser. A lista curada marca o que
+          já foi verificado para trabalho com ferramentas.
+        </p>
+        <div class="modelos">
+          <span class="pilula">Claude (Anthropic)</span>
+          <span class="pilula">OpenAI</span>
+          <span class="pilula">Gemini</span>
+          <span class="pilula">DeepSeek</span>
+          <span class="pilula">Qwen</span>
+          <span class="pilula">Kimi</span>
+          <span class="pilula">Mistral</span>
+          <span class="pilula">GLM (Z.ai)</span>
+          <span class="pilula">MiniMax</span>
+          <span class="pilula">Grok (xAI)</span>
+          <span class="pilula">Together</span>
+          <span class="pilula">Fireworks</span>
+          <span class="pilula">Ollama (local)</span>
+        </div>
+      </section>
+
+      <div id="baixar" class="fechamento">
+        <div class="envelope">
+          <img src="assets/mangaba-mark.png" alt="" />
+          <h2 class="titulo-secao">Comece em dois minutos</h2>
+          <p class="sub-secao" style="margin: 0 auto 28px">
+            Abra o app, escolha um modelo (ou aponte para o Ollama) e peça algo de verdade.
+          </p>
+          <div class="acoes">
+            <a class="botao" href="https://download.mangaba.ai/mac">Baixar para macOS</a>
+            <a class="botao vazado" href="https://download.mangaba.ai/windows">Windows 10/11</a>
+          </div>
+          <p class="nota-acoes">macOS 12+ · Apple Silicon · atualiza sozinho</p>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="envelope rodape-linha">
+        <picture>
+          <source srcset="assets/mangaba-wordmark-dark.png" media="(prefers-color-scheme: dark)" />
+          <img src="assets/mangaba-wordmark.png" alt="mangaba.ai" />
+        </picture>
+        <span>· IA que entrega o trabalho pronto</span>
+        <span class="direita">
+          <a href="#recursos">Recursos</a>
+          <a href="#privacidade">Privacidade</a>
+          <a href="https://mangaba.ai">mangaba.ai</a>
+        </span>
+      </div>
+    </footer>
+  </body>
+</html>

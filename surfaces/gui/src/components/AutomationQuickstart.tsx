@@ -23,15 +23,15 @@ import { SelectMenu } from "./SelectMenu";
 
 // "When" = day choice × free time (owner call 2026-07-11); the cron assembles from the two.
 const DAYS: Record<string, { label: string; dow: string }> = {
-  mon: { label: "Mondays", dow: "1" },
-  tue: { label: "Tuesdays", dow: "2" },
-  wed: { label: "Wednesdays", dow: "3" },
-  thu: { label: "Thursdays", dow: "4" },
-  fri: { label: "Fridays", dow: "5" },
-  sat: { label: "Saturdays", dow: "6" },
-  sun: { label: "Sundays", dow: "0" },
-  weekdays: { label: "Weekdays", dow: "1-5" },
-  daily: { label: "Every day", dow: "*" },
+  mon: { label: "Segundas", dow: "1" },
+  tue: { label: "Terças", dow: "2" },
+  wed: { label: "Quartas", dow: "3" },
+  thu: { label: "Quintas", dow: "4" },
+  fri: { label: "Sextas", dow: "5" },
+  sat: { label: "Sábados", dow: "6" },
+  sun: { label: "Domingos", dow: "0" },
+  weekdays: { label: "Dias úteis", dow: "1-5" },
+  daily: { label: "Todo dia", dow: "*" },
 };
 // §30 connect-state spinner (the app has no other spinner — waits elsewhere are label swaps).
 // Exported for Onboarding page 2's sign-in button (same states, same look).
@@ -62,12 +62,12 @@ interface QuickTemplate {
 const TEMPLATES: QuickTemplate[] = [
   {
     key: "github",
-    title: "GitHub digest",
-    blurb: "Merged PRs and commits, posted to your team's Slack.",
-    cadence: "Weekly",
+    title: "Resumo do GitHub",
+    blurb: "PRs mesclados e commits, publicados no Slack do seu time.",
+    cadence: "Semanal",
     conns: [
-      { name: "slack", why: "Where the digest posts" },
-      { name: "github", why: "What the digest summarizes" },
+      { name: "slack", why: "Onde o resumo é publicado" },
+      { name: "github", why: "O que o resumo cobre" },
     ],
     needsRepo: true,
     needsChannel: true,
@@ -75,76 +75,76 @@ const TEMPLATES: QuickTemplate[] = [
     day: "mon",
     time: "09:00",
     instructions: ({ repo, channel }) =>
-      `Summarize activity since the last digest in the GitHub repository ${repo || "(the connected repository)"}: ` +
-      `merged pull requests, notable commits, and anything needing attention. ` +
-      `Post the digest to the Slack channel ${channel} using send_message.`,
+      `Resuma a atividade desde o último resumo no repositório do GitHub ${repo || "(o repositório conectado)"}: ` +
+      `pull requests mesclados, commits relevantes e qualquer coisa que precise de atenção. ` +
+      `Publique o resumo no canal do Slack ${channel} usando send_message.`,
   },
   {
     key: "pipeline",
-    title: "Pipeline digest",
-    blurb: "Deals that moved — and deals going quiet — posted to Slack.",
-    cadence: "Weekly",
+    title: "Resumo do funil",
+    blurb: "Negócios que avançaram — e os que esfriaram — publicados no Slack.",
+    cadence: "Semanal",
     conns: [
-      { name: "slack", why: "Where the digest posts" },
-      { name: "hubspot", why: "Pipeline and deal activity" },
+      { name: "slack", why: "Onde o resumo é publicado" },
+      { name: "hubspot", why: "Atividade do funil e dos negócios" },
     ],
     needsChannel: true,
     consent: true,
     day: "mon",
     time: "09:00",
     instructions: ({ channel }) =>
-      `Review HubSpot activity since the last digest: deals that changed stage, deals going ` +
-      `quiet, and deals past their close date. Post a short pipeline digest to the Slack ` +
-      `channel ${channel} using send_message.`,
+      `Revise a atividade do HubSpot desde o último resumo: negócios que mudaram de estágio, negócios ` +
+      `parados e negócios com a data de fechamento vencida. Publique um resumo curto do funil no canal ` +
+      `do Slack ${channel} usando send_message.`,
   },
   {
     key: "brief",
-    title: "Morning brief",
-    blurb: "Calendar and unread email, summarized before your day starts.",
-    cadence: "Daily",
+    title: "Briefing matinal",
+    blurb: "Agenda e e-mails não lidos, resumidos antes de o dia começar.",
+    cadence: "Diário",
     conns: [
-      { name: "google_calendar", why: "Today's meetings and gaps" },
-      { name: "gmail", why: "What arrived overnight" },
+      { name: "google_calendar", why: "As reuniões e brechas de hoje" },
+      { name: "gmail", why: "O que chegou durante a noite" },
     ],
     deliver: true,
     day: "daily",
     time: "08:00",
     instructions: ({ deliver }) =>
-      `Prepare a short morning brief: today's calendar events and gaps, plus email that ` +
-      `arrived since yesterday evening. ` +
-      (deliver === "app" ? "Save it as the session deliverable." : "Send it to me as a Slack DM."),
+      `Prepare um briefing matinal curto: os eventos e brechas da agenda de hoje, além dos e-mails que ` +
+      `chegaram desde ontem à noite. ` +
+      (deliver === "app" ? "Salve como entregável da sessão." : "Envie para mim por DM no Slack."),
   },
   {
     key: "news",
-    title: "Morning news briefing",
-    blurb: "A 5-bullet tech & world news digest, saved as markdown.",
-    cadence: "Daily",
+    title: "Briefing matinal de notícias",
+    blurb: "Um resumo de 5 tópicos sobre tecnologia e mundo, salvo em markdown.",
+    cadence: "Diário",
     conns: [],
     day: "daily",
     time: "08:00",
     instructions: () =>
-      "Search the web for the most important technology and world news from the last 24 hours " +
-      "and write a concise 5-bullet briefing, saved as a markdown file.",
+      "Pesquise na web as notícias mais importantes de tecnologia e do mundo nas últimas 24 horas " +
+      "e escreva um briefing conciso de 5 tópicos, salvo como arquivo markdown.",
   },
   {
     key: "inboxdigest",
-    title: "Inbox digest",
-    blurb: "One short digest of your unread email.",
-    cadence: "Weekdays",
-    conns: [{ name: "gmail", why: "Your unread email" }],
+    title: "Resumo da caixa de entrada",
+    blurb: "Um resumo curto dos seus e-mails não lidos.",
+    cadence: "Dias úteis",
+    conns: [{ name: "gmail", why: "Seus e-mails não lidos" }],
     day: "weekdays",
     time: "09:00",
-    instructions: () => "Summarize my unread email into one short digest note.",
+    instructions: () => "Resuma meus e-mails não lidos em uma nota curta.",
   },
   {
     key: "cleanup",
-    title: "Folder cleanup",
-    blurb: "Sort recent Downloads into tidy folders by type.",
-    cadence: "Weekly",
+    title: "Faxina de pastas",
+    blurb: "Organiza os downloads recentes em pastas por tipo.",
+    cadence: "Semanal",
     conns: [],
     day: "fri",
     time: "17:30",
-    instructions: () => "Sort my recent Downloads into tidy folders by file type.",
+    instructions: () => "Organize meus downloads recentes em pastas arrumadas por tipo de arquivo.",
   },
 ];
 
@@ -291,12 +291,12 @@ export function AutomationQuickstart({
   };
 
   const gateHint = !allConnected
-    ? `Connect ${picked?.conns
+    ? `Conecte ${picked?.conns
         .filter((c) => !connState(c.name)?.connected)
         .map((c) => connState(c.name)?.title || c.name)
-        .join(" and ")} to continue`
+        .join(" e ")} para continuar`
     : picked?.needsChannel && !channel
-      ? "Pick a channel to post to first"
+      ? "Escolha antes um canal para publicar"
       : "";
 
   const label = "block text-[12px] text-muted mt-3 mb-1";
@@ -306,7 +306,7 @@ export function AutomationQuickstart({
   return (
     <div className="mb-4">
       <div className="text-[11px] uppercase tracking-[0.05em] text-faint mb-2.5">
-        Start from a template
+        Começar a partir de um modelo
       </div>
       {/* Equal-height cards (owner ask 2026-07-12): 1fr rows + h-full — <button> grid items
           don't stretch like divs. */}
@@ -332,7 +332,7 @@ export function AutomationQuickstart({
                 return (
                   <span
                     key={c.name}
-                    title={`${cs?.title || c.name} — ${on ? "connected" : "not connected yet"}`}
+                    title={`${cs?.title || c.name} — ${on ? "conectado" : "ainda não conectado"}`}
                     style={on ? undefined : { filter: "grayscale(1)", opacity: 0.55 }}
                   >
                     {cs ? (
@@ -344,7 +344,7 @@ export function AutomationQuickstart({
                 );
               })}
               <span className="text-[11px] text-faint ml-0.5">
-                {t.conns.length === 0 ? `No connections needed · ${t.cadence}` : t.cadence}
+                {t.conns.length === 0 ? `Sem conexões necessárias · ${t.cadence}` : t.cadence}
               </span>
             </span>
           </button>
@@ -360,11 +360,11 @@ export function AutomationQuickstart({
           {/* §30: the card names its template — without this it starts abruptly after the grid. */}
           <div className="flex items-baseline gap-2 pb-2.5 mb-1 border-b border-line">
             <span className="text-[11px] uppercase tracking-[0.05em] text-accent font-semibold">
-              Set up
+              Configurar
             </span>
             <span className="text-[14px] font-semibold">{picked.title}</span>
             <span className="ml-auto text-[12px] text-faint max-sm:hidden">
-              {picked.conns.length ? "Connections, delivery & schedule" : "Delivery & schedule"} ·{" "}
+              {picked.conns.length ? "Conexões, entrega e agendamento" : "Entrega e agendamento"} ·{" "}
               {picked.cadence}
             </span>
           </div>
@@ -380,13 +380,13 @@ export function AutomationQuickstart({
                     <span className="block text-[11.5px] text-faint">{why}</span>
                   </span>
                   {c?.connected ? (
-                    <span className="text-[12.5px] text-ok">✓ Connected</span>
+                    <span className="text-[12.5px] text-ok">✓ Conectado</span>
                   ) : flow ? (
                     <span className="inline-flex items-center gap-2 text-[12px] text-muted">
                       <Spinner />
                       {flow.phase === "opening"
-                        ? "Opening browser…"
-                        : `Waiting for ${c?.title || name}…`}
+                        ? "Abrindo o navegador…"
+                        : `Aguardando o ${c?.title || name}…`}
                     </span>
                   ) : (
                     <button
@@ -394,7 +394,7 @@ export function AutomationQuickstart({
                       onClick={() => startConnect(name)}
                       data-testid={`ob-connect-${name}`}
                     >
-                      Connect
+                      Conectar
                     </button>
                   )}
                 </div>
@@ -408,16 +408,16 @@ export function AutomationQuickstart({
                     <span>↗</span>
                     <span className="flex-1 min-w-0">
                       <b className="text-ink font-medium">
-                        Finish connecting {c?.title || name} in your browser.
+                        Conclua a conexão com o {c?.title || name} no seu navegador.
                       </b>{" "}
-                      Approve it there, then come back — this page updates by itself.
+                      Aprove por lá e volte — esta página se atualiza sozinha.
                     </span>
                     <button
                       className="text-faint underline hover:text-muted shrink-0"
                       onClick={() => setConnFlow(null)}
                       data-testid="ob-connect-cancel"
                     >
-                      Cancel
+                      Cancelar
                     </button>
                   </div>
                 )}
@@ -431,25 +431,25 @@ export function AutomationQuickstart({
               data-testid="ob-cloudpane"
             >
               <span className="block text-[13px] text-ink font-medium">
-                One sign-in unlocks every one-click connection
+                Um único login libera todas as conexões com um clique
               </span>
-              Connections are brokered by Mangaba Cloud — your tokens stay on this Mac.
+              As conexões são intermediadas pelo Mangaba Cloud — seus tokens ficam neste Mac.
               <div className="flex items-center gap-3 mt-2">
                 {signinPhase ? (
                   <>
                     <span className="inline-flex items-center gap-2 text-[12px]">
                       <Spinner />
-                      {signinPhase === "opening" ? "Opening browser…" : "Waiting for sign-in…"}
+                      {signinPhase === "opening" ? "Abrindo o navegador…" : "Aguardando o login…"}
                     </span>
                     {signinPhase === "waiting" && (
                       <span className="text-[11.5px] text-faint">
-                        Finish signing in in your browser — this page updates by itself.{" "}
+                        Conclua o login no navegador — esta página se atualiza sozinha.{" "}
                         <button
                           className="underline hover:text-muted"
                           onClick={cancelSignin}
                           data-testid="ob-signin-cancel"
                         >
-                          Cancel
+                          Cancelar
                         </button>
                       </span>
                     )}
@@ -460,7 +460,7 @@ export function AutomationQuickstart({
                     onClick={signInThenConnect}
                     data-testid="ob-cloud-signin"
                   >
-                    Sign in to Mangaba Cloud
+                    Entrar no Mangaba Cloud
                   </button>
                 )}
               </div>
@@ -471,10 +471,10 @@ export function AutomationQuickstart({
             <div className={picked.conns.length ? "bg-paper rounded-xl px-4 py-3.5 mt-3" : ""} data-testid="ob-recipe">
               {picked.needsRepo && (
                 <>
-                  <label className={label}>Repository</label>
+                  <label className={label}>Repositório</label>
                   <input
                     className={input}
-                    placeholder="owner/repo"
+                    placeholder="dono/repositorio"
                     value={repo}
                     onChange={(e) => setRepo(e.target.value)}
                     data-testid="ob-repo"
@@ -483,7 +483,7 @@ export function AutomationQuickstart({
               )}
               {picked.needsChannel && (
                 <>
-                  <label className={label}>Post to channel</label>
+                  <label className={label}>Publicar no canal</label>
                   <div data-testid="ob-channel">
                     <ChannelPicker
                       value={channel}
@@ -495,15 +495,15 @@ export function AutomationQuickstart({
                     />
                   </div>
                   <p className="text-[11px] text-warnInk mt-1">
-                    The bot must be a member of the channel — invite @Mangaba in Slack if it isn't.
+                    O bot precisa ser membro do canal — convide o @Mangaba no Slack se ainda não for.
                   </p>
                 </>
               )}
-              <label className={label}>When</label>
+              <label className={label}>Quando</label>
               <div className="flex gap-2">
                 <div className="flex-1 min-w-0">
                   <SelectMenu
-                    ariaLabel="Day"
+                    ariaLabel="Dia"
                     value={day}
                     options={Object.entries(DAYS).map(([k, v]) => ({ value: k, label: v.label }))}
                     onChange={setDay}
@@ -512,20 +512,20 @@ export function AutomationQuickstart({
                 <input
                   className="w-28 px-3 py-2 rounded-lg border border-line bg-panel text-[13.5px] outline-none focus:border-accent"
                   type="time"
-                  aria-label="Time"
+                  aria-label="Hora"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                 />
               </div>
               {picked.deliver && (
                 <>
-                  <label className={label}>Deliver to</label>
+                  <label className={label}>Entregar em</label>
                   <SelectMenu
-                    ariaLabel="Deliver to"
+                    ariaLabel="Entregar em"
                     value={deliver}
                     options={[
-                      { value: "app", label: "In the app" },
-                      { value: "slack", label: "Slack DM (connect Slack later)" },
+                      { value: "app", label: "No aplicativo" },
+                      { value: "slack", label: "DM no Slack (conectar o Slack depois)" },
                     ]}
                     onChange={(v) => setDeliver(v as "app" | "slack")}
                   />
@@ -541,18 +541,18 @@ export function AutomationQuickstart({
                     data-testid="ob-consent"
                   />
                   <span>
-                    Allow this automation to post its digest to{" "}
+                    Permitir que esta automação publique o resumo em{" "}
                     <b className="text-ink" title={channel || undefined}>
-                      {channelLabel || "the channel"}
+                      {channelLabel || "o canal"}
                       {channelWorkspace ? ` (${channelWorkspace})` : ""}
                     </b>{" "}
-                    without asking each time. Anything else still asks first.
+                    sem perguntar toda vez. Todo o resto continua perguntando antes.
                   </span>
                 </label>
               ) : picked.conns.length > 0 ? (
                 <p className="text-[12.5px] text-muted mt-3">
-                  This automation only <b className="text-ink">reads</b> on schedule — reading
-                  never needs approval.
+                  Esta automação apenas <b className="text-ink">lê</b> no horário marcado — leitura
+                  nunca precisa de aprovação.
                 </p>
               ) : null}
             </div>
@@ -563,7 +563,7 @@ export function AutomationQuickstart({
               className="text-[12.5px] text-faint hover:text-muted"
               onClick={() => setPickedKey(null)}
             >
-              Cancel
+              Cancelar
             </button>
             {/* A silently-disabled primary reads as a bug — always name the missing piece. */}
             {gateHint && (
@@ -580,7 +580,7 @@ export function AutomationQuickstart({
               onClick={create}
               data-testid="ob-create"
             >
-              {busy ? "Creating…" : "Create automation"}
+              {busy ? "Criando…" : "Criar automação"}
             </button>
           </div>
         </div>

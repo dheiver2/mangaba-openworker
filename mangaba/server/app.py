@@ -157,6 +157,7 @@ from ..attachments import (
 )
 from ..engine import ApprovalOutcome
 from ..inbox import VIS_INBOX, VIS_INLINE, args_preview
+from ..passcode import PasscodeGuard, validate_passcode
 from ..permissions import Mode
 from ..providers import AssistantTurn
 from .manager import SessionManager
@@ -180,6 +181,8 @@ def create_app(manager: SessionManager) -> FastAPI:
 
     app = FastAPI(title="mangaba", version="0.0.0", lifespan=lifespan)
     api_token = os.environ.get("MANGABA_API_TOKEN", "")
+    passcode_guard = PasscodeGuard()
+    app.state.passcode = passcode_guard
     tokenless_paths = {
         "/v1/health",
         "/auth/callback",
@@ -195,15 +198,38 @@ def create_app(manager: SessionManager) -> FastAPI:
             and secrets.compare_digest(provided, api_token)
         )
 
-    def _websocket_authenticated(ws: WebSocket) -> bool:
-        if not api_token:
-            return True
-        protocols = {
+    def _ws_protocols(ws: WebSocket) -> set[str]:
+        return {
             part.strip()
             for part in ws.headers.get("sec-websocket-protocol", "").split(",")
             if part.strip()
         }
-        return any(secrets.compare_digest(part, api_token) for part in protocols)
+
+    def _websocket_authenticated(ws: WebSocket) -> bool:
+        if api_token:
+            protocols = _ws_protocols(ws)
+            if not any(secrets.compare_digest(part, api_token) for part in protocols):
+                return False
+        # Segunda camada: a senha local. O navegador não deixa mandar headers no
+        # handshake, então a sessão viaja como mais um subprotocolo (o servidor
+        # aceita apenas "mangaba" de volta, nunca ecoa o segredo).
+        if not passcode_guard.configured():
+            return True
+        return any(passcode_guard.authenticated(p) for p in _ws_protocols(ws))
+
+    # Rotas que respondem SEM a senha: o health (a GUI o usa para saber que o servidor
+    # subiu), o próprio fluxo de login e os callbacks de OAuth — que chegam do navegador
+    # sem qualquer credencial nossa e já carregam o `state` como prova.
+    passcode_open_paths = tokenless_paths | {
+        "/v1/auth/status",
+        "/v1/auth/setup",
+        "/v1/auth/login",
+    }
+
+    def _passcode_authenticated(request: Request) -> bool:
+        return passcode_guard.authenticated(
+            request.headers.get("x-mangaba-session", "")
+        )
 
     @app.middleware("http")
     async def require_sidecar_token(request: Request, call_next):
@@ -215,9 +241,24 @@ def create_app(manager: SessionManager) -> FastAPI:
             or request.url.path in tokenless_paths
             or _request_authenticated(request)
         ):
+            pass
+        else:
+            return JSONResponse(
+                {"error": "token do sidecar do Mangaba ausente ou inválido"},
+                status_code=401,
+            )
+        # O token prova apenas que a chamada saiu desta máquina; a senha é o gate
+        # humano. Enquanto nenhuma senha existir o app segue aberto (primeira execução),
+        # e é a própria GUI que leva o usuário a criá-la.
+        if (
+            request.method == "OPTIONS"
+            or request.url.path in passcode_open_paths
+            or not passcode_guard.configured()
+            or _passcode_authenticated(request)
+        ):
             return await call_next(request)
         return JSONResponse(
-            {"error": "missing or invalid Mangaba sidecar token"},
+            {"error": "senha necessária", "code": "passcode_required"},
             status_code=401,
         )
 
@@ -240,6 +281,79 @@ def create_app(manager: SessionManager) -> FastAPI:
             "default_workspace": manager.default_workspace,
             "model": manager.model,
         }
+
+    # -- senha local (gate humano da GUI) -------------------------------------
+    # O token do sidecar não protege de quem já está na máquina destravada; estas
+    # rotas são a camada que pede a senha. Elas ficam FORA do gate por construção
+    # (passcode_open_paths), então cada uma valida o que precisa por conta própria.
+
+    @app.get("/v1/auth/status")
+    def auth_status(request: Request) -> dict[str, Any]:
+        return {
+            "configured": passcode_guard.configured(),
+            "authenticated": _passcode_authenticated(request),
+            "locked_for": passcode_guard.locked_for(),
+        }
+
+    @app.post("/v1/auth/setup")
+    async def auth_setup(request: Request) -> dict[str, Any]:
+        # Só a PRIMEIRA definição passa por aqui. Depois de configurada, trocar a
+        # senha exige a atual (/v1/auth/change) — senão qualquer aba aberta poderia
+        # redefinir o gate que acabou de ser criado.
+        if passcode_guard.configured():
+            return {"ok": False, "error": "a senha já foi definida neste computador"}
+        body = await request.json()
+        passcode = str(body.get("passcode") or "")
+        problem = validate_passcode(passcode)
+        if problem:
+            return {"ok": False, "error": problem}
+        passcode_guard.set_passcode(passcode)
+        token = passcode_guard.login(passcode)
+        return {"ok": True, "session": token}
+
+    @app.post("/v1/auth/login")
+    async def auth_login(request: Request) -> dict[str, Any]:
+        if not passcode_guard.configured():
+            return {"ok": False, "error": "nenhuma senha definida neste computador"}
+        locked = passcode_guard.locked_for()
+        if locked:
+            return {
+                "ok": False,
+                "error": f"tentativas demais — aguarde {locked}s",
+                "locked_for": locked,
+            }
+        body = await request.json()
+        token = passcode_guard.login(str(body.get("passcode") or ""))
+        if not token:
+            wait = passcode_guard.locked_for()
+            return {
+                "ok": False,
+                "error": (
+                    f"tentativas demais — aguarde {wait}s" if wait else "senha incorreta"
+                ),
+                "locked_for": wait,
+            }
+        return {"ok": True, "session": token}
+
+    @app.post("/v1/auth/logout")
+    def auth_logout(request: Request) -> dict[str, Any]:
+        passcode_guard.logout(request.headers.get("x-mangaba-session", ""))
+        return {"ok": True}
+
+    @app.post("/v1/auth/change")
+    async def auth_change(request: Request) -> dict[str, Any]:
+        body = await request.json()
+        current = str(body.get("current") or "")
+        next_passcode = str(body.get("passcode") or "")
+        if not passcode_guard.verify(current):
+            return {"ok": False, "error": "a senha atual está incorreta"}
+        problem = validate_passcode(next_passcode)
+        if problem:
+            return {"ok": False, "error": problem}
+        passcode_guard.set_passcode(next_passcode)
+        # Trocar a senha derruba as outras sessões — é o ponto de trocá-la.
+        passcode_guard.logout_all()
+        return {"ok": True, "session": passcode_guard.login(next_passcode)}
 
     @app.get("/v1/agents")
     def agents() -> dict[str, Any]:
@@ -344,7 +458,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                     "error": "Channel names can't be looked up — paste the channel ID "
                     "(channel name ▸ About) or the channel's Copy-link URL.",
                 }
-            return {"ok": False, "error": "need a session_id and a channel"}
+            return {"ok": False, "error": "é preciso um session_id e um canal"}
         manager.subscriptions.subscribe(session_id, addr)
         return {"ok": True, "channel": addr}
 
@@ -370,7 +484,7 @@ def create_app(manager: SessionManager) -> FastAPI:
     def set_inbox_binding(body: dict) -> dict[str, Any]:
         name = str(body.get("name", "")).strip()
         if not name:
-            return {"ok": False, "error": "binding needs a `name`"}
+            return {"ok": False, "error": "a vinculação precisa de um `name`"}
         return manager.set_inbox_binding(
             name,
             channel=body.get("channel") or None,
@@ -402,7 +516,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         body = body or {}
         connector = str(body.get("connector", "")).strip()
         if not connector:
-            return {"ok": False, "error": "connector required"}
+            return {"ok": False, "error": "conector obrigatório"}
         if body.get("clear"):
             manager.session_connections.clear(session_id, connector)
         else:
@@ -442,7 +556,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                 if manifest is None:
                     return {
                         "ok": False,
-                        "error": "gallery requires cloud sign-in (or the cloud is unreachable)",
+                        "error": "a galeria exige login na nuvem (ou a nuvem está inacessível)",
                     }
                 markdown = manifest.get("manifest_markdown", "")
                 digest = "sha256:" + hashlib.sha256(markdown.encode()).hexdigest()
@@ -450,7 +564,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                     manifest.get("manifest_hash")
                     and manifest["manifest_hash"] != digest
                 ):
-                    return {"ok": False, "error": "manifest hash mismatch"}
+                    return {"ok": False, "error": "hash do manifesto não confere"}
                 with tempfile.TemporaryDirectory() as td:
                     (Path(td) / f"{slug}.md").write_text(markdown)
                     summaries = reg.install_from_dir(td)
@@ -458,7 +572,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             else:
                 return {
                     "ok": False,
-                    "error": "provide a `dir`, `git_url`, or `gallery_slug`",
+                    "error": "informe um `dir`, `git_url` ou `gallery_slug`",
                 }
         except Exception as e:  # surface manifest/clone errors to the caller
             return {"ok": False, "error": str(e)}
@@ -473,7 +587,7 @@ def create_app(manager: SessionManager) -> FastAPI:
 
         body = cloud.gallery_detail(manager.secrets, load_config(), slug)
         if body is None:
-            return {"ok": False, "error": "gallery requires cloud sign-in"}
+            return {"ok": False, "error": "a galeria exige login na nuvem"}
         return body
 
     @app.get("/v1/cloud/gallery")
@@ -487,7 +601,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         if body is None:
             return {
                 "ok": False,
-                "error": "gallery requires cloud sign-in",
+                "error": "a galeria exige login na nuvem",
                 "personas": [],
             }
         return {"ok": True, "personas": body.get("personas", [])}
@@ -549,7 +663,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         body = body or {}
         connector = str(body.get("connector", "")).strip()
         if not connector:
-            return {"ok": False, "error": "connector required"}
+            return {"ok": False, "error": "conector obrigatório"}
         return manager.set_persona_connection(
             persona_id, connector, bool(body.get("enabled", False))
         )
@@ -666,7 +780,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         name = body.get("name")
         config = body.get("config")
         if not name or not isinstance(config, dict):
-            return {"ok": False, "error": "name and config required"}
+            return {"ok": False, "error": "name e config são obrigatórios"}
         return manager.add_mcp(name, config)
 
     @app.patch("/v1/mcp/{name}")
@@ -848,9 +962,9 @@ def create_app(manager: SessionManager) -> FastAPI:
         senders = body.get("senders") if isinstance(body, dict) else None
         labels = body.get("labels") if isinstance(body, dict) else None
         if senders is not None and not isinstance(senders, list):
-            return {"ok": False, "error": "senders must be a list"}
+            return {"ok": False, "error": "senders precisa ser uma lista"}
         if labels is not None and not isinstance(labels, list):
-            return {"ok": False, "error": "labels must be a list"}
+            return {"ok": False, "error": "labels precisa ser uma lista"}
         return gmail_accounts.set_filters(manager.secrets, senders, labels)
 
     @app.post("/v1/connectors/google_calendar/accounts/{email}/disconnect")
@@ -907,7 +1021,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         from ..connectors import accounts
 
         if not accounts.is_account_connector(name):
-            return {"ok": False, "error": "not a multi-account connector"}
+            return {"ok": False, "error": "não é um conector de múltiplas contas"}
         _id, profile_key, profile = accounts.resolve(manager.secrets, name, account_id)
         if profile and profile.get("managed"):
             await asyncio.to_thread(
@@ -922,7 +1036,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         from ..connectors import accounts
 
         if not accounts.is_account_connector(name):
-            return {"ok": False, "error": "not a multi-account connector"}
+            return {"ok": False, "error": "não é um conector de múltiplas contas"}
         return accounts.set_default(manager.secrets, name, account_id)
 
     @app.patch("/v1/connectors/hubspot/hidden-fields")
@@ -933,7 +1047,7 @@ def create_app(manager: SessionManager) -> FastAPI:
 
         fields = body.get("hidden_fields") if isinstance(body, dict) else None
         if not isinstance(fields, list):
-            return {"ok": False, "error": "hidden_fields must be a list"}
+            return {"ok": False, "error": "hidden_fields precisa ser uma lista"}
         return hubspot_portals.set_hidden_fields(manager.secrets, fields)
 
     @app.post("/v1/connectors/{name}/unauthorized/{item_id}")
@@ -1091,7 +1205,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                     "Connection failed",
                     _CONNECT_FAILED_DETAIL,
                     ok=False,
-                    error="unknown or expired connection attempt",
+                    error="tentativa de conexão desconhecida ou expirada",
                 ),
                 status_code=400,
             )
@@ -1199,7 +1313,7 @@ def create_app(manager: SessionManager) -> FastAPI:
     def connector_tools_patch(name: str, body: dict) -> dict[str, Any]:
         enabled = (body or {}).get("enabled")
         if not isinstance(enabled, dict):
-            return {"ok": False, "error": "enabled map required"}
+            return {"ok": False, "error": "mapa de habilitados obrigatório"}
         return manager.update_connector_tools(name, enabled)
 
     @app.post("/v1/connectors/{name}/allow")
@@ -1293,7 +1407,7 @@ def create_app(manager: SessionManager) -> FastAPI:
     def web_search_set(body: dict) -> dict[str, Any]:
         provider = (body or {}).get("provider", "")
         if not provider:
-            return {"ok": False, "error": "provider required"}
+            return {"ok": False, "error": "provedor obrigatório"}
         return manager.set_web_search(provider, (body or {}).get("api_key"))
 
     # -- model providers (OpenAI, Ollama, …) ------------------------------------
@@ -1579,7 +1693,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                 return {"granted": False, "reason": "the user declined the request"}
             path = (resp.get("path") or args.get("path") or "").strip()
             if not path:
-                return {"granted": False, "error": "no directory was provided"}
+                return {"granted": False, "error": "nenhuma pasta foi informada"}
             writable = bool(resp.get("writable", args.get("writable", False)))
             res = manager.add_root(session_id, path, writable)
             if not res.get("ok"):
@@ -1671,7 +1785,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                 {
                     "type": "error",
                     "data": {
-                        "error": "no valid workspace — choose a project folder first"
+                        "error": "nenhuma área de trabalho válida — escolha uma pasta de projeto primeiro"
                     },
                 }
             )

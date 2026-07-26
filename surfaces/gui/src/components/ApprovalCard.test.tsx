@@ -31,7 +31,7 @@ describe("ApprovalCard — standing scoped approvals (§25)", () => {
         runTask={RUN_TASK}
       />,
     );
-    fireEvent.click(screen.getByText("Allow every time"));
+    fireEvent.click(screen.getByText("Permitir todas as vezes"));
     expect(onApprove).toHaveBeenCalledWith("always_task");
     expect(screen.queryByText("Always allow")).toBeNull();
     cleanup();
@@ -74,9 +74,9 @@ describe("ApprovalCard — standing scoped approvals (§25)", () => {
     );
     const grants = screen.getByTestId("approval-grants");
     expect(grants.textContent).toContain("slack:T1/C1");
-    expect(grants.textContent).toContain("always allowed once you approve");
+    expect(grants.textContent).toContain("sempre permitido depois que você aprovar");
     expect(grants.textContent).toContain("rohit/agent-platform");
-    expect(grants.textContent).toContain("read-only");
+    expect(grants.textContent).toContain("somente leitura");
     // The raw permissions JSON must not also dump into the args line.
     expect(screen.queryByText(/permissions=/)).toBeNull();
   });
@@ -96,17 +96,17 @@ describe("ApprovalCard — §35 shapes", () => {
       />,
     );
     const row = screen.getByTestId("approval-row");
-    expect(row.textContent).toContain("Write ");
+    expect(row.textContent).toContain("Escrever ");
     expect(row.textContent).toContain("fetch_data.py");
     expect(screen.queryByText(/Permission required/i)).toBeNull();
 
     // Preview expands INLINE from the tool args (the file doesn't exist yet).
     expect(screen.queryByText(/import json/)).toBeNull();
-    fireEvent.click(screen.getByText(/preview/));
+    fireEvent.click(screen.getByText(/prévia/));
     expect(screen.getByText(/import json/)).toBeTruthy();
-    expect(screen.getByText("show all 6 lines")).toBeTruthy();
+    expect(screen.getByText("ver todas as 6 linhas")).toBeTruthy();
 
-    fireEvent.click(screen.getByText("Allow"));
+    fireEvent.click(screen.getByText("Permitir"));
     expect(onApprove).toHaveBeenCalledWith("once");
   });
 
@@ -120,11 +120,11 @@ describe("ApprovalCard — §35 shapes", () => {
         onApprove={vi.fn()}
       />,
     );
-    expect(screen.getByText(/Send a file to/).textContent).toContain("C9");
-    expect(screen.getByText(/leaves this Mac → Slack/)).toBeTruthy();
+    expect(screen.getByText(/Enviar um arquivo para/).textContent).toContain("C9");
+    expect(screen.getByText(/sai deste Mac → Slack/)).toBeTruthy();
     expect(screen.getByText(/report\.pdf/)).toBeTruthy();
     expect(screen.getByText(/here you go/)).toBeTruthy();
-    expect(screen.getByText("Allow once")).toBeTruthy();
+    expect(screen.getByText("Permitir uma vez")).toBeTruthy();
   });
 
   it("long single-paragraph send_message text is clamped, expandable, and never a wall", () => {
@@ -135,9 +135,9 @@ describe("ApprovalCard — §35 shapes", () => {
 
     const prev = document.querySelector(".approval-prev") as HTMLElement;
     expect(prev.textContent!.length).toBeLessThan(500);
-    fireEvent.click(screen.getByText("show the full message"));
+    fireEvent.click(screen.getByText("ver a mensagem completa"));
     expect(document.querySelector(".approval-prev")!.textContent!.length).toBeGreaterThan(1000);
-    expect(screen.getByText("show less")).toBeTruthy();
+    expect(screen.getByText("ver menos")).toBeTruthy();
   });
 
   it("short send_message text keeps the inline quote (no preview box)", () => {
@@ -157,10 +157,10 @@ describe("ApprovalCard — §35 shapes", () => {
         onApprove={vi.fn()}
       />,
     );
-    expect(screen.getByText(/Run a command — fetch semiconductor stock data/)).toBeTruthy();
+    expect(screen.getByText(/Rodar um comando — fetch semiconductor stock data/)).toBeTruthy();
     expect(screen.getByText(/python3 fetch\.py/)).toBeTruthy();
-    expect(screen.getByText(/stays on this Mac/)).toBeTruthy();
-    expect(screen.getByText("Always allow this command")).toBeTruthy();
+    expect(screen.getByText(/fica neste Mac/)).toBeTruthy();
+    expect(screen.getByText("Permitir sempre este comando")).toBeTruthy();
   });
 });
 
@@ -187,15 +187,15 @@ describe("InboxItemCard — Allow every time on parked run approvals", () => {
         onResolve={onResolve}
       />,
     );
-    fireEvent.click(screen.getByText("Allow every time"));
+    fireEvent.click(screen.getByText("Permitir todas as vezes"));
     expect(onResolve).toHaveBeenCalledWith("i1", "always_task");
     cleanup();
 
     // A plain unattended-session approval (no task data) keeps Approve/Deny only.
     render(<InboxItemCard item={baseItem()} onResolve={vi.fn()} />);
     expect(screen.queryByText("Allow every time")).toBeNull();
-    expect(screen.getByText("Approve")).toBeTruthy();
-    expect(screen.getByText("Deny")).toBeTruthy();
+    expect(screen.getByText("Aprovar")).toBeTruthy();
+    expect(screen.getByText("Negar")).toBeTruthy();
   });
 
   it("parked approvals with tool data wear the §35 dress — same dialect as the live card", () => {
@@ -213,9 +213,9 @@ describe("InboxItemCard — Allow every time on parked run approvals", () => {
     expect(screen.getByText("fetch_data.py")).toBeTruthy();
     expect(screen.queryByText("Run `send_message`?")).toBeNull();
     expect(screen.getByText(/import json/)).toBeTruthy();
-    expect(screen.getByText(/stays on this Mac/)).toBeTruthy();
+    expect(screen.getByText(/fica neste Mac/)).toBeTruthy();
     // §35 labels; resolution vocabulary unchanged (works on every approver path).
-    fireEvent.click(screen.getByText("Allow once"));
+    fireEvent.click(screen.getByText("Permitir uma vez"));
     expect(onResolve).toHaveBeenCalledWith("i1", "allow");
     // Old rows without tool data keep the legacy treatment (covered above).
   });

@@ -52,7 +52,7 @@ describe("Composer voice input (§37)", () => {
   it("renders no mic at all outside the desktop app", () => {
     delete (globalThis as any).__TAURI__;
     render(<Composer {...props()} />);
-    expect(screen.queryByLabelText(/dictation|Voice Input/)).toBeNull();
+    expect(screen.queryByLabelText(/ditado|entrada de voz/i)).toBeNull();
   });
 
   it("not ready → muted mic deep-links to Settings instead of recording", async () => {
@@ -62,7 +62,7 @@ describe("Composer voice input (§37)", () => {
     const onConfigureVoiceInput = vi.fn();
     render(<Composer {...props({ onConfigureVoiceInput })} />);
 
-    const mic = await screen.findByLabelText("Configure Voice Input in Settings");
+    const mic = await screen.findByLabelText("Configure a entrada de voz nas Configurações");
     expect(mic.getAttribute("aria-disabled")).toBe("true");
     fireEvent.click(mic);
     await waitFor(() => expect(onConfigureVoiceInput).toHaveBeenCalled());
@@ -72,10 +72,10 @@ describe("Composer voice input (§37)", () => {
   it("ready → record shows the waveform and protects Send; stop inserts an editable draft", async () => {
     render(<Composer {...props()} />);
 
-    fireEvent.click(await screen.findByLabelText("Start dictation"));
-    const stop = await screen.findByLabelText("Stop dictation");
+    fireEvent.click(await screen.findByLabelText("Iniciar ditado"));
+    const stop = await screen.findByLabelText("Parar ditado");
     expect(document.querySelector(".voice-wave-bars")).toBeTruthy();
-    expect(screen.getByLabelText("Send").hasAttribute("disabled")).toBe(true);
+    expect(screen.getByLabelText("Enviar").hasAttribute("disabled")).toBe(true);
 
     invoke.mockImplementation(async (cmd: string) => {
       if (cmd === "stop_dictation") return "hello from the mic";
@@ -83,8 +83,8 @@ describe("Composer voice input (§37)", () => {
       return null;
     });
     fireEvent.click(stop);
-    await screen.findByLabelText("Start dictation"); // recording UI wound down
-    const box = screen.getByPlaceholderText(/Ask the mangaba/) as HTMLTextAreaElement;
+    await screen.findByLabelText("Iniciar ditado"); // recording UI wound down
+    const box = screen.getByPlaceholderText(/Peça ao Mangaba/) as HTMLTextAreaElement;
     expect(box.value).toBe("hello from the mic"); // a DRAFT — nothing auto-sent
     expect(document.querySelector(".voice-wave-bars")).toBeNull();
   });
@@ -97,8 +97,8 @@ describe("Composer voice input (§37)", () => {
     });
     render(<Composer {...props()} />);
 
-    fireEvent.click(await screen.findByLabelText("Start dictation"));
+    fireEvent.click(await screen.findByLabelText("Iniciar ditado"));
     expect((await screen.findByRole("alert")).textContent).toContain("No microphone is available.");
-    expect(screen.getByLabelText("Start dictation").hasAttribute("disabled")).toBe(false);
+    expect(screen.getByLabelText("Iniciar ditado").hasAttribute("disabled")).toBe(false);
   });
 });

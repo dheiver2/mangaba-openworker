@@ -54,12 +54,12 @@ export function ProviderMark({ name, title, size = 32 }: { name: string; title: 
 export function relTime(epoch?: number | null): string | null {
   if (!epoch) return null;
   const secs = Math.max(0, Math.floor(Date.now() / 1000 - epoch));
-  if (secs < 90) return "just now";
+  if (secs < 90) return "agora há pouco";
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 60) return `há ${mins}m`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 48) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  if (hrs < 48) return `há ${hrs}h`;
+  return `há ${Math.floor(hrs / 24)}d`;
 }
 
 export interface ProviderSetupState {
@@ -216,17 +216,17 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
       const used = o?.lastUsed ? relTime(p.last_used_at) : null;
       return (
         <span className="block text-[11.5px] text-ok font-medium truncate">
-          ✓ Connected{used ? <span className="text-muted font-normal"> · used {used}</span> : ""}
+          ✓ Conectado{used ? <span className="text-muted font-normal"> · usado {used}</span> : ""}
         </span>
       );
     }
     if (!p.needs_key)
       return (
         <span className="block text-[11.5px] text-faint truncate">
-          {keylessOk.has(p.name) ? <span className="text-ok font-medium">✓ Running</span> : "No key needed"}
+          {keylessOk.has(p.name) ? <span className="text-ok font-medium">✓ Rodando</span> : "Não precisa de chave"}
         </span>
       );
-    return <span className="block text-[11.5px] text-faint truncate">Not set up</span>;
+    return <span className="block text-[11.5px] text-faint truncate">Não configurado</span>;
   };
 
   return {
@@ -385,7 +385,7 @@ export function ProviderForm({
                   disabled={ps.verify.state === "testing" || (f.secret && !ps.secretFilled && !ps.credentialed)}
                   data-testid={`${tp}-test`}
                 >
-                  {ps.verify.state === "testing" ? "…" : info?.needs_key ? "Test" : "Detect"}
+                  {ps.verify.state === "testing" ? "…" : info?.needs_key ? "Testar" : "Detectar"}
                 </button>
               )}
             </div>

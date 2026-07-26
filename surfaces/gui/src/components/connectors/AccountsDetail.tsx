@@ -47,7 +47,7 @@ export function AccountsDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
                 </span>
               </>
             ) : (
-              <span>Not connected</span>
+              <span>Não conectado</span>
             )}
           </div>
         </div>
@@ -58,17 +58,17 @@ export function AccountsDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
           disabled={busy}
           title={
             c.managed && !cloud?.signed_in
-              ? "Sign in to Mangaba Cloud for one-click — or add a token below"
+              ? "Entre no Mangaba Cloud para conectar com um clique — ou adicione um token abaixo"
               : ""
           }
         >
-          {busy ? "Check your browser…" : "＋ Add account"}
+          {busy ? "Confira seu navegador…" : "＋ Adicionar conta"}
         </button>
       </div>
 
       {accounts.length > 0 && (
         <>
-          <div className={GRP_H + " !mt-0"}>Accounts</div>
+          <div className={GRP_H + " !mt-0"}>Contas</div>
           <div className={GRP} data-testid="accounts-group">
             {accounts.map((a) => (
               <Row key={a.account_id} connector={c.name} a={a} onChanged={onChanged} />
@@ -80,7 +80,7 @@ export function AccountsDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
       {(showManual || !c.connected) && (
         <>
           <div className={GRP_H + (accounts.length ? "" : " !mt-0")}>
-            {c.managed ? "Add manually" : "Add an account"}
+            {c.managed ? "Adicionar manualmente" : "Adicionar uma conta"}
           </div>
           <div className={GRP} data-testid="accounts-manual-add">
             <div className="px-1.5 py-1">
@@ -99,8 +99,8 @@ export function AccountsDetail({ c, cloud, slack: _slack, onChanged }: DetailPro
 
       <ToolsDisclosure c={c} onChanged={onChanged} />
       <div className={FOOT + " mt-2"}>
-        Each account stays separate — tool results and approvals name the account
-        they used.
+        Cada conta fica separada — os resultados das ferramentas e as aprovações dizem qual conta
+        foi usada.
       </div>
     </div>
   );
@@ -125,7 +125,7 @@ function Row({
             {a.account_id}
           </span>
         )}
-        {a.default && <span className={TAG_ACCENT}>Default</span>}
+        {a.default && <span className={TAG_ACCENT}>Padrão</span>}
       </span>
       {!a.default && (
         <button
@@ -141,7 +141,7 @@ function Row({
       )}
       <button
         className={XBTN}
-        title="Disconnect this account"
+        title="Desconectar esta conta"
         data-testid={`account-disconnect-${a.account_id}`}
         disabled={busy}
         onClick={async () => {

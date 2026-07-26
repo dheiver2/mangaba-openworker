@@ -813,7 +813,7 @@ def test_ws_requires_workspace_when_no_default(tmp_path):
     with client.websocket_connect("/ws/session/nofolder") as ws:
         first = ws.receive_json()
         assert first["type"] == "error"
-        assert "workspace" in first["data"]["error"]
+        assert "área de trabalho" in first["data"]["error"]
 
 
 def test_ws_with_workspace_query(tmp_path):
@@ -967,7 +967,7 @@ def test_pick_native_folder_paths(tmp_path, monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", boom)
     out = mgr.pick_native_folder()
-    assert out["ok"] is False and "picker" in out["error"]
+    assert out["ok"] is False and "seletor de pastas" in out["error"]
 
 
 def test_provider_set_and_remove_roundtrip(tmp_path):
