@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
-import { Heart, MessageCircle, Share2, Bookmark, Play, Pause, Volume2, VolumeX } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { Heart, MessageCircle, Share2, Bookmark, Play } from 'lucide-react'
 
 interface Video {
   id: string
