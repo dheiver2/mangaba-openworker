@@ -1,0 +1,40 @@
+version: build-{build}
+
+image: Visual Studio 2022
+
+# Disparo manual pelo painel do AppVeyor (não builda em todo push) — existe só
+# para gerar os instaladores .exe/.msi do Windows, já que PyInstaller não faz
+# cross-compile a partir do macOS. Ver packaging/build_windows.ps1.
+skip_branch_with_pr: true
+skip_commits:
+  message: /\[skip appveyor\]/
+
+environment:
+  PYTHON: "C:\\Python311-x64"
+
+install:
+  - "SET PATH=%PYTHON%;%PYTHON%\\Scripts;%PATH%"
+  - python -m venv .venv
+  - .\.venv\Scripts\pip install --upgrade pip
+  - .\.venv\Scripts\pip install -e . pyinstaller tzdata typer
+  - ps: |
+      cd surfaces\gui
+      npm ci
+      cd ..\..
+
+build_script:
+  - ps: powershell -ExecutionPolicy Bypass -File packaging\build_windows.ps1
+
+after_build:
+  - ps: |
+      $bundleDir = "surfaces\gui\src-tauri\target\release\bundle"
+      Get-ChildItem -Path $bundleDir -Recurse -Include *.exe,*.msi | ForEach-Object {
+        Write-Host "Publicando artefato: $($_.FullName)"
+        Push-AppveyorArtifact $_.FullName -FileName $_.Name
+      }
+
+artifacts:
+  - path: 'surfaces\gui\src-tauri\target\release\bundle\**\*.exe'
+    name: installers
+  - path: 'surfaces\gui\src-tauri\target\release\bundle\**\*.msi'
+    name: installers
