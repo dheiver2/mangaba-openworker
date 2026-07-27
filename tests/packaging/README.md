@@ -50,3 +50,32 @@ Windows) nenhuma checagem estática pegaria. Para isso não há substituto para
 rodar em Windows de verdade; na falta disso, o app grava
 `%APPDATA%\mangaba\logs\mangaba-launcher.log` e `mangaba-server.log` com o motivo
 exato da falha.
+
+## Teste funcional do app instalado
+
+`testar_app_instalado.py` sobe o sidecar **do app já instalado** como processo de
+verdade, numa porta livre e com estado isolado, e consome a API como a interface
+faz. É o nível que faltava: a suíte do projeto roda o servidor em processo
+(`TestClient`), então prova que o código funciona — e todos os defeitos desta
+sessão viveram no vão seguinte, com o código certo e o empacotamento quebrado.
+
+```shell
+# macOS
+python3 tests/packaging/testar_app_instalado.py
+
+# Windows (o instalador padrão põe em %LOCALAPPDATA%\Mangaba)
+python tests\packaging\testar_app_instalado.py
+```
+
+Quando o sidecar não sobe, a saída dele é impressa — que é justamente o
+diagnóstico que falta quando o app fica em "Não conectado". Por isso serve
+também como ferramenta de suporte: o usuário Windows roda e manda a saída, em
+vez de caçar arquivo de log.
+
+## Contrato entre as linguagens
+
+`tests/test_contrato_rust_python.py` (roda no pytest normal) lê os fontes de
+Rust, Python e TypeScript e afirma que continuam combinando nos nomes que nenhum
+compilador confere: variáveis de ambiente, cabeçalhos HTTP, argumentos de linha
+de comando e onde o sidecar mora. Renomear de um lado e esquecer do outro
+compila, passa nos testes de unidade e só falha na máquina do usuário.
