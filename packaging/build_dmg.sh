@@ -159,6 +159,14 @@ if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
   codesign --force --deep --sign - "$GUI/src-tauri/target/release/bundle/macos/$APP.app"
 fi
 
+# Verificação do artefato antes de empacotar. Espelha o que
+# tests/packaging/verificar_windows.py faz do outro lado, e existe pelo mesmo
+# motivo: a v0.1.8 saiu com assinatura estruturalmente quebrada (sem Sealed
+# Resources) e o app não abria. Falhar aqui é melhor que descobrir pelo usuário.
+echo "==> [3.9/5] verificando o bundle"
+python3 "$PLATFORM/tests/packaging/verificar_macos.py" \
+  "$GUI/src-tauri/target/release/bundle/macos/$APP.app" --versao "$VERSION"
+
 echo "==> [4/5] hdiutil: wrapping into .dmg"
 BUNDLE="$GUI/src-tauri/target/release/bundle"
 STAGING="$(mktemp -d)"

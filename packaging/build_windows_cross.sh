@@ -96,6 +96,14 @@ PTH
 
 x86_64-w64-mingw32-gcc -O2 -o "$SIDECAR/mangaba-server.exe" "$REPO/packaging/win_launcher.c"
 
+# Nada aqui valida o fecho de dependências: as wheels são extraídas na mão
+# (`pip install --target` recusa wheels de outra plataforma), então um pacote
+# faltando só apareceria em Windows, com o servidor morrendo no import e o app
+# preso em "Não conectado". Falhar agora custa segundos; falhar lá custa uma
+# release.
+python3 "$REPO/tests/packaging/verificar_deps_sidecar.py" \
+    --site-packages "$SIDECAR/Lib/site-packages"
+
 echo "==> [4/6] libs do whisper.cpp (aliases + stub BLAS)"
 # Três atritos reais do whisper-rs no cross-compile, todos resolvidos aqui:
 #  (a) o bindgen procura headers do macOS -> BINDGEN_EXTRA_CLANG_ARGS aponta o mingw;
@@ -160,37 +168,6 @@ if [ -n "$GGML_LIB" ]; then
     done
 fi
 
-echo "==> [4.5/6] conferindo o ícone embutido no .exe"
-# O recurso de ícone fica em cache: trocar icons/icon.ico e rebuildar NÃO
-# re-embute o ícone novo — o binário sai com o antigo e só se percebe olhando a
-# barra de tarefas do Windows. Comparar os corpos das imagens do .ico com os
-# bytes do .exe pega isso; quando falha, `cargo clean -p mangaba-desktop`
-# resolve. Roda antes do empacotamento para não gerar um instalador errado.
-APP_EXE="$GUI/src-tauri/target/x86_64-pc-windows-gnu/release/mangaba-desktop.exe"
-if [ -f "$APP_EXE" ]; then
-    python3 - "$GUI/src-tauri/icons/icon.ico" "$APP_EXE" <<'PY'
-import struct, sys, pathlib
-ico = pathlib.Path(sys.argv[1]).read_bytes()
-exe = pathlib.Path(sys.argv[2]).read_bytes()
-_, _, n = struct.unpack("<HHH", ico[:6])
-achados = 0
-for i in range(n):
-    off = 6 + i * 16
-    largura, _, _, _, _, _, tam, dados = struct.unpack("<BBBBHHII", ico[off:off + 16])
-    largura = largura or 256
-    if ico[dados:dados + tam] in exe:
-        achados += 1
-    else:
-        print(f"  AUSENTE  icone {largura}x{largura} nao esta no .exe")
-if achados != n:
-    print(f"\nFALHA: so {achados}/{n} tamanhos do icone atual estao embutidos.")
-    print("O binario ficou com um icone antigo em cache. Rode:")
-    print("  cargo clean -p mangaba-desktop --release --target x86_64-pc-windows-gnu")
-    sys.exit(1)
-print(f"  OK    {achados}/{n} tamanhos do icone atual embutidos")
-PY
-fi
-
 echo "==> [5/6] template NSIS em modo ANSI"
 # O makensis do Homebrew estoura memória (std::bad_alloc) ao gerar as tabelas de
 # idioma no modo Unicode — reproduzível até num script de 3 linhas sem arquivo
@@ -238,48 +215,16 @@ echo ""
 echo "Pronto:"
 ls -la "$SAIDA"/*.exe
 
-# Conferência de DLLs. Verificar só que os arquivos estão dentro do instalador
-# NÃO basta: a v0.1.8 saiu "completa" por esse critério e mesmo assim não abria,
-# porque o .exe pedia libstdc++-6.dll. Aqui a lista de imports é comparada com
-# o que existe de fábrica no Windows; qualquer sobra é um app que não inicia.
+# Verificação do artefato. É o que substitui o teste que não dá para fazer daqui
+# (rodar em Windows), e cada checagem existe por um build quebrado que chegou aos
+# usuários — DLL pendurada, ícone em cache, sidecar incompleto. Falhar aqui é o
+# ponto: um instalador que não passa não deve ser publicado.
 echo ""
-echo "==> conferindo dependências de DLL"
-NATIVAS="kernel32|advapi32|api-ms-win|bcrypt|comctl32|crypt32|dwmapi|gdi32|imm32|ntdll|ole32|oleaut32|propsys|shell32|shlwapi|user32|userenv|ws2_32|msvcrt|version|dbghelp|powrprof|d3d11|dxgi|dcomp|uxtheme|winmm|setupapi|cfgmgr32|avrt|mf|ksuser"
-# WebView2Loader.dll não é do sistema, mas o próprio Tauri a empacota.
-PENDENTES=0
-for exe in "$GUI/src-tauri/target/x86_64-pc-windows-gnu/release/mangaba-desktop.exe" \
-           "$SIDECAR/mangaba-server.exe"; do
-    SOBRA="$(x86_64-w64-mingw32-objdump -p "$exe" 2>/dev/null \
-        | grep "DLL Name" | sed 's/.*DLL Name: //' | sort -u \
-        | grep -viE "^($NATIVAS)" | grep -vi "^WebView2Loader" || true)"
-    if [ -n "$SOBRA" ]; then
-        echo "  FALHA: $(basename "$exe") depende de DLL não distribuída:"
-        echo "$SOBRA" | sed 's/^/    /'
-        PENDENTES=1
-    else
-        echo "  OK    $(basename "$exe") — só DLLs presentes no Windows"
-    fi
-done
-if [ "$PENDENTES" = "1" ]; then
-    echo "" >&2
-    echo "Abortando: o app não iniciaria no Windows. Linke essas libs" >&2
-    echo "estaticamente (ex.: -C link-arg=-static-libstdc++) ou empacote as DLLs." >&2
-    exit 1
-fi
-
-# Verificação estrutural — o mais perto de um teste que dá para fazer no macOS.
-if command -v 7zz >/dev/null 2>&1; then
-    echo ""
-    echo "==> conferindo o conteúdo do instalador"
-    LISTA="$TRABALHO/listagem.txt"
-    7zz l "$SAIDA"/*.exe > "$LISTA" 2>&1
-    for f in mangaba-desktop.exe sidecar/mangaba-server.exe sidecar/python.exe \
-             "sidecar/python$PY_TAG.dll" "sidecar/python$PY_TAG._pth" sidecar/server_entry.py; do
-        if grep -q " $f\$" "$LISTA"; then echo "  OK    $f"; else echo "  FALTA $f"; fi
-    done
-    echo "  módulos mangaba: $(grep -c "sidecar/Lib/site-packages/mangaba/" "$LISTA")"
-fi
+echo "==> verificando o instalador"
+python3 "$REPO/tests/packaging/verificar_windows.py" "$SAIDA"/*.exe \
+    --icone "$GUI/src-tauri/icons/icon.ico"
 
 echo ""
 echo "AVISO: build não assinado e NÃO testado em Windows (impossível a partir do"
-echo "macOS). Na primeira execução o SmartScreen pede 'Mais informações' > 'Executar assim mesmo'."
+echo "macOS) — as checagens acima cobrem o ARTEFATO, não o funcionamento."
+echo "Na primeira execução o SmartScreen pede 'Mais informações' > 'Executar assim mesmo'."
