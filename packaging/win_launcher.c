@@ -29,6 +29,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Folga sobre MAX_PATH: o diretorio ja cabe em MAX_PATH, e concatenar o nome do
+ * arquivo pode passar do limite. Sem essa folga o gcc avisa de truncamento. */
+#define CAMINHO_MAX (MAX_PATH + 64)
+
 /* Acrescenta um argumento à linha de comando com as aspas que o CreateProcess
  * espera (regras de quoting do CommandLineToArgvW: aspas ao redor, barras
  * invertidas dobradas quando precedem uma aspa). Sem isso, caminhos com espaço
@@ -58,8 +62,64 @@ static void anexar_arg(char *destino, size_t tamanho, const char *arg) {
     destino[fim] = '\0';
 }
 
+/* Devolve um handle padrão pronto para ser herdado pelo Python.
+ *
+ * Dois cuidados que o servidor não perdoa. Primeiro, o handle precisa estar
+ * marcado como herdável: sem isso o CreateProcess com bInheritHandles=TRUE não
+ * repassa nada e o Python nasce com stdout/stderr inválidos — o uvicorn morre
+ * poucos segundos depois, na primeira linha de log que tenta escrever (é a
+ * trava "Starting mangaba…" que já apareceu neste projeto). Segundo, se o
+ * handle vier nulo/inválido (o app Tauri roda sem console), abrimos NUL: um
+ * descritor válido que descarta, muito melhor que um handle quebrado. */
+static HANDLE handle_herdavel(DWORD qual) {
+    HANDLE h = GetStdHandle(qual);
+    if (h == NULL || h == INVALID_HANDLE_VALUE) {
+        DWORD acesso = (qual == STD_INPUT_HANDLE) ? GENERIC_READ : GENERIC_WRITE;
+        SECURITY_ATTRIBUTES sa;
+        sa.nLength = sizeof(sa);
+        sa.lpSecurityDescriptor = NULL;
+        sa.bInheritHandle = TRUE;
+        h = CreateFileA("NUL", acesso, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                        &sa, OPEN_EXISTING, 0, NULL);
+        return (h == INVALID_HANDLE_VALUE) ? NULL : h;
+    }
+    SetHandleInformation(h, HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT);
+    return h;
+}
+
+/* Registra a falha em %APPDATA%\mangaba\logs\mangaba-launcher.log.
+ *
+ * O stderr é o canal normal de diagnóstico (o Tauri o aponta para o log do
+ * servidor), mas quando o que falha é justamente a herança de handles, escrever
+ * nele não chega a lugar nenhum. Este arquivo é a rede de segurança: sem ele,
+ * uma falha de inicialização vira uma tela girando para sempre, sem pista. */
+static void registrar_falha(const char *mensagem, DWORD erro) {
+    fprintf(stderr, "mangaba-server: %s (erro %lu)\n", mensagem, (unsigned long)erro);
+
+    const char *appdata = getenv("APPDATA");
+    if (!appdata) return;
+
+    /* Um buffer só, dimensionado a partir do %APPDATA% mais o maior sufixo que
+     * anexamos — assim o compilador enxerga que nunca há truncamento. */
+    char caminho[CAMINHO_MAX];
+    size_t base = strlen(appdata);
+    if (base + sizeof("\\mangaba\\logs\\mangaba-launcher.log") > sizeof(caminho)) return;
+
+    snprintf(caminho, sizeof(caminho), "%s\\mangaba", appdata);
+    CreateDirectoryA(caminho, NULL);
+    snprintf(caminho, sizeof(caminho), "%s\\mangaba\\logs", appdata);
+    CreateDirectoryA(caminho, NULL);
+    snprintf(caminho, sizeof(caminho), "%s\\mangaba\\logs\\mangaba-launcher.log", appdata);
+    const char *arquivo = caminho;
+
+    FILE *f = fopen(arquivo, "a");
+    if (!f) return;
+    fprintf(f, "mangaba-server: %s (erro %lu)\n", mensagem, (unsigned long)erro);
+    fclose(f);
+}
+
 int main(int argc, char **argv) {
-    char exePath[MAX_PATH];
+    char exePath[CAMINHO_MAX];
     if (!GetModuleFileNameA(NULL, exePath, MAX_PATH)) {
         fprintf(stderr, "mangaba-server: nao consegui descobrir o proprio caminho\n");
         return 1;
@@ -69,20 +129,23 @@ int main(int argc, char **argv) {
     char *ultimaBarra = strrchr(exePath, '\\');
     if (ultimaBarra) *ultimaBarra = '\0';
 
-    char pythonExe[MAX_PATH];
-    char entryScript[MAX_PATH];
-    snprintf(pythonExe, MAX_PATH, "%s\\python.exe", exePath);
-    snprintf(entryScript, MAX_PATH, "%s\\server_entry.py", exePath);
+    char pythonExe[CAMINHO_MAX];
+    char entryScript[CAMINHO_MAX];
+    if (strlen(exePath) + sizeof("\\server_entry.py") > sizeof(pythonExe)) {
+        registrar_falha("caminho de instalacao longo demais", 0);
+        return 1;
+    }
+    snprintf(pythonExe, sizeof(pythonExe), "%s\\python.exe", exePath);
+    snprintf(entryScript, sizeof(entryScript), "%s\\server_entry.py", exePath);
 
-    /* Falhar aqui com uma mensagem clara vale muito: o stderr vai para
-     * %APPDATA%\mangaba\logs\mangaba-server.log, que é a única janela de
-     * diagnóstico quando o app não conecta. */
+    /* Falhar aqui com mensagem clara vale muito: sem isso, um sidecar
+     * incompleto vira uma tela girando para sempre, sem nenhuma pista. */
     if (GetFileAttributesA(pythonExe) == INVALID_FILE_ATTRIBUTES) {
-        fprintf(stderr, "mangaba-server: python.exe nao encontrado em %s\n", pythonExe);
+        registrar_falha("python.exe nao encontrado ao lado do mangaba-server.exe", 0);
         return 1;
     }
     if (GetFileAttributesA(entryScript) == INVALID_FILE_ATTRIBUTES) {
-        fprintf(stderr, "mangaba-server: server_entry.py nao encontrado em %s\n", entryScript);
+        registrar_falha("server_entry.py nao encontrado ao lado do mangaba-server.exe", 0);
         return 1;
     }
 
@@ -102,17 +165,23 @@ int main(int argc, char **argv) {
     /* Repassa os handles padrão que o Tauri nos deu (stdout/stderr apontam para
      * o arquivo de log), senão a saída do Python se perde. */
     si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput  = GetStdHandle(STD_INPUT_HANDLE);
-    si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
-    si.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
+    si.hStdInput  = handle_herdavel(STD_INPUT_HANDLE);
+    si.hStdOutput = handle_herdavel(STD_OUTPUT_HANDLE);
+    si.hStdError  = handle_herdavel(STD_ERROR_HANDLE);
     ZeroMemory(&pi, sizeof(pi));
 
+    /* Se nem NUL abriu, é melhor deixar o Python herdar o que houver do que
+     * entregar handles nulos com STARTF_USESTDHANDLES — nesse caso o Windows
+     * daria descritores inválidos e o uvicorn morreria no primeiro log. */
+    if (!si.hStdInput || !si.hStdOutput || !si.hStdError) {
+        si.dwFlags = 0;
+    }
+
     if (!CreateProcessA(pythonExe, cmdline, NULL, NULL,
-                        TRUE,            /* herda os handles acima */
+                        TRUE,             /* herda os handles acima */
                         CREATE_NO_WINDOW, /* nada de janela de console piscando */
                         NULL, exePath, &si, &pi)) {
-        fprintf(stderr, "mangaba-server: falha ao iniciar %s (erro %lu)\n",
-                pythonExe, (unsigned long)GetLastError());
+        registrar_falha("falha ao iniciar o python", GetLastError());
         return 1;
     }
 
@@ -122,5 +191,12 @@ int main(int argc, char **argv) {
     GetExitCodeProcess(pi.hProcess, &codigo);
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
+
+    /* O servidor só termina quando o app fecha; sair com erro significa que ele
+     * caiu. Registrar isso transforma "a tela fica girando" em uma pista — o
+     * traceback em si vai para o mangaba-server.log, ao qual este aponta. */
+    if (codigo != 0) {
+        registrar_falha("o servidor python encerrou com erro; veja mangaba-server.log", codigo);
+    }
     return (int)codigo;
 }

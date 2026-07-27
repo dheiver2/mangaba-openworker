@@ -66,15 +66,20 @@ O app nativo (Tauri) é distribuído pelas releases —
 avisa — clique em "Mais informações" ▸ "Executar assim mesmo".
 
 - **Windows (x64)** —
-  [`Mangaba_0.1.10_x64-setup.exe`](https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.10/Mangaba_0.1.10_x64-setup.exe)
-  ([release v0.1.10](https://github.com/dheiver2/mangaba-openworker/releases/tag/v0.1.10)).
+  [`Mangaba_0.1.11_x64-setup.exe`](https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.11/Mangaba_0.1.11_x64-setup.exe)
+  ([release v0.1.11](https://github.com/dheiver2/mangaba-openworker/releases/tag/v0.1.11)).
   Gerado por cross-compile a partir do macOS
   (`packaging/build_windows_cross.sh`), porque não há máquina nem runner Windows
   disponível. O sidecar Python vem do runtime *embeddable* oficial do Windows
   com wheels `win_amd64` — não do PyInstaller, que exigiria rodar em Windows.
 
-  > **Use a v0.1.10.** A v0.1.8 nem abre (`libstdc++-6.dll não foi encontrado`) e
-  > a v0.1.9 abre mas não conecta ao sidecar.
+  > **Use sempre a release mais recente.** As anteriores têm defeitos conhecidos no
+  > Windows: a v0.1.8 nem abre (`libstdc++-6.dll não foi encontrado`), e a v0.1.9/v0.1.10
+  > abrem mas o sidecar não sobe.
+  >
+  > Se o app abrir e ficar em "Não conectado", os logs em
+  > `%APPDATA%\mangaba\logs\` (`mangaba-launcher.log` e `mangaba-server.log`)
+  > dizem exatamente onde parou.
 
 - **macOS (Apple Silicon)** —
   [`Mangaba_0.1.8_aarch64.dmg`](https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.8/Mangaba_0.1.8_aarch64.dmg)
