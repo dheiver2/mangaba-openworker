@@ -60,19 +60,28 @@ Requer o [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
 ### App desktop nativo (sem Docker)
 
-A [release v0.1.6](https://github.com/dheiver2/mangaba-openworker/releases/tag/v0.1.6)
+A [release v0.1.8](https://github.com/dheiver2/mangaba-openworker/releases/tag/v0.1.8)
 traz o app nativo (Tauri) —
 **não assinado**: no macOS, clique com o botão direito ▸ Abrir na primeira vez
 (o Gatekeeper bloqueia apps sem assinatura Apple); no Windows, o SmartScreen
 avisa — clique em "Mais informações" ▸ "Executar assim mesmo".
 
-- **macOS (Apple Silicon)** — `Mangaba_<versão>_aarch64.dmg`, gerado nesta
-  própria máquina de desenvolvimento via `packaging/build_dmg.sh`.
-- **Windows (x64)** — o binário do sidecar Python (PyInstaller) só pode ser
-  gerado **rodando em um Windows de verdade** — não há cross-compile daqui.
-  `packaging/build_windows.ps1` já existe e produz o `.exe`/`.msi`; falta
-  alguém com uma máquina Windows rodá-lo e publicar o artefato na release.
-  Até lá, o caminho garantido no Windows é o [Docker](#com-docker-recomendado).
+- **macOS (Apple Silicon)** —
+  [`Mangaba_0.1.8_aarch64.dmg`](https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.8/Mangaba_0.1.8_aarch64.dmg),
+  gerado via `packaging/build_dmg.sh`.
+- **Windows (x64)** —
+  [`Mangaba_0.1.8_x64-setup.exe`](https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.8/Mangaba_0.1.8_x64-setup.exe),
+  gerado por cross-compile a partir do macOS
+  (`packaging/build_windows_cross.sh`), porque não há máquina nem runner Windows
+  disponível. O sidecar Python vem do runtime *embeddable* oficial do Windows
+  com wheels `win_amd64` — não do PyInstaller, que exigiria rodar em Windows.
+  **Este instalador ainda não foi testado em uma máquina Windows real**: sua
+  integridade foi verificada só estruturalmente (conteúdo do instalador
+  conferido arquivo a arquivo). Quem tiver Windows e quiser um caminho já
+  validado, o [Docker](#com-docker-recomendado) continua sendo a opção segura.
+
+  Quem tiver uma máquina Windows pode gerar um build nativo (com PyInstaller e
+  instalador Unicode) usando `packaging/build_windows.ps1`.
 
 Abra o app, crie a senha de acesso, aponte para um modelo (ou para o Ollama) e
 peça algo de verdade.
