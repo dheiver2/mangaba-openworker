@@ -190,6 +190,14 @@ def create_app(manager: SessionManager) -> FastAPI:
         "/oauth/callback",
     }
 
+    # Modo GUI embutida (Docker): tudo que não é API é arquivo estático da interface —
+    # HTML, JS, imagens. Estático é público (é o mesmo bundle que o navegador baixaria
+    # do Vite); as rotas /v1 e /ws continuam atrás do token e da senha.
+    _gui_embutida = bool(os.environ.get("MANGABA_GUI_DIST", ""))
+
+    def _static_path(path: str) -> bool:
+        return _gui_embutida and not path.startswith(("/v1", "/ws", "/auth", "/mcp", "/oauth"))
+
     def _request_authenticated(request: Request) -> bool:
         provided = request.headers.get("x-mangaba-token", "")
         return bool(
@@ -239,6 +247,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             not api_token
             or request.method == "OPTIONS"
             or request.url.path in tokenless_paths
+            or _static_path(request.url.path)
             or _request_authenticated(request)
         ):
             pass
@@ -253,6 +262,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         if (
             request.method == "OPTIONS"
             or request.url.path in passcode_open_paths
+            or _static_path(request.url.path)
             or not passcode_guard.configured()
             or _passcode_authenticated(request)
         ):
@@ -2104,6 +2114,17 @@ def create_app(manager: SessionManager) -> FastAPI:
             pass
         finally:
             manager.unregister_event_client(ws.send_json)
+
+    # -- GUI embutida (modo Docker/produção) ------------------------------------
+    # Com MANGABA_GUI_DIST apontando para o build do Vite, o próprio servidor serve a
+    # interface em "/": um container só, uma porta só, mesma origem — o navegador abre
+    # http://localhost:8765 e pronto. As rotas /v1 e /ws foram registradas antes, então
+    # têm precedência; o mount cobre apenas o resto.
+    gui_dist = os.environ.get("MANGABA_GUI_DIST", "")
+    if gui_dist and Path(gui_dist).is_dir():
+        from fastapi.staticfiles import StaticFiles
+
+        app.mount("/", StaticFiles(directory=gui_dist, html=True), name="gui")
 
     return app
 

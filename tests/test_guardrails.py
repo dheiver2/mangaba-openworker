@@ -135,3 +135,25 @@ def test_diagnostics_e_local_e_completo(client):
 def test_export_de_sessao_vira_markdown(client):
     out = client.get("/v1/sessions/qualquer-id/export", headers=TOKEN).json()
     assert out["ok"] and out["markdown"].startswith("# ")
+
+
+# -- GUI embutida (modo Docker) ----------------------------------------------------
+
+
+def test_gui_embutida_serve_estaticos_sem_token_mas_api_continua_trancada(
+    tmp_path, monkeypatch
+):
+    gui = tmp_path / "gui-dist"
+    gui.mkdir()
+    (gui / "index.html").write_text("<title>Mangaba</title>", "utf-8")
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "estado"))
+    monkeypatch.setenv("MANGABA_API_TOKEN", "tok")
+    monkeypatch.setenv("MANGABA_GUI_DIST", str(gui))
+    client = TestClient(create_app(SessionManager()))
+
+    # A interface abre sem credencial nenhuma (é o mesmo bundle público do Vite)…
+    pagina = client.get("/")
+    assert pagina.status_code == 200 and "Mangaba" in pagina.text
+    # …mas a API continua exigindo o token do sidecar.
+    assert client.get("/v1/agents").status_code == 401
+    assert client.get("/v1/agents", headers=TOKEN).status_code == 200

@@ -31,12 +31,48 @@ escolher.
 
 ## Instalar
 
-O jeito rápido é rodar a partir do código (veja
-[Rodando a partir do código](#rodando-a-partir-do-código)). Os instaladores
-assinados ficam em [mangaba.ai](https://mangaba.ai):
+### Com Docker (recomendado)
 
-- **macOS (Apple Silicon)** — macOS 12+, assinado e notarizado, atualiza sozinho
-- **Windows 10/11 (x64)** — os builds ainda não são assinados, então o SmartScreen avisa
+Um container só: o servidor Python serve a própria interface.
+
+```shell
+docker compose up -d
+```
+
+Abra http://127.0.0.1:8765, crie a senha e pronto. A porta é publicada apenas em
+`127.0.0.1` — o agente nunca fica exposto na rede local. Os dados (senha,
+conversas, segredos de conectores) persistem no volume `mangaba-dados`, e a
+pasta `~/Mangaba` da máquina fica visível ao agente.
+
+**Atalho na Área de Trabalho:**
+
+```shell
+# macOS
+bash packaging/instalar_atalho_desktop.sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy Bypass -File packaging\instalar_atalho_desktop.ps1
+```
+
+Isso cria um ícone da manga na sua Área de Trabalho (`Mangaba.app` no macOS,
+`Mangaba.lnk` no Windows): dois cliques sobem o Docker Desktop se preciso, rodam
+o compose e abrem o navegador. Requer o [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+instalado — nos dois sistemas.
+
+### App desktop nativo (sem Docker)
+
+A aba [Releases](../../releases) deste repositório traz o app nativo (Tauri) —
+**não assinado**: no macOS, clique com o botão direito ▸ Abrir na primeira vez
+(o Gatekeeper bloqueia apps sem assinatura Apple); no Windows, o SmartScreen
+avisa — clique em "Mais informações" ▸ "Executar assim mesmo".
+
+- **macOS (Apple Silicon)** — `Mangaba_<versão>_aarch64.dmg`, gerado nesta
+  própria máquina de desenvolvimento via `packaging/build_dmg.sh`.
+- **Windows (x64)** — o binário do sidecar Python (PyInstaller) só pode ser
+  gerado **rodando em um Windows de verdade** — não há cross-compile daqui.
+  `packaging/build_windows.ps1` já existe e produz o `.exe`/`.msi`; falta
+  alguém com uma máquina Windows rodá-lo e publicar o artefato na release.
+  Até lá, o caminho garantido no Windows é o [Docker](#com-docker-recomendado).
 
 Abra o app, crie a senha de acesso, aponte para um modelo (ou para o Ollama) e
 peça algo de verdade.

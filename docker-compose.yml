@@ -1,0 +1,24 @@
+# Mangaba via Docker: `docker compose up -d` e abra http://localhost:8765.
+# O atalho da Área de Trabalho (packaging/instalar_atalho_desktop.sh) faz isso por você.
+services:
+  mangaba:
+    build: .
+    image: mangaba:local
+    container_name: mangaba
+    # Só a própria máquina alcança o app — nada de expor o agente na rede local.
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      # Tudo que persiste (senha, conversas, segredos de conectores) mora aqui.
+      - mangaba-dados:/data
+      # A pasta de trabalho que o agente pode ler/escrever. Ajuste à vontade.
+      - ~/Mangaba:/data/workspaces
+    environment:
+      # O Ollama roda no macOS, fora do container — este é o caminho até ele.
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  mangaba-dados:

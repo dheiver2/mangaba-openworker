@@ -1,0 +1,15 @@
+.git
+.venv
+**/node_modules
+**/dist
+surfaces/gui/test-results
+surfaces/gui/playwright-report
+darktok
+stt
+ui-mocks
+docs
+tests
+mangaba.egg-info
+**/__pycache__
+*.pyc
+.pytest_cache
