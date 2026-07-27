@@ -1,22 +1,22 @@
 // Cold-boot fixes (owner-hit 2026-07-23): the splash wears the real Mangaba mark
 // (6-point star SVG, not the ✦ text glyph that read as another product's logo), and the
 // model picker recovers when the mount-time settings fetch loses the race against the
-// sidecar boot — previously "Loading models…" stuck until the user visited Settings.
+// sidecar boot — previously "Carregando modelos…" stuck until the user visited Settings.
 import { expect } from "@playwright/test";
 import { test } from "./fixtures";
 
-test("boot splash shows the Mangaba star, not the sparkle glyph", async ({ page }) => {
+test("a splash de boot mostra a logomarca oficial, não um glifo", async ({ page }) => {
   // Hold health long enough to observe the splash.
   await page.route("**/v1/health", async (route) => {
     await new Promise((r) => setTimeout(r, 1500));
     await route.fallback();
   });
   await page.goto("/");
-  const mark = page.locator(".boot-mark");
+  const mark = page.locator(".boot-splash .brand-lockup");
   await expect(mark).toBeVisible();
-  await expect(mark.locator("svg")).toBeVisible(); // the Icon logo, not a text glyph
+  await expect(mark.locator("img").first()).toBeVisible(); // a logomarca oficial, não um glifo
   await expect(mark).not.toContainText("✦");
-  await expect(page.getByText(/Starting Mangaba|Restoring your session/)).toBeVisible();
+  await expect(page.getByText(/Iniciando o Mangaba|Restaurando sua sessão/)).toBeVisible();
 });
 
 test("model picker recovers when settings fetches die during sidecar boot", async ({ page }) => {

@@ -33,7 +33,7 @@ test("pending status shows 'checking', never the sign-in ask; resolves to one-cl
   await expect(page.getByTestId("inline-cloud-sign-in")).toHaveCount(0);
 
   release();
-  await expect(page.getByRole("button", { name: "Connect Gmail with one click" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Conectar Gmail com um clique" })).toBeVisible();
   await expect(page.getByTestId("cloud-status-pending")).toHaveCount(0);
 });
 
@@ -47,7 +47,7 @@ test("signing in from the rail prompt flips the pane to one-click", async ({ pag
   // The mock login flips CLOUD_STATE instantly; the inline button's own post-login poll
   // plus the CLOUD_CHANGED broadcast must flip THIS pane without any other page open.
   await ask.click();
-  await expect(page.getByRole("button", { name: "Connect Gmail with one click" })).toBeVisible({
+  await expect(page.getByRole("button", { name: "Conectar Gmail com um clique" })).toBeVisible({
     timeout: 5_000,
   });
 });

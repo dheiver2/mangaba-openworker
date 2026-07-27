@@ -9,8 +9,8 @@ import { test } from "./fixtures";
 async function openModels(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Models", exact: true }).click();
+  await page.getByRole("button", { name: "Configurações", exact: true }).click();
+  await page.getByRole("button", { name: "Modelos", exact: true }).click();
   await expect(page.getByTestId("set-provider-openai")).toBeVisible();
 }
 
@@ -29,7 +29,7 @@ test("Test with a bad key fails in place; a good key saves and returns to the ga
   await page.getByTestId("set-field-api_key").fill("sk-glm-realkey");
   await page.getByTestId("set-test").click();
   await expect(page.getByTestId("set-saved-pill")).toContainText("Tested & saved");
-  await expect(page.getByTestId("set-provider-zai")).toContainText("✓ Connected", {
+  await expect(page.getByTestId("set-provider-zai")).toContainText("✓ Conectado", {
     timeout: 5_000,
   });
 

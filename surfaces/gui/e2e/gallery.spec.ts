@@ -10,7 +10,7 @@ async function openPersonas(page) {
   await page.addInitScript(() => localStorage.setItem("ocw.flag.personas", "1"));
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Configurações", exact: true }).click();
   await page.getByRole("button", { name: "Personas", exact: true }).click();
   await expect(page.getByTestId("gallery-link")).toBeVisible();
 }
@@ -32,7 +32,7 @@ test("slow cloud: skeleton shows while the gallery loads, never a blank body", a
   });
   await openGallery(page);
   await expect(page.getByTestId("gallery-loading")).toBeVisible();
-  await expect(page.getByTestId("gallery-loading")).toContainText("Loading the gallery");
+  await expect(page.getByTestId("gallery-loading")).toContainText("Carregando a galeria");
   // Resolves into the real body (signed-out prompt here) once the cloud answers.
   await expect(page.getByTestId("gallery-signin")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId("gallery-loading")).toHaveCount(0);
@@ -41,45 +41,45 @@ test("slow cloud: skeleton shows while the gallery loads, never a blank body", a
 test("signed out: modal prompts for sign-in, manual install path unaffected", async ({ page }) => {
   await openGallery(page);
   const prompt = page.getByTestId("gallery-signin");
-  await expect(prompt).toContainText("needs a (free) cloud sign-in");
-  await expect(prompt).toContainText("always works without an account");
-  await expect(prompt.getByRole("button", { name: "Sign in" })).toBeVisible();
+  await expect(prompt).toContainText("exige um\nlogin (gratuito) na nuvem");
+  await expect(prompt).toContainText("sempre funciona sem conta");
+  await expect(prompt.getByRole("button", { name: "Entrar" })).toBeVisible();
   // Esc closes; the Personas page (with its dir/Git importer) is still there.
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("gallery-modal")).not.toBeVisible();
-  await expect(page.getByRole("button", { name: "Install", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Instalar", exact: true })).toBeVisible();
 });
 
 test("signed in: featured carousel + list; solo page installs informed; Done returns", async ({
   page,
 }) => {
   await openGallery(page);
-  await page.getByTestId("gallery-signin").getByRole("button", { name: "Sign in" }).click();
+  await page.getByTestId("gallery-signin").getByRole("button", { name: "Entrar" }).click();
 
   // Featured carousel holds the flagged persona; the list holds both.
   const featured = page.getByTestId("gallery-featured");
   await expect(featured).toBeVisible({ timeout: 10_000 });
   await expect(featured).toContainText("Sales Mangaba");
   await expect(featured).not.toContainText("Recruiter");
-  await expect(page.getByTestId("gallery-recruiter")).toContainText("View & install");
-  await expect(page.getByTestId("gallery-team-teaser")).toContainText("coming soon");
+  await expect(page.getByTestId("gallery-recruiter")).toContainText("Ver e instalar");
+  await expect(page.getByTestId("gallery-team-teaser")).toContainText("chega em breve");
 
   // Search narrows the list.
-  await page.getByPlaceholder("Search personas").fill("recruit");
+  await page.getByPlaceholder("Buscar personas").fill("recruit");
   await expect(page.getByTestId("gallery-sales")).not.toBeVisible();
-  await page.getByPlaceholder("Search personas").fill("");
+  await page.getByPlaceholder("Buscar personas").fill("");
 
   // Solo page: pitch + manifest-derived capabilities BEFORE install.
   await page.getByTestId("gallery-sales").click();
   const detail = page.getByTestId("gallery-detail");
   await expect(detail).toContainText("Walk into every call already knowing the account");
   const caps = page.getByTestId("gallery-capabilities");
-  await expect(caps).toContainText("verified from its manifest");
+  await expect(caps).toContainText("verificado no manifesto");
   await expect(caps).toContainText("files, search, todo");
   await expect(caps).toContainText("hubspot · core");
   await expect(caps).toContainText("read deals and contacts");
 
-  await detail.getByRole("button", { name: "Install" }).click();
+  await detail.getByRole("button", { name: "Instalar" }).click();
   await expect(detail).toContainText("disabled until you approve and enable it");
 
   // Done closes the modal, landing back on the Personas page.
@@ -90,7 +90,7 @@ test("signed in: featured carousel + list; solo page installs informed; Done ret
 
 test("back link returns from the solo page to the catalog", async ({ page }) => {
   await openGallery(page);
-  await page.getByTestId("gallery-signin").getByRole("button", { name: "Sign in" }).click();
+  await page.getByTestId("gallery-signin").getByRole("button", { name: "Entrar" }).click();
   await page.getByTestId("gallery-sales").click({ timeout: 10_000 });
   await expect(page.getByTestId("gallery-detail")).toBeVisible();
   await page.getByRole("button", { name: "← Gallery" }).click();

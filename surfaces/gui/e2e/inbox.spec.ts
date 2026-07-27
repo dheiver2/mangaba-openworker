@@ -20,16 +20,16 @@ test("kind + persona filters narrow the pending list", async ({ page }) => {
   await expect(page.getByText(question)).toBeVisible();
 
   const filters = page.getByTestId("inbox-filters");
-  await filters.getByRole("button", { name: "Approvals" }).click();
+  await filters.getByRole("button", { name: "Aprovações" }).click();
   await expect(page.getByText(question)).not.toBeVisible();
   await expect(page.getByText("Approve: run_shell")).toBeVisible();
 
-  await filters.getByRole("button", { name: "Questions" }).click();
+  await filters.getByRole("button", { name: "Perguntas" }).click();
   await expect(page.getByText("Approve: run_shell")).not.toBeVisible();
   await expect(page.getByText(question)).toBeVisible();
 
   // Persona chips render because two personas hold items; filtering to Ops hides the cowork item.
-  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await filters.getByRole("button", { name: "Todas", exact: true }).click();
   await filters.getByRole("button", { name: "Ops", exact: true }).click();
   await expect(page.getByText("Approve: run_shell")).not.toBeVisible();
   await expect(page.getByText(question)).toBeVisible();
@@ -38,13 +38,13 @@ test("kind + persona filters narrow the pending list", async ({ page }) => {
 test("resolving an approval removes its card; question options resolve on click", async ({ page }) => {
   await openInbox(page);
 
-  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  await page.getByRole("button", { name: "Aprovar", exact: true }).click();
   await expect(page.getByText("Approve: run_shell")).not.toBeVisible();
 
   // Single-select question: clicking an option resolves immediately.
   await page.getByRole("button", { name: "staging", exact: true }).click();
   await expect(page.getByText("Which environment should I restart?")).not.toBeVisible();
-  await expect(page.getByText("Nothing pending.")).toBeVisible();
+  await expect(page.getByText("Nada pendente.")).toBeVisible();
 });
 
 test("routing: Configure tab binds the mirror channel; Pending's status line follows", async ({
@@ -52,26 +52,26 @@ test("routing: Configure tab binds the mirror channel; Pending's status line fol
 }) => {
   await openInbox(page);
   const line = page.getByTestId("inbox-routing");
-  await expect(line).toContainText("Delivered here only");
+  await expect(line).toContainText("Entregue apenas aqui");
 
   // The status line is read-only — its Configure › link lands on the Configure tab, which
   // holds the ONE editor (the old inline editor was a duplicate of this card).
   await page.getByTestId("inbox-route-configure").click();
   const mirror = page.getByTestId("inbox-mirror-card");
-  await expect(mirror).toContainText("in-app Inbox only");
+  await expect(mirror).toContainText("apenas a caixa de entrada do app");
   await mirror.getByPlaceholder("slack:C0123 or channel link").fill("slack:T1DL/C0777");
-  await mirror.getByRole("button", { name: "Set", exact: true }).click();
+  await mirror.getByRole("button", { name: "Definir", exact: true }).click();
   await expect(mirror).toContainText("slack:T1DL/C0777");
 
   // Back on Pending, the line reflects the new target immediately.
   await page.getByTestId("inbox-tab-pending").click();
   await expect(line).toContainText("slack:T1DL/C0777");
-  await expect(line).toContainText("replies there resolve items here");
+  await expect(line).toContainText("respostas por lá resolvem os itens aqui");
 
   // Clearing (also on Configure) returns Pending to local-only delivery.
   await page.getByTestId("inbox-tab-configure").click();
-  await mirror.getByRole("button", { name: "clear" }).click();
-  await expect(mirror).toContainText("in-app Inbox only");
+  await mirror.getByRole("button", { name: "limpar" }).click();
+  await expect(mirror).toContainText("apenas a caixa de entrada do app");
   await page.getByTestId("inbox-tab-pending").click();
-  await expect(line).toContainText("Delivered here only");
+  await expect(line).toContainText("Entregue apenas aqui");
 });

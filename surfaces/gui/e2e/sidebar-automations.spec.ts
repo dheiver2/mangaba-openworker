@@ -15,7 +15,7 @@ test("nav row + Scheduled band render with unseen badges; runs stay out of Recen
   // Scheduled entry alone carries the count).
   const nav = page.getByTestId("nav-automations");
   await expect(nav).toBeVisible();
-  await expect(nav).toContainText("Automations");
+  await expect(nav).toContainText("Automações");
   await expect(nav).not.toContainText("2");
 
   // Scheduled band: one entry PER AUTOMATION — never per run. The noisy task wears
@@ -48,7 +48,7 @@ test("opening a Scheduled entry lands on the detail, marks seen, clears the badg
 test("the nav row opens the Automations overview", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("nav-automations").click();
-  await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Automações" })).toBeVisible();
 });
 
 test("deleting an automation clears the band at once; nav re-entry lands on the list", async ({
@@ -67,6 +67,6 @@ test("deleting an automation clears the band at once; nav re-entry lands on the 
   // remembered detail target for a deleted automation once left "Loading…" forever.
   await page.getByTitle("Weekly plan 1").click();
   await page.getByTestId("nav-automations").click();
-  await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible();
-  await expect(page.getByText("Loading…")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Automações" })).toBeVisible();
+  await expect(page.getByText("Carregando…")).toHaveCount(0);
 });

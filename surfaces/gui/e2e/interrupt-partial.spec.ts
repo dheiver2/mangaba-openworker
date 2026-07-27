@@ -8,7 +8,7 @@ import { test } from "./fixtures";
 test("interrupted partial stream survives the next turn", async ({ page }) => {
   await page.goto("/");
   await page.getByText("Draft the launch note").first().click();
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await box.fill("stream the epic");
   await box.press("Enter");
 
@@ -17,7 +17,7 @@ test("interrupted partial stream survives the next turn", async ({ page }) => {
     timeout: 10_000,
   });
   await page.getByRole("button", { name: /Stop/ }).click();
-  await expect(page.getByText("Interrupted.").first()).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Interrompido.").first()).toBeVisible({ timeout: 5_000 });
 
   // The partial is still on screen after the stop…
   await expect(page.getByText("The epic scrolls ever onward").first()).toBeVisible();

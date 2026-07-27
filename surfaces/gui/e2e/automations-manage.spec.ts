@@ -7,8 +7,8 @@ import { test } from "./fixtures";
 async function openAutomations(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByTestId("account-menu").getByRole("button", { name: "Automations", exact: true }).click();
-  await expect(page.getByText("Recurring tasks Mangaba runs on a schedule.")).toBeVisible();
+  await page.getByTestId("account-menu").getByRole("button", { name: "Automações", exact: true }).click();
+  await expect(page.getByText("Tarefas recorrentes que o Mangaba executa em um horário.")).toBeVisible();
 }
 
 test("lists a scheduled task with its schedule and run count", async ({ page }) => {
@@ -16,13 +16,13 @@ test("lists a scheduled task with its schedule and run count", async ({ page }) 
   const card = page.locator(".sched-card", { hasText: "Daily AI News" });
   await expect(card).toBeVisible();
   await expect(card).toContainText("Every day at ~5:40 PM");
-  await expect(card).toContainText("last running");
+  await expect(card).toContainText("última running");
 });
 
 test("Run now triggers a manual run and opens its live session", async ({ page }) => {
   await openAutomations(page);
   await page.locator(".sched-card", { hasText: "Daily AI News" }).click();
-  await page.getByRole("button", { name: /Run now/ }).click();
+  await page.getByRole("button", { name: /Executar agora/ }).click();
   // The manual run opens as a session with the automation-context banner.
   const banner = page.getByTestId("run-banner");
   await expect(banner).toBeVisible();
@@ -32,10 +32,10 @@ test("Run now triggers a manual run and opens its live session", async ({ page }
 test("enable toggle pauses the task", async ({ page }) => {
   await openAutomations(page);
   await page.locator(".sched-card", { hasText: "Daily AI News" }).click();
-  await expect(page.getByText(/Active · next/)).toBeVisible();
+  await expect(page.getByText(/Ativa · próxima/)).toBeVisible();
   // The checkbox is visually hidden behind a styled slider — click the label wrapper.
   await page.locator("label.switch").click();
-  await expect(page.getByText("Paused", { exact: false })).toBeVisible();
+  await expect(page.getByText("Pausada", { exact: false })).toBeVisible();
 });
 
 test("delete removes the task; deleting the last one shows the empty state", async ({ page }) => {

@@ -808,6 +808,12 @@ export async function mockApi(page: import("@playwright/test").Page) {
       return json(i >= 0 ? sessions[i] : PINNED_SESSION);
     }
 
+    // Gate da senha local: nos specs o app já entra destravado. A jornada de login
+    // tem seu próprio spec (login-journey.spec.ts), que sobrescreve estas rotas.
+    if (p.includes("/v1/auth/status"))
+      return json({ configured: true, authenticated: true, locked_for: 0 });
+    if (p.includes("/v1/auth/")) return json({ ok: true, session: "sessao-de-teste" });
+
     if (p.endsWith("/v1/health")) return json(HEALTH);
     if (p.endsWith("/v1/settings")) return json(SETTINGS);
     if (p.endsWith("/v1/settings/pdf") && m === "POST") {

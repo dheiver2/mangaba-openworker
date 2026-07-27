@@ -8,30 +8,30 @@ import { test, expect } from "./fixtures";
 async function openTaskDetail(page: import("@playwright/test").Page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByTestId("account-menu").getByRole("button", { name: "Automations", exact: true }).click();
+  await page.getByTestId("account-menu").getByRole("button", { name: "Automações", exact: true }).click();
   await page.getByText("Daily AI News").first().click();
-  await expect(page.getByRole("button", { name: /Run now/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Executar agora/ })).toBeVisible();
 }
 
 test("creation consent card renders writes as grants and reads as disclosure", async ({ page }) => {
   await page.goto("/");
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await expect(box).toBeVisible();
 
   await box.fill("please create an automation for the weekly digest");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
 
   // The approve-at-creation card carries the proposal instead of dumping raw JSON args.
   const grants = page.getByTestId("approval-grants");
   await expect(grants).toBeVisible();
   await expect(grants).toContainText("slack:T1/C1");
-  await expect(grants).toContainText("always allowed once you approve");
+  await expect(grants).toContainText("sempre permitido depois que você aprovar");
   await expect(grants).toContainText("rohit/agent-platform");
-  await expect(grants).toContainText("read-only");
+  await expect(grants).toContainText("somente leitura");
   // Creation is minting surface #1 — there is no "Allow every time" here.
-  await expect(page.getByRole("button", { name: "Allow every time" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Permitir todas as vezes" })).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Allow once" }).last().click();
+  await page.getByRole("button", { name: "Permitir uma vez" }).last().click();
   await expect(page.getByText("Done via create_scheduled_task [decision=once]")).toBeVisible();
 });
 
@@ -39,21 +39,21 @@ test("a run session's approval card offers Allow every time and sends always_tas
   page,
 }) => {
   await openTaskDetail(page);
-  await page.getByRole("button", { name: /Run now/ }).click();
+  await page.getByRole("button", { name: /Executar agora/ }).click();
   await expect(page.getByTestId("run-banner")).toBeVisible();
   // The manual run auto-sends the task prompt; wait for that turn to finish (the composer
   // re-arms) before driving the approval flow.
   await expect(page.getByText(/Echo: .*Fetch the latest AI news/)).toBeVisible();
 
   // An eligible gated write inside the run (the event carries the pinnable target).
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await box.fill("post the digest");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
 
-  const allowEvery = page.getByRole("button", { name: "Allow every time" });
+  const allowEvery = page.getByRole("button", { name: "Permitir todas as vezes" });
   await expect(allowEvery).toBeVisible();
   // The task-persistent grant replaces the session-scoped Always-allow in run context.
-  await expect(page.getByRole("button", { name: "Always allow", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Permitir sempre", exact: true })).toHaveCount(0);
 
   await allowEvery.click();
   // The decision that rode the socket is the task-persistent one.
@@ -64,17 +64,17 @@ test("a plain session never offers Allow every time, even for an eligible call",
   page,
 }) => {
   await page.goto("/");
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await expect(box).toBeVisible();
 
   await box.fill("post the digest");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
 
   // Same tool, same target — but without a run context the standing grant isn't offered;
   // the session-scoped Always-allow remains.
-  await expect(page.getByRole("button", { name: "Allow once" }).last()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Allow every time" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Always allow", exact: true }).last()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Permitir uma vez" }).last()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Permitir todas as vezes" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Permitir sempre", exact: true }).last()).toBeVisible();
 });
 
 test("task detail lists standing rules under 'Allowed without asking'; Revoke removes one", async ({
@@ -83,12 +83,12 @@ test("task detail lists standing rules under 'Allowed without asking'; Revoke re
   await openTaskDetail(page);
 
   const grants = page.getByTestId("task-grants");
-  await expect(page.getByText("Allowed without asking")).toBeVisible();
+  await expect(page.getByText("Permitido sem perguntar")).toBeVisible();
   await expect(grants).toContainText("send_message");
   await expect(grants).toContainText("slack:T1/C1");
 
-  await grants.getByRole("button", { name: "Revoke" }).click();
+  await grants.getByRole("button", { name: "Revogar" }).click();
   // The last rule is gone → the whole section disappears (nothing is allowed anymore).
   await expect(page.getByTestId("task-grants")).toHaveCount(0);
-  await expect(page.getByText("Allowed without asking")).toHaveCount(0);
+  await expect(page.getByText("Permitido sem perguntar")).toHaveCount(0);
 });

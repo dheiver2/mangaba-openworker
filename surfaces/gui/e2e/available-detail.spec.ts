@@ -8,7 +8,7 @@ import { test } from "./fixtures";
 async function openConnectors(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
 }
 
 test("available row opens the pre-connect detail page", async ({ page }) => {
@@ -18,7 +18,7 @@ test("available row opens the pre-connect detail page", async ({ page }) => {
   const detail = page.getByTestId("available-detail");
   await expect(detail).toContainText("Search, summarize, and send over your Gmail.");
   await expect(page.getByTestId("available-access")).toContainText("Reads and searches your mail.");
-  await expect(detail).toContainText("Keys and tokens are stored only on this computer");
+  await expect(detail).toContainText("Chaves e tokens ficam guardados apenas neste computador");
 
   // Tools are a collapsed disclosure — advanced detail, closed by default.
   await expect(detail).toContainText("2 tools this connector adds");
@@ -42,7 +42,7 @@ test("detail Connect opens the modal; the list pill skips navigation", async ({ 
 
   // Back on the list, the pill goes straight to the modal — no detail page.
   await page.getByTestId("connectors-breadcrumb").click();
-  await page.getByTestId("connector-gmail").getByRole("button", { name: "Connect" }).click();
+  await page.getByTestId("connector-gmail").getByRole("button", { name: "Conectar" }).click();
   await expect(page.getByTestId("add-connection-modal")).toBeVisible();
   await expect(page.getByTestId("available-detail")).not.toBeVisible();
 });

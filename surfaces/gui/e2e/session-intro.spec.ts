@@ -9,7 +9,7 @@ test("three rows, no Set-me-up; gated rows show Configure › and expand the rai
   page,
 }) => {
   await page.goto("/");
-  await expect(page.getByText("What should we produce?")).toBeVisible();
+  await expect(page.getByText("O que vamos produzir?")).toBeVisible();
 
   // Exactly the three template tasks; the old setup list is gone.
   await expect(page.locator(".task-card")).toHaveCount(3);
@@ -20,19 +20,19 @@ test("three rows, no Set-me-up; gated rows show Configure › and expand the rai
   // with the Configure affordance visible AT REST (no hover needed — it IS the row's action);
   // the github+slack automation row has everything it needs.
   const hs = page.getByTestId("intro-task-hubspot");
-  await expect(hs).toContainText("Configure ›");
+  await expect(hs).toContainText("Configurar ›");
   await expect(hs.locator(".task-card-act")).toHaveCSS("opacity", "1");
-  await expect(page.getByTestId("intro-task-github-slack")).toContainText("Start →");
+  await expect(page.getByTestId("intro-task-github-slack")).toContainText("Começar →");
 
   // Sub-lines describe the task's outcome, never connection state.
-  await expect(hs).toContainText("Sources, stages, and who needs follow-up");
+  await expect(hs).toContainText("Origens, estágios e quem precisa de follow-up");
   await expect(hs).not.toContainText(/connect/i);
 
   // Configure → the rail's Access section expands (§32), not a bespoke setup surface.
   await hs.click();
-  await expect(page.getByRole("region", { name: "Session access" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Acesso da sessão" })).toBeVisible();
   // No composer prefill happened on the gated click.
-  await expect(page.getByPlaceholder(/Ask the mangaba/)).toHaveValue("");
+  await expect(page.getByPlaceholder(/Peça ao Mangaba/)).toHaveValue("");
 });
 
 test("ready rows reveal Start → on hover and prefill the composer", async ({ page }) => {
@@ -54,20 +54,20 @@ test("ready rows reveal Start → on hover and prefill the composer", async ({ p
   await page.goto("/");
 
   const hs = page.getByTestId("intro-task-hubspot");
-  await expect(hs).toContainText("Start →");
+  await expect(hs).toContainText("Começar →");
   // The action is hover-revealed on ready rows (hidden at rest).
   await expect(hs.locator(".task-card-act")).toHaveCSS("opacity", "0");
   await hs.hover();
   await expect(hs.locator(".task-card-act")).toHaveCSS("opacity", "1");
 
   await hs.click();
-  await expect(page.getByPlaceholder(/Ask the mangaba/)).toHaveValue(/HubSpot leads/);
+  await expect(page.getByPlaceholder(/Peça ao Mangaba/)).toHaveValue(/HubSpot leads/);
 
   // Both sources live → the automation row is ready too; its prefill is the recipe stem.
   const gh = page.getByTestId("intro-task-github-slack");
-  await expect(gh).toContainText("Start →");
+  await expect(gh).toContainText("Começar →");
   await gh.click();
-  await expect(page.getByPlaceholder(/Ask the mangaba/)).toHaveValue(/weekly progress report/);
+  await expect(page.getByPlaceholder(/Peça ao Mangaba/)).toHaveValue(/weekly progress report/);
 });
 
 test("folder task opens the inline add-folder form; adding a folder prefills the composer", async ({
@@ -77,12 +77,12 @@ test("folder task opens the inline add-folder form; adding a folder prefills the
 
   // No shared folder yet (the fixture root is the primary scratch) → the row expands the form.
   await page.getByTestId("intro-task-folder").click();
-  const path = page.getByPlaceholder("Choose or paste a folder path…");
+  const path = page.getByPlaceholder("Escolha ou cole o caminho de uma pasta…");
   await expect(path).toBeVisible();
   await path.fill("/Users/me/Reports");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Adicionar", exact: true }).click();
 
-  await expect(page.getByPlaceholder(/Ask the mangaba/)).toHaveValue(
+  await expect(page.getByPlaceholder(/Peça ao Mangaba/)).toHaveValue(
     /Analyze the files in this folder/,
   );
 });

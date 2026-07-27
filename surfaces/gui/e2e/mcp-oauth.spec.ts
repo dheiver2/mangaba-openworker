@@ -7,8 +7,8 @@ import { test } from "./fixtures";
 async function openMcpTab(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
-  await page.getByRole("button", { name: "MCP servers", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
+  await page.getByRole("button", { name: "Servidores MCP", exact: true }).click();
 }
 
 test("granola: quick-add card → sign-in flow → connected → sign out", async ({ page }) => {
@@ -17,16 +17,16 @@ test("granola: quick-add card → sign-in flow → connected → sign out", asyn
   // Curated card renders while granola isn't configured.
   const preset = page.getByTestId("mcp-preset-granola");
   await expect(preset).toContainText("Granola");
-  await expect(preset).toContainText("Meeting notes");
+  await expect(preset).toContainText("Notas e transcrições de reuniões");
 
   // Connect: adds the server with OAuth pending and starts the browser flow.
-  await preset.getByRole("button", { name: "Connect" }).click();
+  await preset.getByRole("button", { name: "Conectar" }).click();
   await expect(page.getByTestId("mcp-preset-granola")).toHaveCount(0);
   const row = page.locator(".space-y-2 > div").filter({ hasText: "granola" }).first();
   await expect(row).toContainText("signing in…");
 
   // The 2s status poll flips the mock to connected with its 6 tools.
-  await expect(row).toContainText("connected", { timeout: 10_000 });
+  await expect(row).toContainText("conectado", { timeout: 10_000 });
   await expect(row).toContainText("6 tools");
   await expect(row).toContainText("oauth");
 

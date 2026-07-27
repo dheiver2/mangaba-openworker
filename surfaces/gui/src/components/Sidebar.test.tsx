@@ -81,7 +81,7 @@ describe("Sidebar group/filter control", () => {
     render(<Sidebar {...baseProps} />);
 
     // personas load drives the surfaces; the RECENT header's group/filter control is always present.
-    const control = await screen.findByLabelText("Group and filter conversations");
+    const control = await screen.findByLabelText("Agrupar e filtrar conversas");
 
     // Open the popover and choose "Group by → Persona".
     fireEvent.click(control);
@@ -137,11 +137,11 @@ describe("Chronological list row actions (⋮ menu)", () => {
     fireEvent.click(screen.getByTestId("row-menu-archive"));
     expect(baseProps.onArchiveSession).toHaveBeenCalledWith("s-ops-1", true);
 
-    // Delete is two-step: first click arms ("Delete?"), the second deletes.
+    // Delete is two-step: first click arms ("Excluir?"), the second deletes.
     openOpsMenu();
     fireEvent.click(screen.getByTestId("row-menu-delete"));
     expect(baseProps.onDeleteSession).not.toHaveBeenCalled();
-    expect(screen.getByTestId("row-menu-delete").textContent).toContain("Delete?");
+    expect(screen.getByTestId("row-menu-delete").textContent).toContain("Excluir?");
     fireEvent.click(screen.getByTestId("row-menu-delete"));
     expect(baseProps.onDeleteSession).toHaveBeenCalledWith("s-ops-1");
   });
@@ -224,7 +224,7 @@ describe("New-session split button", () => {
       { match: "/v1/settings", method: "GET", json: { nav_layout: "flat" } },
     ]);
     const { container } = render(<Sidebar {...baseProps} />);
-    await screen.findByLabelText("Group and filter conversations");
+    await screen.findByLabelText("Agrupar e filtrar conversas");
 
     // Primary action → a new session with the current (last-used) persona.
     fireEvent.click(container.querySelector(".newsplit-primary")!);
@@ -232,7 +232,7 @@ describe("New-session split button", () => {
 
     // ▾ opens the persona menu: enabled personas appear, the disabled one does not, plus a manage entry.
     fireEvent.click(screen.getByLabelText("Escolher uma persona"));
-    const menu = (await screen.findByText("Start a session as")).closest(".newsplit-menu") as HTMLElement;
+    const menu = (await screen.findByText("Iniciar sessão como")).closest(".newsplit-menu") as HTMLElement;
     const w = within(menu);
     expect(w.getByText("Ops")).toBeTruthy();
     expect(w.getByText("Code")).toBeTruthy();
@@ -245,7 +245,7 @@ describe("New-session split button", () => {
 
     // "Manage personas…" opens the persona management surface.
     fireEvent.click(screen.getByLabelText("Escolher uma persona"));
-    fireEvent.click(await screen.findByText("Manage personas…"));
+    fireEvent.click(await screen.findByText("Gerenciar personas…"));
     expect(baseProps.onManagePersonas).toHaveBeenCalled();
   });
 
@@ -256,9 +256,9 @@ describe("New-session split button", () => {
       { match: "/v1/settings", method: "GET", json: { nav_layout: "flat" } },
     ]);
     render(<Sidebar {...baseProps} />);
-    await screen.findByLabelText("Group and filter conversations");
+    await screen.findByLabelText("Agrupar e filtrar conversas");
     fireEvent.click(screen.getByLabelText("Escolher uma persona"));
-    const menu = (await screen.findByText("Start a session as")).closest(".newsplit-menu") as HTMLElement;
+    const menu = (await screen.findByText("Iniciar sessão como")).closest(".newsplit-menu") as HTMLElement;
     expect(within(menu).getByText("Ops")).toBeTruthy();
     expect(within(menu).queryByText("Manage personas…")).toBeNull();
   });

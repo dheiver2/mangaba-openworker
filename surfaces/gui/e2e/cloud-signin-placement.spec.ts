@@ -8,14 +8,14 @@ import { test } from "./fixtures";
 async function openConnectors(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByTestId("account-menu").getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByTestId("account-menu").getByRole("button", { name: "Conectores", exact: true }).click();
 }
 
 test("the account row is always visible and signs in from its menu", async ({ page }) => {
   await page.goto("/");
   const row = page.getByTestId("account-row");
   await expect(row).toBeVisible();
-  await expect(row).toContainText("Not signed in");
+  await expect(row).toContainText("Não conectado");
 
   await row.click();
   await page.getByTestId("account-sign-in").click();
@@ -24,7 +24,7 @@ test("the account row is always visible and signs in from its menu", async ({ pa
   // Sign out is right there in the same menu once signed in.
   await row.click();
   await expect(
-    page.getByTestId("account-menu").getByRole("button", { name: "Sign out" }),
+    page.getByTestId("account-menu").getByRole("button", { name: "Sair" }),
   ).toBeVisible();
 });
 
@@ -33,11 +33,11 @@ test("signed-out one-click pane signs in inline, then connects", async ({ page }
   // Fresh user path: Available → Connect → the pane must offer sign-in itself.
   await page
     .getByTestId("connector-gmail")
-    .getByRole("button", { name: "Connect", exact: true })
+    .getByRole("button", { name: "Conectar", exact: true })
     .click();
   await page.getByTestId("inline-cloud-sign-in").click();
   // The mock signs in instantly; the section's poll re-renders the pane armed.
   await expect(
-    page.getByRole("button", { name: /Connect Gmail with one click/i }),
+    page.getByRole("button", { name: /Conectar Gmail com um clique/i }),
   ).toBeVisible({ timeout: 10_000 });
 });

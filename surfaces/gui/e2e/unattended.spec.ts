@@ -9,15 +9,15 @@ import { test } from "./fixtures";
 
 // The toggle sits inside the composer's Mode menu (§22).
 async function openModeMenu(page) {
-  await page.getByRole("button", { name: "Mode", exact: true }).click();
+  await page.getByRole("button", { name: "Modo", exact: true }).click();
   await expect(page.getByTestId("mode-menu")).toBeVisible();
 }
 
 test("attended (default): a tool request surfaces the inline approval card", async ({ page }) => {
   await page.goto("/");
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await box.fill("please run a tool");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
   await expect(page.getByText("The mangaba wants to run a command.").first()).toBeVisible();
 });
 
@@ -26,7 +26,7 @@ test("Send-to-Inbox toggle (in the Mode menu) flips and persists across a reload
 }) => {
   await page.goto("/");
   await openModeMenu(page);
-  const sw = page.getByRole("switch", { name: "Send approvals to the Inbox" });
+  const sw = page.getByRole("switch", { name: "Enviar aprovações para a caixa de entrada" });
   await expect(sw).toHaveAttribute("aria-checked", "false");
   await sw.click();
   await expect(sw).toHaveAttribute("aria-checked", "true");
@@ -34,7 +34,7 @@ test("Send-to-Inbox toggle (in the Mode menu) flips and persists across a reload
   // Reload: the stateful endpoint returns the saved flag, so the toggle reads back on.
   await page.reload();
   await openModeMenu(page);
-  await expect(page.getByRole("switch", { name: "Send approvals to the Inbox" })).toHaveAttribute(
+  await expect(page.getByRole("switch", { name: "Enviar aprovações para a caixa de entrada" })).toHaveAttribute(
     "aria-checked",
     "true",
   );
@@ -43,13 +43,13 @@ test("Send-to-Inbox toggle (in the Mode menu) flips and persists across a reload
 test("unattended: a tool request parks (no inline approval card)", async ({ page }) => {
   await page.goto("/");
   await openModeMenu(page);
-  await page.getByRole("switch", { name: "Send approvals to the Inbox" }).click();
+  await page.getByRole("switch", { name: "Enviar aprovações para a caixa de entrada" }).click();
   // The menu's full-screen overlay closes it on any outside click.
   await page.mouse.click(5, 5);
 
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await box.fill("please run a tool");
-  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
 
   // The turn still starts, but the live approval card is suppressed — the prompt is parked to the
   // Inbox instead. Give the (suppressed) card a beat to NOT appear.
@@ -94,13 +94,13 @@ test("answering the live approval never re-flashes its parked Inbox mirror", asy
   });
 
   await page.goto("/");
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await box.fill("please run a tool");
-  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await page.getByRole("button", { name: "Enviar", exact: true }).click();
   await expect(page.getByText("The mangaba wants to run a command.").first()).toBeVisible();
 
   mirrorResolved = true; // server side resolves with the decision; the stale client copy is the bug
-  await page.getByRole("button", { name: "Allow once" }).last().click();
+  await page.getByRole("button", { name: "Permitir uma vez" }).last().click();
   // "Never appears" semantics: pre-fix the stale mirror rendered within a frame of the click and
   // self-cleared a poll later — so a plain toHaveCount(0) would blink green. Watch the window.
   const flashed = await page

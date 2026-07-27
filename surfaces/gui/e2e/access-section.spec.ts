@@ -3,7 +3,7 @@
 // the session can touch; expanding edits inline at rail width (no overlay, no dialog).
 // Fixture state: browser + slack + github connected/enabled (github is two_way WITHOUT
 // channels — relay mentions, no subscriptions), gmail recommended-not-connected, one
-// primary root → summary "Browser, Slack +1 · 1 folder".
+// primary root → summary "Browser, Slack +1 · 1 pasta".
 import { expect } from "@playwright/test";
 import { test } from "./fixtures";
 
@@ -20,17 +20,17 @@ test("no topbar opener; the Access header IS the ambient glance; expanding edits
   // The trust surface is ambient: the collapsed header always shows the summary — and no
   // nudge text ever renders at rest (§23's rule carried over).
   const section = page.getByTestId("access-section");
-  await expect(section.getByTestId("access-summary")).toHaveText("Browser, Slack +1 · 1 folder");
+  await expect(section.getByTestId("access-summary")).toHaveText("Browser, Slack +1 · 1 pasta");
   await expect(section.getByText(/recommended/i)).toHaveCount(0);
 
   // Expand → Sources (per-session toggles), Recommended (with its reason), Folders — all
   // inline in the rail; no dialog appears anywhere.
   await section.getByTestId("access-toggle").click();
-  const body = page.getByRole("region", { name: "Session access" });
-  await expect(body.getByText("Sources")).toBeVisible();
+  const body = page.getByRole("region", { name: "Acesso da sessão" });
+  await expect(body.getByText("Fontes")).toBeVisible();
   await expect(body.getByText("Slack", { exact: true })).toBeVisible();
   await expect(body.getByText("email context for morning summaries")).toBeVisible();
-  await expect(body.getByTestId("drawer-directories").getByText("Temporary space")).toBeVisible();
+  await expect(body.getByTestId("drawer-directories").getByText("Espaço temporário")).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   // Channels is a chat capability, not a two_way one: Slack gets the drill-down, GitHub
@@ -57,9 +57,9 @@ test("+ Add a source: full catalog on focus, filter as you type → connect-in-c
 
   // Already-connected sources don't match (Slack and GitHub are connected in fixtures)…
   await search.fill("slack");
-  await expect(page.getByText("No match — see all on the Connectors page below.")).toBeVisible();
+  await expect(page.getByText("Nenhum resultado — veja todos na página de Conectores abaixo.")).toBeVisible();
   await search.fill("github");
-  await expect(page.getByText("No match — see all on the Connectors page below.")).toBeVisible();
+  await expect(page.getByText("Nenhum resultado — veja todos na página de Conectores abaixo.")).toBeVisible();
 
   // …and clearing the query restores the full list ("filter as you type", not search-only).
   await search.fill("");
@@ -75,10 +75,10 @@ test("+ Add a source: full catalog on focus, filter as you type → connect-in-c
 
   // Lands in the SAME connect-in-context child view the Recommended flow uses, with the
   // scope-semantics line; back returns to the Sources list.
-  const body = page.getByRole("region", { name: "Session access" });
-  await expect(body.getByText("Connecting makes Notion available to all your mangabas", { exact: false })).toBeVisible();
+  const body = page.getByRole("region", { name: "Acesso da sessão" });
+  await expect(body.getByText("Conectar deixa o Notion disponível para todas as suas personas", { exact: false })).toBeVisible();
   await expect(body.getByPlaceholder("ntn_…")).toBeVisible();
-  await body.getByRole("button", { name: "Back to sources" }).click();
+  await body.getByRole("button", { name: "Voltar às fontes" }).click();
   await expect(body.getByText("Slack", { exact: true })).toBeVisible();
 });
 
@@ -88,9 +88,9 @@ test("per-session mute round-trips; the summary follows", async ({ page }) => {
 
   const section = page.getByTestId("access-section");
   await section.getByTestId("access-toggle").click();
-  const body = page.getByRole("region", { name: "Session access" });
+  const body = page.getByRole("region", { name: "Acesso da sessão" });
   // Muting Slack for this session drops it from the live summary (the fixture flips
   // enabled on POST and the section reloads).
   await body.getByTitle("Enabled for this session — tap to mute here").nth(1).click();
-  await expect(section.getByTestId("access-summary")).toHaveText("Browser, GitHub · 1 folder");
+  await expect(section.getByTestId("access-summary")).toHaveText("Browser, GitHub · 1 pasta");
 });

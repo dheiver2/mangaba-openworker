@@ -81,11 +81,17 @@ export interface AuthStatus {
   configured: boolean;
   authenticated: boolean;
   locked_for: number;
+  /** false quando o servidor recusou a chamada (token do sidecar trocado — ver LoginGate). */
+  ok: boolean;
 }
 
 export async function getAuthStatus(): Promise<AuthStatus> {
   const res = await fetch(`${httpBase()}/v1/auth/status`);
-  return res.json();
+  const body = await res.json().catch(() => ({}));
+  // Um 401 aqui não é "sem senha": é o token de lançamento que não confere mais
+  // (o servidor reiniciou e gerou outro). Sem essa distinção a GUI mostraria a
+  // tela de CRIAR senha para quem já tem uma, ou ficaria num limbo silencioso.
+  return { configured: false, authenticated: false, locked_for: 0, ...body, ok: res.ok };
 }
 
 /** Primeira definição da senha (só passa enquanto nenhuma existir). */

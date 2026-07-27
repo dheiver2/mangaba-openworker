@@ -7,6 +7,10 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: "jsdom",
+    // Sem uma origem real o jsdom não expõe localStorage (a Storage API exige origem),
+    // e todo teste que toca preferências quebrava com "localStorage is undefined".
+    environmentOptions: { jsdom: { url: "http://localhost/" } },
+    setupFiles: ["./src/test-setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
   },
 });

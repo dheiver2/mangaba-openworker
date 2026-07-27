@@ -9,7 +9,7 @@ import { test } from "./fixtures";
 async function openConnectors(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
 }
 
 function statusPayload(overrides: any = {}) {
@@ -35,19 +35,19 @@ function forceStatus(page, overrides: any) {
 
 test("signed out: chip and status line say Sign-in needed", async ({ page }) => {
   await openConnectors(page);
-  await expect(page.getByTestId("connector-slack")).toContainText("Sign-in needed");
+  await expect(page.getByTestId("connector-slack")).toContainText("Login necessário");
   await page.getByTestId("connector-slack").click();
   await expect(page.getByTestId("slack-mode-badge")).toContainText(
-    "Sign-in needed — relaying is paused",
+    "Login necessário — o relay está pausado",
   );
 });
 
 test("signed in + live socket: Live everywhere", async ({ page }) => {
   await forceStatus(page, {});
   await openConnectors(page);
-  await expect(page.getByTestId("connector-slack")).toContainText("Live");
+  await expect(page.getByTestId("connector-slack")).toContainText("Ativo");
   await page.getByTestId("connector-slack").click();
-  await expect(page.getByTestId("slack-mode-badge")).toContainText("Live · managed relay");
+  await expect(page.getByTestId("slack-mode-badge")).toContainText("Ativo · relay gerenciado");
 });
 
 test("relay socket reconnecting: warn chip + status line", async ({ page }) => {
@@ -55,9 +55,9 @@ test("relay socket reconnecting: warn chip + status line", async ({ page }) => {
     relay: { state: "reconnecting", reconnects: 3, last_event_at: null, last_error: "boom" },
   });
   await openConnectors(page);
-  await expect(page.getByTestId("connector-slack")).toContainText("Reconnecting");
+  await expect(page.getByTestId("connector-slack")).toContainText("Reconectando");
   await page.getByTestId("connector-slack").click();
-  await expect(page.getByTestId("slack-mode-badge")).toContainText("Reconnecting to the relay");
+  await expect(page.getByTestId("slack-mode-badge")).toContainText("Reconectando ao relay");
 });
 
 test("relay unreachable: Offline, not a Slack-outage claim", async ({ page }) => {
@@ -67,7 +67,7 @@ test("relay unreachable: Offline, not a Slack-outage claim", async ({ page }) =>
   await openConnectors(page);
   await expect(page.getByTestId("connector-slack")).toContainText("Offline");
   await page.getByTestId("connector-slack").click();
-  await expect(page.getByTestId("slack-mode-badge")).toContainText("can't reach the relay");
+  await expect(page.getByTestId("slack-mode-badge")).toContainText("sem contato com o relay");
 });
 
 test("one dead bot token: ⚠ chip + a warning on THAT workspace only", async ({ page }) => {

@@ -40,7 +40,7 @@ async function serveGmail(page, extra: Record<string, unknown>) {
 async function openConnectors(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
 }
 
 test("paused one-click: Coming soon badge in the connect modal, manual path alive", async ({
@@ -48,13 +48,13 @@ test("paused one-click: Coming soon badge in the connect modal, manual path aliv
 }) => {
   await serveGmail(page, {});
   await openConnectors(page);
-  await page.getByTestId("connector-gmail").getByRole("button", { name: "Connect", exact: true }).click();
+  await page.getByTestId("connector-gmail").getByRole("button", { name: "Conectar", exact: true }).click();
 
   const soon = page.getByTestId("managed-coming-soon");
   await expect(soon).toBeVisible();
   await expect(soon).toBeDisabled();
-  await expect(soon).toContainText("Coming soon");
-  await expect(page.getByText("connect manually below for now")).toBeVisible();
+  await expect(soon).toContainText("Em breve");
+  await expect(page.getByText("conecte manualmente abaixo")).toBeVisible();
   // The manual token field is still right there.
   await expect(page.getByText("OAuth access token")).toBeVisible();
 });
@@ -75,7 +75,7 @@ test("paused one-click: connected page's add-account is parked too", async ({ pa
 
   const add = page.getByTestId("add-account-btn");
   await expect(add).toBeDisabled();
-  await expect(add).toContainText("Coming soon");
+  await expect(add).toContainText("Em breve");
   // Existing accounts keep working and stay manageable.
-  await expect(page.getByTestId("gmail-account-rohit@gmail.com")).toContainText("Default");
+  await expect(page.getByTestId("gmail-account-rohit@gmail.com")).toContainText("Padrão");
 });

@@ -8,7 +8,7 @@ import { test } from "./fixtures";
 async function openConnectors(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
 }
 
 test("monday: one-click MCP connect without cloud sign-in; card flips connected", async ({
@@ -19,22 +19,22 @@ test("monday: one-click MCP connect without cloud sign-in; card flips connected"
   // Signed OUT (fixtures default) — the MCP one-click needs no Mangaba account.
   await page
     .getByTestId("connector-monday")
-    .getByRole("button", { name: "Connect" })
+    .getByRole("button", { name: "Conectar" })
     .click();
   const modal = page.getByTestId("add-connection-modal");
   await expect(modal).toBeVisible();
   // Single-mode: no One click | Manual pills, no cloud sign-in gate — just the button.
   await expect(modal.getByTestId("modal-pane-manual")).toHaveCount(0);
   await expect(modal.getByTestId("inline-cloud-sign-in")).toHaveCount(0);
-  await expect(modal.getByText("sign-in runs entirely on this computer")).toBeVisible();
+  await expect(modal.getByText("login roda inteiramente neste")).toBeVisible();
 
   await modal.getByTestId("modal-mcp-one-click").click();
-  await expect(modal.getByText("Check your browser…")).toBeVisible();
+  await expect(modal.getByText("Confira seu navegador…")).toBeVisible();
   // The mock flow completes instantly; the modal's poll closes it and the card flips.
   await expect(page.getByTestId("add-connection-modal")).toHaveCount(0, {
     timeout: 10_000,
   });
-  await expect(page.getByTestId("connector-monday")).toContainText("Connected");
+  await expect(page.getByTestId("connector-monday")).toContainText("Conectado");
 });
 
 test("jira: two modes — MCP one-click pane plus the manual token form", async ({
@@ -42,10 +42,10 @@ test("jira: two modes — MCP one-click pane plus the manual token form", async 
 }) => {
   await openConnectors(page);
   // jira sits past the available-list fold.
-  await page.getByRole("button", { name: "show all" }).click();
+  await page.getByRole("button", { name: "ver todos" }).click();
   await page
     .getByTestId("connector-jira")
-    .getByRole("button", { name: "Connect" })
+    .getByRole("button", { name: "Conectar" })
     .click();
   const modal = page.getByTestId("add-connection-modal");
 

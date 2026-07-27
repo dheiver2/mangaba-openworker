@@ -7,7 +7,7 @@ import { test } from "./fixtures";
 async function openConnectors(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
 }
 
 async function signInAndConnectFirstAccount(page) {
@@ -16,8 +16,8 @@ async function signInAndConnectFirstAccount(page) {
   await page.getByTestId("account-sign-in").click();
   await expect(page.getByTestId("account-row")).toContainText("Rohit", { timeout: 10_000 });
   // gmail starts disconnected → Available row → modal → one click (mock connects instantly)
-  await page.getByTestId("connector-gmail").getByRole("button", { name: "Connect", exact: true }).click();
-  await page.getByRole("button", { name: /Connect Gmail with one click/i }).click();
+  await page.getByTestId("connector-gmail").getByRole("button", { name: "Conectar", exact: true }).click();
+  await page.getByRole("button", { name: /Conectar Gmail com um clique/i }).click();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("connector-gmail")).toContainText("rohit@gmail.com", {
     timeout: 10_000,
@@ -35,11 +35,11 @@ test("connect, then add a second account from the page; first stays default", as
   const rohit = page.getByTestId("gmail-account-rohit@gmail.com");
   const work = page.getByTestId("gmail-account-work@dlai.com");
   await expect(work).toBeVisible({ timeout: 10_000 });
-  await expect(rohit).toContainText("Default");
-  await expect(work).not.toContainText("Default");
+  await expect(rohit).toContainText("Padrão");
+  await expect(work).not.toContainText("Padrão");
   // list row summarizes the multi-account state
   await page.getByTestId("connectors-breadcrumb").click();
-  await expect(page.getByTestId("connector-gmail")).toContainText("2 accounts");
+  await expect(page.getByTestId("connector-gmail")).toContainText("2 contas");
 });
 
 test("Make default moves the badge; disconnecting the default repoints it", async ({
@@ -51,12 +51,12 @@ test("Make default moves the badge; disconnecting the default repoints it", asyn
   await expect(page.getByTestId("gmail-account-work@dlai.com")).toBeVisible({ timeout: 10_000 });
 
   await page.getByTestId("gmail-make-default-work@dlai.com").click();
-  await expect(page.getByTestId("gmail-account-work@dlai.com")).toContainText("Default");
-  await expect(page.getByTestId("gmail-account-rohit@gmail.com")).not.toContainText("Default");
+  await expect(page.getByTestId("gmail-account-work@dlai.com")).toContainText("Padrão");
+  await expect(page.getByTestId("gmail-account-rohit@gmail.com")).not.toContainText("Padrão");
 
   await page.getByTestId("gmail-disconnect-work@dlai.com").click();
   await expect(page.getByTestId("gmail-account-work@dlai.com")).toHaveCount(0);
-  await expect(page.getByTestId("gmail-account-rohit@gmail.com")).toContainText("Default");
+  await expect(page.getByTestId("gmail-account-rohit@gmail.com")).toContainText("Padrão");
 });
 
 test("Never show agents: sender + label chips round-trip", async ({ page }) => {
@@ -79,6 +79,6 @@ test("Never show agents: sender + label chips round-trip", async ({ page }) => {
   await page.getByTestId("connector-gmail").click();
   await expect(page.getByTestId("gmail-filter-senders")).toContainText("ceo@corp.com");
   // remove round-trips too
-  await page.getByTestId("gmail-filter-senders").getByTitle("remove").click();
+  await page.getByTestId("gmail-filter-senders").getByTitle("remover").click();
   await expect(page.getByTestId("gmail-filter-senders")).not.toContainText("ceo@corp.com");
 });

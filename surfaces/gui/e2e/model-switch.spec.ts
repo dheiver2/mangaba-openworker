@@ -10,7 +10,7 @@ test("mid-session model switch shows the marker and later turns use the new mode
 }) => {
   await page.goto("/");
   await page.getByText("Draft the launch note").first().click();
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await box.fill("hello there");
   await box.press("Enter");
   await expect(page.getByText("Echo: hello there", { exact: false }).first()).toBeVisible();
@@ -22,7 +22,7 @@ test("mid-session model switch shows the marker and later turns use the new mode
   await page.locator(".dd-item").filter({ hasText: "GPT-5.5" }).click();
 
   // The switch marker lands in the transcript…
-  await expect(page.getByText(/Model switched to gpt-5.5/).first()).toBeVisible();
+  await expect(page.getByText(/Modelo alterado|Model switched/).first()).toBeVisible();
 
   // …and the next message carries the new model (the fixture echoes it back).
   await box.fill("after the switch");

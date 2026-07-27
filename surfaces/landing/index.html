@@ -318,6 +318,7 @@
           <a href="#recursos">Recursos</a>
           <a href="#como-funciona">Como funciona</a>
           <a href="#privacidade">Privacidade</a>
+          <a class="botao vazado" id="entrar-topo" href="#baixar">Entrar</a>
           <a class="botao" href="#baixar">Baixar</a>
         </nav>
       </div>
@@ -340,7 +341,7 @@
           relatório, a resposta no Slack e a agenda organizada.
         </p>
         <div class="acoes">
-          <a class="botao" href="#baixar">Baixar para macOS</a>
+          <a class="botao" id="entrar-heroi" href="#baixar">Baixar para macOS</a>
           <a class="botao vazado" href="#como-funciona">Ver como funciona</a>
         </div>
         <p class="nota-acoes">
@@ -540,5 +541,47 @@
         </span>
       </div>
     </footer>
+    <script>
+      // Jornada: landing → app. Quem já tem o Mangaba aberto não deve cair na
+      // página de download — sondamos a GUI local e trocamos os CTAs por "Abrir".
+      // Em mangaba.ai (fora do localhost) a sonda falha por CORS e a página segue
+      // igual, que é o comportamento certo para quem ainda não instalou.
+      (function () {
+        var PORTAS = [1420, 5173, 8765];
+        var alvo = null;
+
+        function religar() {
+          if (!alvo) return;
+          var heroi = document.getElementById("entrar-heroi");
+          var topo = document.getElementById("entrar-topo");
+          if (heroi) {
+            heroi.textContent = "Abrir o Mangaba";
+            heroi.href = alvo;
+          }
+          if (topo) topo.href = alvo;
+          var nota = document.querySelector(".nota-acoes");
+          if (nota) nota.textContent = "O Mangaba já está rodando nesta máquina · abre na sua sessão";
+        }
+
+        function sonda(porta) {
+          var url = "http://localhost:" + porta;
+          var ctrl = new AbortController();
+          var t = setTimeout(function () { ctrl.abort(); }, 900);
+          return fetch(url + (porta === 8765 ? "/v1/health" : "/"), {
+            mode: porta === 8765 ? "cors" : "no-cors",
+            signal: ctrl.signal,
+          })
+            .then(function () {
+              clearTimeout(t);
+              // A porta 8765 é o servidor, não a interface: nesse caso o app desktop
+              // está aberto e o usuário deve ir até a janela dele.
+              if (!alvo && porta !== 8765) { alvo = url; religar(); }
+            })
+            .catch(function () { clearTimeout(t); });
+        }
+
+        PORTAS.forEach(sonda);
+      })();
+    </script>
   </body>
 </html>

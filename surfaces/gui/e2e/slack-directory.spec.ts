@@ -7,7 +7,7 @@ import { test } from "./fixtures";
 async function openSlackPage(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
   await page.getByTestId("connector-slack").click();
 }
 
@@ -18,14 +18,14 @@ test("people picker: type a name, pick it, chip lands with the display name", as
   // T1DL starts empty → the hint row carries the picker.
   await page.getByTestId("add-person-T1DL").click();
   const picker = page.getByTestId("person-picker");
-  await picker.getByPlaceholder("Type a name…").fill("ro");
+  await picker.getByPlaceholder("Digite um nome…").fill("ro");
   await page.getByTestId("pick-person-U8ROHIT").click();
   // The chip shows the display name immediately (no first message needed).
   const group = page.getByTestId("slack-workspace-T1DL");
   await expect(group).toContainText("Rohit Prasad");
   await expect(page.getByTestId("person-picker")).toHaveCount(0);
   // The other workspace is untouched.
-  await expect(page.getByTestId("slack-workspace-T2AC")).toContainText("No one allowed yet");
+  await expect(page.getByTestId("slack-workspace-T2AC")).toContainText("Ninguém autorizado ainda");
 });
 
 test("people picker: guests are tagged, allowed users drop out of the list", async ({
@@ -35,7 +35,7 @@ test("people picker: guests are tagged, allowed users drop out of the list", asy
   await page.getByTestId("add-person-T1DL").click();
   const picker = page.getByTestId("person-picker");
   await expect(picker.getByTestId("pick-person-U7CAL")).toContainText("guest");
-  await picker.getByPlaceholder("Type a name…").fill("maya");
+  await picker.getByPlaceholder("Digite um nome…").fill("maya");
   await picker.getByTestId("pick-person-U9MAYA").click();
   await expect(page.getByTestId("slack-workspace-T1DL")).toContainText("Maya Chen");
   // Reopen: Maya is allowed now, so she's no longer offered.
@@ -64,7 +64,7 @@ test("channel typeahead: a NAME resolves to the workspace's id-address", async (
   // the raw address survives underneath — the tooltip carries it and Add subscribes by id.
   await expect(input).toHaveValue("#launch-team");
   await expect(input).toHaveAttribute("title", "slack:T1DL/C9LAUNCH");
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: "Adicionar", exact: true }).click();
   await expect(page.getByText(/Subscribed channels · 1/)).toBeVisible();
 });
 

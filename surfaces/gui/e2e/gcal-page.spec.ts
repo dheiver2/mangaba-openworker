@@ -6,7 +6,7 @@ import { test } from "./fixtures";
 async function openConnectors(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
 }
 
 async function signInAndConnectFirstAccount(page) {
@@ -17,7 +17,7 @@ async function signInAndConnectFirstAccount(page) {
   // starts disconnected → Available row → one click (mock connects instantly)
   await page
     .getByTestId("connector-google_calendar")
-    .getByRole("button", { name: "Connect", exact: true })
+    .getByRole("button", { name: "Conectar", exact: true })
     .click();
   await page.getByRole("button", { name: /Connect Google Calendar with one click/i }).click();
   await page.keyboard.press("Escape");
@@ -37,11 +37,11 @@ test("connect, then add a second account from the page; first stays default", as
   const rohit = page.getByTestId("gcal-account-rohit@gmail.com");
   const work = page.getByTestId("gcal-account-work@dlai.com");
   await expect(work).toBeVisible({ timeout: 10_000 });
-  await expect(rohit).toContainText("Default");
-  await expect(work).not.toContainText("Default");
+  await expect(rohit).toContainText("Padrão");
+  await expect(work).not.toContainText("Padrão");
   // list row summarizes the multi-account state
   await page.getByTestId("connectors-breadcrumb").click();
-  await expect(page.getByTestId("connector-google_calendar")).toContainText("2 accounts");
+  await expect(page.getByTestId("connector-google_calendar")).toContainText("2 contas");
 });
 
 test("Make default moves the badge; disconnecting the default repoints it", async ({
@@ -53,10 +53,10 @@ test("Make default moves the badge; disconnecting the default repoints it", asyn
   await expect(page.getByTestId("gcal-account-work@dlai.com")).toBeVisible({ timeout: 10_000 });
 
   await page.getByTestId("gcal-make-default-work@dlai.com").click();
-  await expect(page.getByTestId("gcal-account-work@dlai.com")).toContainText("Default");
-  await expect(page.getByTestId("gcal-account-rohit@gmail.com")).not.toContainText("Default");
+  await expect(page.getByTestId("gcal-account-work@dlai.com")).toContainText("Padrão");
+  await expect(page.getByTestId("gcal-account-rohit@gmail.com")).not.toContainText("Padrão");
 
   await page.getByTestId("gcal-disconnect-work@dlai.com").click();
   await expect(page.getByTestId("gcal-account-work@dlai.com")).toHaveCount(0);
-  await expect(page.getByTestId("gcal-account-rohit@gmail.com")).toContainText("Default");
+  await expect(page.getByTestId("gcal-account-rohit@gmail.com")).toContainText("Padrão");
 });

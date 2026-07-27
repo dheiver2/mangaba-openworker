@@ -8,7 +8,7 @@ import { test } from "./fixtures";
 async function openSlackPage(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
   await page.getByTestId("connector-slack").click();
 }
 
@@ -20,8 +20,8 @@ test("lists every connected workspace as its own group", async ({ page }) => {
   await expect(page.getByTestId("slack-workspace-T1DL")).toContainText("· dlaiteam");
   await expect(page.getByTestId("slack-workspace-T2AC")).toContainText("· acmehq");
   // the workspace with people/parked shows the People row; the quiet one shows the hint
-  await expect(page.getByTestId("slack-workspace-T1DL")).toContainText("People");
-  await expect(page.getByTestId("slack-workspace-T2AC")).toContainText("No one allowed yet");
+  await expect(page.getByTestId("slack-workspace-T1DL")).toContainText("Pessoas");
+  await expect(page.getByTestId("slack-workspace-T2AC")).toContainText("Ninguém autorizado ainda");
 });
 
 test("Add workspace opens the modal; signed out shows the sign-in hint, signed in installs", async ({
@@ -30,10 +30,10 @@ test("Add workspace opens the modal; signed out shows the sign-in hint, signed i
   await openSlackPage(page);
   await page.getByTestId("add-workspace-btn").click();
   const modal = page.getByTestId("add-connection-modal");
-  await expect(modal).toContainText("Sign in to Mangaba Cloud"); // signed out
+  await expect(modal).toContainText("Entrar no Mangaba Cloud"); // signed out
   // Manual pane is right there too — both modes, one entry point
   await modal.getByTestId("modal-pane-manual").click();
-  await expect(modal.getByPlaceholder("Bot token · xoxb-…")).toBeVisible();
+  await expect(modal.getByPlaceholder("Token do bot · xoxb-…")).toBeVisible();
   await page.keyboard.press("Escape");
 
   // sign in from the list's cloud strip, then install one-click

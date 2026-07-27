@@ -10,14 +10,14 @@ test("routine write → compact row: humanized title, inline preview, Allow reso
   page,
 }) => {
   await page.goto("/");
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await box.fill("please write a file");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
 
   const row = page.getByTestId("approval-row");
-  await expect(row).toContainText("Write fetch_data.py");
+  await expect(row).toContainText("Escrever fetch_data.py");
   await expect(row).not.toContainText(/permission required/i);
-  await expect(row.getByRole("button", { name: "Always allow", exact: true })).toHaveAttribute(
+  await expect(row.getByRole("button", { name: "Permitir sempre", exact: true })).toHaveAttribute(
     "title",
     /for this session/,
   );
@@ -30,7 +30,7 @@ test("routine write → compact row: humanized title, inline preview, Allow reso
 
   await page.screenshot({ path: "test-results/ux018-compact-row.png", fullPage: false });
 
-  await row.getByRole("button", { name: "Allow", exact: true }).click();
+  await row.getByRole("button", { name: "Permitir", exact: true }).click();
   await expect(page.getByText(/Done via write_file/)).toBeVisible();
 });
 
@@ -38,21 +38,21 @@ test("run_shell → full card: description title, command preview, stays-on-this
   page,
 }) => {
   await page.goto("/");
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await box.fill("please run a tool");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
 
   // The mocked proposal has no description → plain "Run a command" title; the command is
   // the preview; the reason still renders; the scope note replaces the old badge.
-  await expect(page.getByText("Run a command").last()).toBeVisible();
-  await expect(page.getByText("stays on this Mac").last()).toBeVisible();
+  await expect(page.getByText("Rodar um comando").last()).toBeVisible();
+  await expect(page.getByText("fica neste Mac").last()).toBeVisible();
   await expect(page.getByText("The mangaba wants to run a command.").first()).toBeVisible();
-  await expect(page.getByRole("button", { name: "Always allow this command" }).last()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Permitir sempre este comando" }).last()).toBeVisible();
   await expect(page.getByText(/local action/)).toHaveCount(0);
 
   await page.screenshot({ path: "test-results/ux018-shell-card.png", fullPage: false });
 
-  await page.getByRole("button", { name: "Allow once" }).last().click();
+  await page.getByRole("button", { name: "Permitir uma vez" }).last().click();
   await expect(page.getByText("The command ran; 1 file found.")).toBeVisible();
 });
 
@@ -60,9 +60,9 @@ test("a one-paragraph digest send is clamped to a card, expandable in place", as
   page,
 }) => {
   await page.goto("/");
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await box.fill("post the long digest");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
 
   // The message rides in a clamped preview box — not an unbounded quote wall.
   const prev = page.locator(".approval-prev");
@@ -74,7 +74,7 @@ test("a one-paragraph digest send is clamped to a card, expandable in place", as
   await page.screenshot({ path: "test-results/send-digest-clamped.png", fullPage: false });
 
   // Expands in place, and can collapse back.
-  await prev.getByText("show the full message").click();
+  await prev.getByText("ver a mensagem completa").click();
   expect((await prev.boundingBox())!.height).toBeGreaterThan(clampedHeight);
-  await expect(prev.getByText("show less")).toBeVisible();
+  await expect(prev.getByText("ver menos")).toBeVisible();
 });

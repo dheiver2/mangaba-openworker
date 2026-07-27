@@ -7,21 +7,21 @@ import { test } from "./fixtures";
 async function openSlackPage(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
   await page.getByTestId("connector-slack").click();
 }
 
 test("list row status + navigation to the Slack page", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
 
   const row = page.getByTestId("connector-slack");
   await expect(row).toContainText("2 workspaces · relay");
   await row.click();
   await expect(page.getByTestId("slack-workspaces")).toBeVisible();
   // signed out (fixture default) → the status line leads with the actionable layer
-  await expect(page.getByTestId("slack-mode-badge")).toContainText("Sign-in needed");
+  await expect(page.getByTestId("slack-mode-badge")).toContainText("Login necessário");
 });
 
 test("parked sender files under ITS workspace; Allow & deliver adds to that allow-list only", async ({
@@ -57,6 +57,6 @@ test("sessions listening in a workspace: listed with unsubscribe", async ({ page
   await expect(t1.getByTestId("listening-slack")).toContainText("Weekly plan 1");
   await expect(t1.getByTestId("listening-slack")).toContainText("#ocw-test");
 
-  await t1.getByTitle("Unsubscribe this session").click();
+  await t1.getByTitle("Cancelar a assinatura desta sessão").click();
   await expect(t1.getByTestId("listening-slack")).toHaveCount(0); // row hides when empty
 });

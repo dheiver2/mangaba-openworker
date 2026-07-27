@@ -6,8 +6,8 @@ test("composer: send-gating, + attach menu, Mode menu", async ({ page }) => {
   await page.goto("/");
   await page.getByText("Draft the launch note").first().click();
 
-  const box = page.getByPlaceholder(/Ask the mangaba/);
-  const send = page.getByRole("button", { name: "Send" });
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
+  const send = page.getByRole("button", { name: "Enviar" });
 
   // Send is subtle grey when empty, accent once there's content, grey again when cleared.
   await expect(send).not.toHaveClass(/bg-accent/);
@@ -17,26 +17,26 @@ test("composer: send-gating, + attach menu, Mode menu", async ({ page }) => {
   await expect(send).not.toHaveClass(/bg-accent/);
 
   // "+" attach menu offers the three typed shortcuts.
-  await page.getByRole("button", { name: "Attach" }).click();
-  await expect(page.getByRole("button", { name: "Photo or image" })).toBeVisible();
+  await page.getByRole("button", { name: "Anexar" }).click();
+  await expect(page.getByRole("button", { name: "Foto ou imagem" })).toBeVisible();
   await expect(page.getByRole("button", { name: "PDF", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Other files" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Outros arquivos" })).toBeVisible();
   // Clicking the backdrop closes it.
   await page.locator(".fixed.inset-0.z-30").click();
-  await expect(page.getByRole("button", { name: "Photo or image" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Foto ou imagem" })).toHaveCount(0);
 
   // Mode menu: the three shipped permission options with the current one marked, plus the
   // Unattended/send-to-Inbox toggle (§22). Plan + Custom hidden for this release (2026-07-22).
-  await page.getByRole("button", { name: "Mode", exact: true }).click();
+  await page.getByRole("button", { name: "Modo", exact: true }).click();
   const menu = page.getByTestId("mode-menu");
-  await expect(menu.getByText("Discuss")).toBeVisible();
+  await expect(menu.getByText("Discutir")).toBeVisible();
   await expect(menu.getByText("Plan", { exact: true })).toHaveCount(0);
   await expect(menu.getByText("Custom", { exact: true })).toHaveCount(0);
   // The current mode is marked with a ✓.
-  await expect(menu.locator("button").filter({ hasText: "Ask for approval" })).toContainText("✓");
-  await expect(menu.getByRole("switch", { name: "Send approvals to the Inbox" })).toBeVisible();
+  await expect(menu.locator("button").filter({ hasText: "Pedir aprovação" })).toContainText("✓");
+  await expect(menu.getByRole("switch", { name: "Enviar aprovações para a caixa de entrada" })).toBeVisible();
   // Picking an option closes the menu (and would flip the live engine's mode).
-  await menu.getByText("Full access").click();
+  await menu.getByText("Acesso total").click();
   await expect(page.getByTestId("mode-menu")).toHaveCount(0);
 });
 
@@ -46,7 +46,7 @@ test("composer: picking a PDF shows an attachment chip and arms send", async ({ 
   await page.goto("/");
   await page.getByText("Draft the launch note").first().click();
 
-  const send = page.getByRole("button", { name: "Send" });
+  const send = page.getByRole("button", { name: "Enviar" });
   await expect(send).not.toHaveClass(/bg-accent/);
 
   await page.locator('input[type="file"]').setInputFiles({
@@ -82,7 +82,7 @@ test("composer: PDF over the page threshold is rejected with a notice", async ({
   await expect(notice).toContainText("big-report.pdf skipped");
   await expect(notice).toContainText("34 pages is over your 2-page limit");
   await expect(page.locator(".attach-chip")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Send" })).not.toHaveClass(/bg-accent/);
+  await expect(page.getByRole("button", { name: "Enviar" })).not.toHaveClass(/bg-accent/);
 
   // The ✕ dismisses the notice.
   await notice.getByRole("button").click();

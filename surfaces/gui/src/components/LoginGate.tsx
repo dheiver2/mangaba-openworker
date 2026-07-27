@@ -17,7 +17,7 @@ import { BrandLockup } from "./Brand";
 // Nada do app monta antes de destravar — o gate embrulha a árvore inteira, então nenhuma
 // requisição autenticada sai antes da hora.
 
-type Phase = "loading" | "setup" | "login";
+type Phase = "loading" | "setup" | "login" | "stale";
 
 export function LoginGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus | null>(null);
@@ -27,6 +27,10 @@ export function LoginGate({ children }: { children: React.ReactNode }) {
     getAuthStatus()
       .then((s) => {
         setStatus(s);
+        if (!s.ok) {
+          setUnlocked(false);
+          return;
+        }
         // Sem senha ainda, o gate NÃO deixa passar: mostra a tela de criação. O
         // servidor aceitaria a chamada (o app precisa abrir na primeira execução para
         // a senha poder ser criada), mas quem entra pela GUI define a senha primeiro —
@@ -52,7 +56,13 @@ export function LoginGate({ children }: { children: React.ReactNode }) {
 
   if (unlocked) return <>{children}</>;
 
-  const phase: Phase = !status ? "loading" : status.configured ? "login" : "setup";
+  const phase: Phase = !status
+    ? "loading"
+    : !status.ok
+      ? "stale"
+      : status.configured
+        ? "login"
+        : "setup";
   return (
     <PasscodeScreen
       phase={phase}
@@ -89,6 +99,7 @@ function PasscodeScreen({
   }, [phase]);
 
   const creating = phase === "setup";
+  const desatualizado = phase === "stale";
   const canSubmit =
     !busy &&
     locked <= 0 &&
@@ -136,19 +147,33 @@ function PasscodeScreen({
         <h1 className="login-title">
           {phase === "loading"
             ? "Carregando…"
-            : creating
-              ? "Proteja o seu Mangaba"
-              : "Bem-vindo de volta"}
+            : desatualizado
+              ? "O servidor foi reiniciado"
+              : creating
+                ? "Proteja o seu Mangaba"
+                : "Bem-vindo de volta"}
         </h1>
         <p className="login-lede">
           {phase === "loading"
             ? "Conectando ao servidor local…"
-            : creating
-              ? "Crie uma senha para esta máquina. Ela protege suas conversas, arquivos e conectores de quem tiver acesso físico a este computador."
-              : "Digite sua senha para destravar as sessões, automações e conectores."}
+            : desatualizado
+              ? "O Mangaba subiu de novo e gerou novas credenciais de acesso. Recarregue esta página para reconectar."
+              : creating
+                ? "Crie uma senha para esta máquina. Ela protege suas conversas, arquivos e conectores de quem tiver acesso físico a este computador."
+                : "Digite sua senha para destravar as sessões, automações e conectores."}
         </p>
 
-        {phase !== "loading" && (
+        {desatualizado && (
+          <button
+            className="login-submit"
+            onClick={() => window.location.reload()}
+            data-testid="login-reload"
+          >
+            Recarregar
+          </button>
+        )}
+
+        {phase !== "loading" && !desatualizado && (
           <>
             <label className="login-field">
               <span>Senha</span>

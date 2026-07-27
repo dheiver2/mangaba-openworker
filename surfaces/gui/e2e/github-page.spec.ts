@@ -8,7 +8,7 @@ import { test } from "./fixtures";
 async function openGithubPage(page) {
   await page.goto("/");
   await page.getByTestId("account-row").click();
-  await page.getByRole("button", { name: "Connectors", exact: true }).click();
+  await page.getByRole("button", { name: "Conectores", exact: true }).click();
   await page.getByTestId("connector-github").click();
 }
 
@@ -42,7 +42,7 @@ test("add installation opens the modal; signed in installs a second org", async 
   await page.getByTestId("add-installation-btn").click();
   const modal = page.getByTestId("add-connection-modal");
   await expect(modal).toContainText("@ocw-agent App"); // one-click pane
-  await expect(modal).toContainText("Sign in to Mangaba Cloud"); // signed out
+  await expect(modal).toContainText("Entrar no Mangaba Cloud"); // signed out
   // Manual PAT pane is right there too — both modes, one entry point
   await modal.getByTestId("modal-pane-manual").click();
   await expect(modal).toContainText("Personal access token");

@@ -9,11 +9,11 @@ test("send → user bubble → streamed echo reply renders", async ({ page }) =>
 
   // Boot resumes the most recent session ("Draft the launch note") and connects; the composer is
   // live once the fake agent's `ready` lands.
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await expect(box).toBeVisible();
 
   await box.fill("hello agent");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
 
   // Local echo of the user message, then the agent's reply (delta-streamed, then finalized).
   await expect(page.getByText("hello agent", { exact: true }).first()).toBeVisible();
@@ -31,15 +31,15 @@ test("send → user bubble → streamed echo reply renders", async ({ page }) =>
 
 test("approval: tool request suspends the turn; Allow once resumes it", async ({ page }) => {
   await page.goto("/");
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await expect(box).toBeVisible();
 
   await box.fill("please run a tool");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
 
   // The approval card surfaces the tool + reason and blocks until a decision.
   await expect(page.getByText("The mangaba wants to run a command.").first()).toBeVisible();
-  await page.getByRole("button", { name: "Allow once" }).last().click();
+  await page.getByRole("button", { name: "Permitir uma vez" }).last().click();
 
   // Decision goes back over the socket; the agent finishes the tool and the turn.
   await expect(page.getByText("The command ran; 1 file found.")).toBeVisible();
@@ -47,13 +47,13 @@ test("approval: tool request suspends the turn; Allow once resumes it", async ({
 
 test("approval: Deny skips the tool and the agent says so", async ({ page }) => {
   await page.goto("/");
-  const box = page.getByPlaceholder(/Ask the mangaba/);
+  const box = page.getByPlaceholder(/Peça ao Mangaba/);
   await expect(box).toBeVisible();
 
   await box.fill("please run a tool");
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Enviar" }).click();
 
-  await expect(page.getByRole("button", { name: "Deny" }).last()).toBeVisible();
-  await page.getByRole("button", { name: "Deny" }).last().click();
+  await expect(page.getByRole("button", { name: "Negar" }).last()).toBeVisible();
+  await page.getByRole("button", { name: "Negar" }).last().click();
   await expect(page.getByText("Understood — skipped the command.")).toBeVisible();
 });
