@@ -137,6 +137,45 @@ const TEMPLATES: QuickTemplate[] = [
     instructions: () => "Resuma meus e-mails não lidos em uma nota curta.",
   },
   {
+    key: "cotacao",
+    title: "Cotação do dia",
+    blurb: "Dólar, euro e Ibovespa, resumidos antes da abertura.",
+    cadence: "Dias úteis",
+    conns: [],
+    day: "weekdays",
+    time: "08:30",
+    instructions: () =>
+      "Pesquise na web a cotação atual do dólar e do euro em reais e o fechamento " +
+      "anterior do Ibovespa. Escreva um resumo curto em português com os números e a " +
+      "variação do dia, salvo como arquivo markdown.",
+  },
+  {
+    key: "noticias-br",
+    title: "Notícias do Brasil",
+    blurb: "As 5 notícias mais importantes do país, sem ruído.",
+    cadence: "Diário",
+    conns: [],
+    day: "daily",
+    time: "07:30",
+    instructions: () =>
+      "Pesquise na web as notícias mais importantes do Brasil das últimas 24 horas " +
+      "(economia, política e tecnologia). Escreva um briefing de 5 tópicos em " +
+      "português, um parágrafo por tópico, salvo como arquivo markdown.",
+  },
+  {
+    key: "semana",
+    title: "Preparação da semana",
+    blurb: "Segunda cedo: o que ficou aberto e o que vem pela frente.",
+    cadence: "Semanal",
+    conns: [],
+    day: "mon",
+    time: "07:00",
+    instructions: () =>
+      "Revise os arquivos da área de trabalho desta sessão em busca de pendências e " +
+      "anotações da semana passada, e escreva um plano curto da semana em português: " +
+      "o que ficou aberto, o que é prioridade e o que dá para delegar. Salve como markdown.",
+  },
+  {
     key: "cleanup",
     title: "Faxina de pastas",
     blurb: "Organiza os downloads recentes em pastas por tipo.",

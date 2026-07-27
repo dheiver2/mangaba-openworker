@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   getAuthStatus,
   loginPasscode,
+  logoutPasscode,
   setupPasscode,
   PASSCODE_CHANGED,
   sessionToken,
@@ -53,6 +54,27 @@ export function LoginGate({ children }: { children: React.ReactNode }) {
     window.addEventListener(PASSCODE_CHANGED, onChange);
     return () => window.removeEventListener(PASSCODE_CHANGED, onChange);
   }, []);
+
+  // Bloqueio automático: N minutos sem atividade (Configurações ▸ Privacidade e
+  // limites) e a sessão é encerrada — o logout derruba o token e este mesmo gate
+  // reaparece. Um timer, rearmado por interação; 0 = desligado.
+  useEffect(() => {
+    if (!unlocked) return;
+    let timer: number | undefined;
+    const arm = () => {
+      window.clearTimeout(timer);
+      let min = 0;
+      try { min = parseInt(localStorage.getItem("mangaba:autolock-min") || "0", 10) || 0; } catch { /* sem pref */ }
+      if (min > 0) timer = window.setTimeout(() => void logoutPasscode(), min * 60_000);
+    };
+    const eventos = ["pointerdown", "keydown", "wheel"] as const;
+    eventos.forEach((e) => window.addEventListener(e, arm, { passive: true }));
+    arm();
+    return () => {
+      window.clearTimeout(timer);
+      eventos.forEach((e) => window.removeEventListener(e, arm));
+    };
+  }, [unlocked]);
 
   if (unlocked) return <>{children}</>;
 

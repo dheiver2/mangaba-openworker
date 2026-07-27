@@ -1492,6 +1492,49 @@ def create_app(manager: SessionManager) -> FastAPI:
             max_mb=b.get("pdf_max_mb"),
         )
 
+    @app.post("/v1/settings/vault-mode")
+    def settings_set_vault_mode(body: dict) -> dict[str, Any]:
+        # Modo Cofre: só provedores locais. A imposição fica no turno (vault_block).
+        return manager.set_vault_mode(bool((body or {}).get("value")))
+
+    @app.post("/v1/settings/secret-guard")
+    def settings_set_secret_guard(body: dict) -> dict[str, Any]:
+        return manager.set_secret_guard(bool((body or {}).get("value")))
+
+    @app.post("/v1/settings/daily-turn-limit")
+    def settings_set_daily_turn_limit(body: dict) -> dict[str, Any]:
+        return manager.set_daily_turn_limit((body or {}).get("value", 0))
+
+    @app.get("/v1/diagnostics")
+    def diagnostics() -> dict[str, Any]:
+        return manager.diagnostics()
+
+    @app.get("/v1/sessions/{session_id}/export")
+    def session_export(session_id: str) -> dict[str, Any]:
+        """Transcrição em Markdown — o entregável da conversa em si. Gerada aqui
+        (não na GUI) para valer também para chamadas diretas à API."""
+        messages = manager.session_messages(session_id)
+        info = next(
+            (s for s in manager.list_sessions() if s.get("session_id") == session_id),
+            {},
+        )
+        title = info.get("title") or session_id
+        linhas = [f"# {title}", ""]
+        papel = {"user": "Você", "assistant": "Mangaba"}
+        for m in messages:
+            role = m.get("role")
+            if role == "user":
+                content = m.get("content")
+                if isinstance(content, list):
+                    content = " ".join(
+                        p.get("text", "") for p in content if isinstance(p, dict)
+                    ).strip()
+                if content:
+                    linhas += [f"## {papel['user']}", "", str(content), ""]
+            elif role == "assistant" and m.get("content"):
+                linhas += [f"## {papel['assistant']}", "", str(m["content"]), ""]
+        return {"ok": True, "title": title, "markdown": "\n".join(linhas)}
+
     @app.post("/v1/attachments/inspect-pdf")
     def attachments_inspect_pdf(body: dict) -> dict[str, Any]:
         # Attach-time page/size probe for the composer's threshold check. Local only.
@@ -1928,6 +1971,8 @@ def create_app(manager: SessionManager) -> FastAPI:
                     model = message.get("model")
                     if model is not None and not isinstance(model, str):
                         await reject_input("Invalid model: expected a string.")
+                    elif model and manager.vault_block(model):
+                        await reject_input(manager.vault_block(model))
                     else:
                         await _apply_model(model)
                 elif kind == "user_message":
@@ -2015,6 +2060,21 @@ def create_app(manager: SessionManager) -> FastAPI:
                         continue
                     await _apply_model(model)
                     if text or attachments:
+                        # Guarda-corpos locais (mangaba/guardrails.py), na ordem:
+                        # Cofre (nada de nuvem), protetor de segredos (redige a
+                        # mensagem ANTES de virar histórico/prompt), freio de gastos.
+                        blocked = manager.vault_block(engine.model)
+                        if blocked:
+                            await reject_input(blocked)
+                            continue
+                        if manager.secret_guard():
+                            from ..guardrails import redact_secrets
+
+                            text, _n_secrets = redact_secrets(text)
+                        spent = manager.turn_budget.try_spend()
+                        if spent:
+                            await reject_input(spent)
+                            continue
                         content = build_user_content(text, attachments)
                         await claim_turn(content=content)
                 else:

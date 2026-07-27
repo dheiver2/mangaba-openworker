@@ -43,7 +43,39 @@ export function AuditView() {
             <input className={INPUT} placeholder="conector" value={connectorFilter} onChange={(e) => setConnectorFilter(e.target.value)} />
             <input className={INPUT} placeholder="ferramenta" value={toolFilter} onChange={(e) => setToolFilter(e.target.value)} />
             <button className={BTN_ACCENT} onClick={refresh}>
-              Filter
+              Filtrar
+            </button>
+            <button
+              className="text-[12.5px] px-3 py-1.5 rounded-lg border border-line bg-paper hover:border-lineStrong shrink-0 disabled:opacity-40"
+              disabled={events.length === 0}
+              data-testid="audit-csv"
+              onClick={() => {
+                // CSV gerado do que está NA TELA (mesmos filtros): auditoria que
+                // você consegue arquivar, anexar num ticket ou abrir no Excel.
+                const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+                const linhas = [
+                  ["quando", "sessao", "conector", "ferramenta", "status", "argumentos"].join(";"),
+                  ...events.map((ev) =>
+                    [
+                      ev.timestamp,
+                      ev.session_id,
+                      ev.connector,
+                      ev.tool,
+                      ev.status,
+                      JSON.stringify(ev.args ?? {}),
+                    ].map(esc).join(";"),
+                  ),
+                ];
+                // BOM para o Excel pt-BR abrir com acentos certos; ";" idem (vírgula decimal).
+                const blob = new Blob(["\ufeff" + linhas.join("\n")], { type: "text/csv;charset=utf-8" });
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = `atividade-mangaba-${new Date().toISOString().slice(0, 10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+              }}
+            >
+              Baixar CSV
             </button>
           </div>
 

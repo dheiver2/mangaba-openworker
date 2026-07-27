@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   announceCloudChanged,
+  exportSession,
   AUTOMATIONS_CHANGED,
   CLOUD_CHANGED,
   cloudLogin,
@@ -486,6 +487,19 @@ export function Sidebar(props: Props) {
               {item("row-menu-archive", "archive", s.archived ? "Desarquivar" : "Arquivar", () =>
                 props.onArchiveSession(s.session_id, !s.archived),
               )}
+              {item("row-menu-export", "file", "Exportar (.md)", () => {
+                // O servidor gera o Markdown; aqui só viramos download — assim a
+                // exportação vale igual para quem chama a API direto.
+                void exportSession(s.session_id).then((out) => {
+                  if (!out.ok || !out.markdown) return;
+                  const blob = new Blob([out.markdown], { type: "text/markdown" });
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `${(out.title || "conversa").replace(/[^\p{L}\p{N} _-]/gu, "").slice(0, 60) || "conversa"}.md`;
+                  a.click();
+                  URL.revokeObjectURL(a.href);
+                });
+              })}
               <div className="h-px bg-line my-1 mx-2" />
               {confirmDelId === s.session_id ? (
                 <button

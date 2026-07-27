@@ -33,6 +33,7 @@ import { isProjectScoped } from "./personaScope";
 import { baseName } from "./paths";
 import { itemsFromMessages } from "./itemsFromMessages";
 import { streamMode } from "./streamGate";
+import { redactSecrets } from "./secretGuard";
 import { InboxItemCard } from "./components/InboxItemCard";
 import { isTauri, platformOS, startWindowDrag } from "./tauri";
 import { Icon } from "./components/Icon";
@@ -201,6 +202,9 @@ export function App() {
   // composer's "No model connected" chip. Default true so we don't flash the chip before settings
   // load; corrected by loadSettings.
   const [modelReady, setModelReady] = useState(true);
+  // Modo Cofre (guardrails): o topbar mostra o cadeado quando só modelos locais rodam.
+  const [vaultMode, setVaultMode] = useState(false);
+  const [secretGuardOn, setSecretGuardOn] = useState(true);
   const [surface, setSurface] = useState<
     "session" | "scheduled" | "integrations" | "audit" | "inbox" | "persona" | "settings"
   >("session");
@@ -485,6 +489,8 @@ export function App() {
         setModels(s.models || []);
         setModelLabels(s.model_labels || {});
         setModelReady(s.model_ready);
+        setVaultMode(!!s.vault_mode);
+        setSecretGuardOn(s.secret_guard !== false);
         if (s.surfaces) setSurfaces(s.surfaces);
       })
       .catch(() => {});
@@ -823,7 +829,10 @@ export function App() {
     return () => clearInterval(t);
   }, [surface, sessionId, browserRefreshKey, markUnattended]);
 
-  const send = (text: string, attachments?: Attachment[]) => {
+  const send = (rawText: string, attachments?: Attachment[]) => {
+    // Espelho do protetor de segredos (secretGuard.ts): o servidor redige de novo —
+    // isto aqui só garante que o eco local mostra o MESMO texto que foi de fato.
+    const text = secretGuardOn ? redactSecrets(rawText).texto : rawText;
     setItems((p) => [...p, { kind: "user", text, attachments, ts: Date.now() / 1000 }]);
     // The visible model rides along with the message (single source of truth per turn).
     sessionRef.current?.userMessage(text, attachments, model);
@@ -1374,6 +1383,31 @@ export function App() {
           {/* Right: session-settings icon (§23) + panel toggle. Model/mode/persona chrome is
               gone — the facts live in the subtitle, the controls in the composer (§22). */}
           <div className="main-topbar-side main-topbar-actions" onPointerDown={beginWindowDrag}>
+            {vaultMode && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accentSoft text-accent text-[11.5px] font-semibold shrink-0"
+                title="Modo Cofre ligado: só modelos locais (Ollama) rodam — nada sai desta máquina"
+                data-testid="vault-badge"
+              >
+                🔒 Cofre
+              </span>
+            )}
+            {hasHistory && !running && (
+              <button
+                className="topbar-icon-btn"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={() =>
+                  send(
+                    "Resuma esta conversa em até 5 tópicos, em português: o que foi feito, as decisões tomadas e o que ficou pendente.",
+                  )
+                }
+                title="Resumir esta conversa"
+                aria-label="Resumir esta conversa"
+                data-testid="summarize-btn"
+              >
+                <Icon name="sparkle" size={15} />
+              </button>
+            )}
             {agent === "cowork" && railHidden && artifactCount > 0 && (
               <button
                 className="topbar-artifacts-btn"

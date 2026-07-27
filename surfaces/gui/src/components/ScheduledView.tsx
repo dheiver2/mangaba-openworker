@@ -1,3 +1,4 @@
+import { parseAgendaPt } from "../cronPt";
 import { useEffect, useState } from "react";
 import {
   createAutomation,
@@ -209,6 +210,10 @@ function NewAutomationForm({
   const [instructions, setInstructions] = useState("");
   const [time, setTime] = useState("09:00");
   const [freq, setFreq] = useState("daily");
+  // Agendamento em linguagem natural (cronPt.ts): quem descreve "toda sexta às 17h"
+  // vê a releitura na hora e o cron dela vence os seletores fixos.
+  const [fala, setFala] = useState("");
+  const agenda = parseAgendaPt(fala);
 
   const valid = title.trim() && instructions.trim();
 
@@ -229,6 +234,21 @@ function NewAutomationForm({
         value={instructions}
         onChange={(e) => setInstructions(e.target.value)}
       />
+      <input
+        className="tmpl-input"
+        placeholder="Ou descreva: toda sexta às 17h · dias úteis às 9 · a cada 2 horas"
+        value={fala}
+        onChange={(e) => setFala(e.target.value)}
+        data-testid="agenda-pt"
+      />
+      {fala.trim() && (
+        <div
+          className={"text-[12px] mb-2 " + (agenda ? "text-muted" : "text-warnInk")}
+          data-testid="agenda-pt-leitura"
+        >
+          {agenda ? `→ ${agenda.descricao}` : "não entendi — tente \u201ctoda sexta às 17h\u201d ou use os campos abaixo"}
+        </div>
+      )}
       <div className="tmpl-sched">
         <label className="tmpl-field">
           <span>Às</span>
@@ -260,7 +280,7 @@ function NewAutomationForm({
             onCreate({
               title: title.trim(),
               instructions: instructions.trim(),
-              cron: toCron(time, freq),
+              cron: agenda?.cron || toCron(time, freq),
             })
           }
         >

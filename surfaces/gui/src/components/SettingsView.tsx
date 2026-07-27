@@ -2,6 +2,11 @@ import { useEffect, useState } from "react";
 import {
   changePasscode,
   getAuthStatus,
+  getDiagnostics,
+  setDailyTurnLimit,
+  setSecretGuard,
+  setVaultMode,
+  type Diagnostics,
   getSettings,
   getTrustedWorkspaces,
   logoutPasscode,
@@ -432,6 +437,10 @@ function AppearanceSection() {
 
       <PasscodeCard />
 
+      <GuardrailsCard />
+
+      <DiagnosticsCard />
+
       <TrustedWorkspacesCard />
 
       {desktop && (
@@ -588,6 +597,160 @@ function PasscodeCard() {
           {msg.text}
         </div>
       )}
+    </div>
+  );
+}
+
+// Guarda-corpos locais (mangaba/guardrails.py): Cofre, protetor de segredos,
+// freio de gastos e o auto-bloqueio (este último vive na GUI — LoginGate).
+export const AUTOLOCK_KEY = "mangaba:autolock-min";
+
+function GuardrailsCard() {
+  const [vault, setVault] = useState<boolean | null>(null);
+  const [guard, setGuard] = useState(true);
+  const [limit, setLimit] = useState(0);
+  const [used, setUsed] = useState(0);
+  const [lockMin, setLockMin] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem(AUTOLOCK_KEY) || "0", 10) || 0; } catch { return 0; }
+  });
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => {
+        setVault(!!s.vault_mode);
+        setGuard(s.secret_guard !== false);
+        setLimit(s.daily_turn_limit || 0);
+        setUsed(s.turns_used_today || 0);
+      })
+      .catch(() => setVault(false));
+  }, []);
+
+  const saveLock = (n: number) => {
+    const v = Math.max(0, Math.min(n || 0, 480));
+    setLockMin(v);
+    try { localStorage.setItem(AUTOLOCK_KEY, String(v)); } catch { /* melhor esforço */ }
+  };
+
+  if (vault === null) return null;
+  return (
+    <div className={CARD + " p-4 mb-4"} data-testid="guardrails-card">
+      <div className={FIELD_LABEL}>Privacidade e limites</div>
+
+      <label className="flex items-start gap-3 py-2 mt-1">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={vault}
+          data-testid="vault-toggle"
+          onChange={(e) => { setVault(e.target.checked); void setVaultMode(e.target.checked); }}
+        />
+        <span>
+          <span className="block text-[13px] text-ink">Modo Cofre — 100% local</span>
+          <span className="block text-[12px] text-muted">
+            Bloqueia todo provedor de nuvem: só modelos do Ollama rodam. A checagem é no
+            servidor, então nada sai desta máquina nem por engano.
+          </span>
+        </span>
+      </label>
+
+      <label className="flex items-start gap-3 py-2">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={guard}
+          data-testid="secret-guard-toggle"
+          onChange={(e) => { setGuard(e.target.checked); void setSecretGuard(e.target.checked); }}
+        />
+        <span>
+          <span className="block text-[13px] text-ink">Protetor de segredos</span>
+          <span className="block text-[12px] text-muted">
+            Chaves de API, tokens e senhas coladas na conversa são removidos antes de a
+            mensagem chegar ao modelo.
+          </span>
+        </span>
+      </label>
+
+      <div className="flex items-center gap-3 py-2">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13px] text-ink">Freio de gastos</span>
+          <span className="block text-[12px] text-muted">
+            Teto de turnos por dia (0 = sem teto). Hoje: {used} usados.
+          </span>
+        </span>
+        <input
+          type="number"
+          min={0}
+          max={10000}
+          value={limit}
+          data-testid="turn-limit"
+          className="w-20 px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          onChange={(e) => {
+            const n = Math.max(0, parseInt(e.target.value, 10) || 0);
+            setLimit(n);
+            void setDailyTurnLimit(n);
+          }}
+        />
+      </div>
+
+      <div className="flex items-center gap-3 py-2">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[13px] text-ink">Bloqueio automático</span>
+          <span className="block text-[12px] text-muted">
+            Minutos parado até pedir a senha de novo (0 = nunca).
+          </span>
+        </span>
+        <input
+          type="number"
+          min={0}
+          max={480}
+          value={lockMin}
+          data-testid="autolock-min"
+          className="w-20 px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          onChange={(e) => saveLock(parseInt(e.target.value, 10))}
+        />
+      </div>
+    </div>
+  );
+}
+
+// Raio-x local do servidor (/v1/diagnostics) + latência medida daqui.
+function DiagnosticsCard() {
+  const [d, setD] = useState<Diagnostics | null>(null);
+  const [latency, setLatency] = useState<number | null>(null);
+
+  const load = () => {
+    const t0 = performance.now();
+    getDiagnostics()
+      .then((x) => { setD(x); setLatency(Math.round(performance.now() - t0)); })
+      .catch(() => setD(null));
+  };
+  useEffect(load, []);
+
+  if (!d) return null;
+  const up = d.uptime_seconds;
+  const uptime = up >= 3600 ? `${Math.floor(up / 3600)}h${Math.floor((up % 3600) / 60)}m` : `${Math.floor(up / 60)}m`;
+  const linha = (k: string, v: string) => (
+    <div className="flex items-baseline gap-2 py-0.5 text-[12.5px]">
+      <span className="text-faint w-32 shrink-0">{k}</span>
+      <span className="text-ink truncate">{v}</span>
+    </div>
+  );
+  return (
+    <div className={CARD + " p-4 mb-4"} data-testid="diagnostics-card">
+      <div className="flex items-center">
+        <div className={FIELD_LABEL}>Diagnóstico</div>
+        <button className="ml-auto text-[12px] text-accent hover:underline" onClick={load}>
+          atualizar
+        </button>
+      </div>
+      <div className="mt-2">
+        {linha("Servidor", `v${d.version} · Python ${d.python} · no ar há ${uptime}`)}
+        {linha("Latência local", latency !== null ? `${latency} ms` : "—")}
+        {linha("Modelo padrão", `${d.model}${d.model_ready ? "" : " (provedor não configurado)"}`)}
+        {linha("Sessões", String(d.sessions))}
+        {linha("Cofre / Protetor", `${d.vault_mode ? "ligado" : "desligado"} / ${d.secret_guard ? "ligado" : "desligado"}`)}
+        {linha("Dados", d.state_dir)}
+      </div>
     </div>
   );
 }

@@ -803,6 +803,54 @@ export interface ModelSettings {
   pdf_fallback?: "text" | "images";
   pdf_max_pages?: number; // default 20, 1–100
   pdf_max_mb?: number; // default 10, 1–10
+  // Guarda-corpos locais (mangaba/guardrails.py) — opcionais para conviver com
+  // um backend mais antigo.
+  vault_mode?: boolean;
+  secret_guard?: boolean;
+  daily_turn_limit?: number;
+  turns_used_today?: number;
+}
+
+// -- guarda-corpos + diagnóstico ----------------------------------------------------
+
+const postSetting = async (rota: string, value: unknown): Promise<any> => {
+  const res = await fetch(`${httpBase()}/v1/settings/${rota}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  });
+  return res.json();
+};
+
+export const setVaultMode = (on: boolean) => postSetting("vault-mode", on);
+export const setSecretGuard = (on: boolean) => postSetting("secret-guard", on);
+export const setDailyTurnLimit = (n: number) => postSetting("daily-turn-limit", n);
+
+export interface Diagnostics {
+  version: string;
+  python: string;
+  platform: string;
+  uptime_seconds: number;
+  state_dir: string;
+  model: string;
+  model_ready: boolean;
+  vault_mode: boolean;
+  secret_guard: boolean;
+  sessions: number;
+  turn_budget: { limit: number; used_today: number };
+}
+
+export async function getDiagnostics(): Promise<Diagnostics> {
+  const res = await fetch(`${httpBase()}/v1/diagnostics`);
+  return res.json();
+}
+
+/** Transcrição da conversa em Markdown, gerada pelo servidor. */
+export async function exportSession(
+  sessionId: string,
+): Promise<{ ok: boolean; title?: string; markdown?: string }> {
+  const res = await fetch(`${httpBase()}/v1/sessions/${sessionId}/export`);
+  return res.json();
 }
 
 export interface PdfSettings {

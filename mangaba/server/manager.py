@@ -168,6 +168,14 @@ class SessionManager:
         from ..pdf_support import set_fallback_mode
 
         set_fallback_mode(self.pdf_settings()["pdf_fallback"])
+        # Guarda-corpos locais (mangaba/guardrails.py): freio de gastos + relógio de
+        # subida para o painel de diagnóstico.
+        from ..guardrails import DailyTurnBudget
+
+        self.turn_budget = DailyTurnBudget(int(self._prefs.get("daily_turn_limit") or 0))
+        import time as _time
+
+        self.started_at = _time.time()
         # Per-session live-view registry: every socket open on a session id gets the turn's events,
         # whoever drives the turn (foreground user_message, channel delivery, self-wake, resume).
         # Delivery itself is socket-independent — this only governs *live visibility*.
@@ -1771,6 +1779,11 @@ class SessionManager:
             "surfaces": self._surfaces(),
             "nav_layout": self._nav_layout(),
             "sessions_peek": self.sessions_peek(),
+            # Guarda-corpos locais (diferenciais do fork; ver mangaba/guardrails.py).
+            "vault_mode": self.vault_mode(),
+            "secret_guard": self.secret_guard(),
+            "daily_turn_limit": self.turn_budget.limit,
+            "turns_used_today": self.turn_budget.used_today,
             "scratch_base": self._prefs.get("scratch_base")
             or self.DEFAULT_SCRATCH_BASE,
             # Real on-disk secrets location, so the UI shows the OS-native path instead of a
@@ -1810,6 +1823,70 @@ class SessionManager:
         self._prefs["nav_layout"] = value
         self._save_prefs()
         return {"ok": True, "nav_layout": value}
+
+    # -- guarda-corpos locais ---------------------------------------------------
+    def vault_mode(self) -> bool:
+        """Modo Cofre: com ele ligado, só provedores locais (Ollama) podem rodar."""
+        return bool(self._prefs.get("vault_mode", False))
+
+    def set_vault_mode(self, on: bool) -> dict[str, Any]:
+        self._prefs["vault_mode"] = bool(on)
+        self._save_prefs()
+        return {"ok": True, "vault_mode": self.vault_mode()}
+
+    def secret_guard(self) -> bool:
+        """Protetor de segredos: redige credenciais da mensagem antes do modelo.
+        Ligado por padrão — desligar é a exceção consciente, nunca o estado inicial."""
+        return bool(self._prefs.get("secret_guard", True))
+
+    def set_secret_guard(self, on: bool) -> dict[str, Any]:
+        self._prefs["secret_guard"] = bool(on)
+        self._save_prefs()
+        return {"ok": True, "secret_guard": self.secret_guard()}
+
+    def set_daily_turn_limit(self, n: Any) -> dict[str, Any]:
+        try:
+            limit = max(0, min(int(n), 10_000))
+        except (TypeError, ValueError):
+            return {"ok": False, "error": "o teto diário precisa ser um número"}
+        self._prefs["daily_turn_limit"] = limit
+        self._save_prefs()
+        self.turn_budget.limit = limit
+        return {"ok": True, "daily_turn_limit": limit}
+
+    def vault_block(self, model: str) -> Optional[str]:
+        """Mensagem de recusa quando o Cofre barra este modelo (None = liberado).
+        A checagem fica no servidor de propósito: uma UI alterada não a contorna."""
+        if not self.vault_mode():
+            return None
+        if self._model_provider(model) == "ollama":
+            return None
+        return (
+            f"Modo Cofre ligado: o modelo {model} roda na nuvem. Use um modelo do "
+            "Ollama ou desligue o Cofre em Configurações ▸ Privacidade e limites."
+        )
+
+    def diagnostics(self) -> dict[str, Any]:
+        """Raio-x local para o cartão de Diagnóstico — nada disto sai da máquina."""
+        import platform
+        import sys
+        import time
+
+        from .. import __version__ as pkg_version
+
+        return {
+            "version": pkg_version,
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+            "uptime_seconds": int(time.time() - self.started_at),
+            "state_dir": str(self.secrets.path.parent),
+            "model": self.model,
+            "model_ready": self._provider_configured(self._model_provider(self.model)),
+            "vault_mode": self.vault_mode(),
+            "secret_guard": self.secret_guard(),
+            "sessions": len(self.list_sessions()),
+            "turn_budget": self.turn_budget.snapshot(),
+        }
 
     DEFAULT_SESSIONS_PEEK = 5
 
