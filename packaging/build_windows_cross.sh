@@ -160,6 +160,37 @@ if [ -n "$GGML_LIB" ]; then
     done
 fi
 
+echo "==> [4.5/6] conferindo o ícone embutido no .exe"
+# O recurso de ícone fica em cache: trocar icons/icon.ico e rebuildar NÃO
+# re-embute o ícone novo — o binário sai com o antigo e só se percebe olhando a
+# barra de tarefas do Windows. Comparar os corpos das imagens do .ico com os
+# bytes do .exe pega isso; quando falha, `cargo clean -p mangaba-desktop`
+# resolve. Roda antes do empacotamento para não gerar um instalador errado.
+APP_EXE="$GUI/src-tauri/target/x86_64-pc-windows-gnu/release/mangaba-desktop.exe"
+if [ -f "$APP_EXE" ]; then
+    python3 - "$GUI/src-tauri/icons/icon.ico" "$APP_EXE" <<'PY'
+import struct, sys, pathlib
+ico = pathlib.Path(sys.argv[1]).read_bytes()
+exe = pathlib.Path(sys.argv[2]).read_bytes()
+_, _, n = struct.unpack("<HHH", ico[:6])
+achados = 0
+for i in range(n):
+    off = 6 + i * 16
+    largura, _, _, _, _, _, tam, dados = struct.unpack("<BBBBHHII", ico[off:off + 16])
+    largura = largura or 256
+    if ico[dados:dados + tam] in exe:
+        achados += 1
+    else:
+        print(f"  AUSENTE  icone {largura}x{largura} nao esta no .exe")
+if achados != n:
+    print(f"\nFALHA: so {achados}/{n} tamanhos do icone atual estao embutidos.")
+    print("O binario ficou com um icone antigo em cache. Rode:")
+    print("  cargo clean -p mangaba-desktop --release --target x86_64-pc-windows-gnu")
+    sys.exit(1)
+print(f"  OK    {achados}/{n} tamanhos do icone atual embutidos")
+PY
+fi
+
 echo "==> [5/6] template NSIS em modo ANSI"
 # O makensis do Homebrew estoura memória (std::bad_alloc) ao gerar as tabelas de
 # idioma no modo Unicode — reproduzível até num script de 3 linhas sem arquivo
