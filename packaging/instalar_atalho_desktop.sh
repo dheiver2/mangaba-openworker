@@ -66,8 +66,27 @@ done
 iconutil -c icns "$ICONSET" -o "$TRABALHO/mangaba.icns"
 cp "$TRABALHO/mangaba.icns" "$APP/Contents/Resources/applet.icns"
 
-# O Finder guarda ícone em cache por caminho; tocar o bundle força a releitura.
+# O osacompile também gera Contents/Resources/Assets.car (um asset catalog compilado
+# com o ícone padrão de applet AppleScript) — e o Finder/IconServices PRIORIZA esse
+# arquivo sobre o applet.icns solto quando os dois existem. Sem remover o .car, a
+# troca de ícone acima é ignorada silenciosamente (raiz de um bug real: o app
+# continuava mostrando o ícone genérico de script mesmo com o .icns já correto).
+rm -f "$APP/Contents/Resources/Assets.car"
+
+# O Finder guarda ícone em cache por caminho, e o IconServices mantém um cache
+# PRÓPRIO (fora do alcance de um simples killall Finder) em
+# $(getconf DARWIN_USER_CACHE_DIR)/com.apple.iconservices*. Sem derrubar os dois,
+# a troca de ícone não aparece mesmo com o Assets.car já removido.
 touch "$APP"
+CACHE_ICONES="$(getconf DARWIN_USER_CACHE_DIR 2>/dev/null)"
+if [ -n "$CACHE_ICONES" ]; then
+    rm -rf "$CACHE_ICONES/com.apple.dock.iconcache" \
+           "$CACHE_ICONES/com.apple.iconservicesagent" \
+           "$CACHE_ICONES/com.apple.iconservices" 2>/dev/null || true
+fi
+killall iconservicesagent >/dev/null 2>&1 || true
+killall Dock >/dev/null 2>&1 || true
+killall Finder >/dev/null 2>&1 || true
 
 echo "Pronto: $APP"
 echo "Dois cliques nele sobem o Docker e abrem o Mangaba em http://127.0.0.1:8765"
