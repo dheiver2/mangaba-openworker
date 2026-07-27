@@ -61,7 +61,8 @@ instalado — nos dois sistemas.
 
 ### App desktop nativo (sem Docker)
 
-A aba [Releases](../../releases) deste repositório traz o app nativo (Tauri) —
+A [release v0.1.6](https://github.com/dheiver2/mangaba-openworker/releases/tag/v0.1.6)
+traz o app nativo (Tauri) —
 **não assinado**: no macOS, clique com o botão direito ▸ Abrir na primeira vez
 (o Gatekeeper bloqueia apps sem assinatura Apple); no Windows, o SmartScreen
 avisa — clique em "Mais informações" ▸ "Executar assim mesmo".

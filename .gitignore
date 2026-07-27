@@ -6,3 +6,6 @@ __pycache__/
 build/
 dist/
 .coverage
+
+# Artefatos de build locais (publicados como GitHub Release, nunca commitados)
+/dist-release/
