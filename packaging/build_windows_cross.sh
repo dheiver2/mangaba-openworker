@@ -128,12 +128,24 @@ echo "" > "$ALIAS/empty.c"
 x86_64-w64-mingw32-gcc -c "$ALIAS/empty.c" -o "$ALIAS/empty.o"
 x86_64-w64-mingw32-ar rcs "$ALIAS/libggml-blas.a" "$ALIAS/empty.o"
 
+# whisper-rs-sys emite `cargo:rustc-link-lib=dylib=stdc++`, e esse "dylib=" vence
+# o -static-libstdc++ da linha de comando: o .exe sai pedindo libstdc++-6.dll e
+# o app nem abre (foi o que derrubou a v0.1.8). O que resolve é o ld não achar a
+# import lib: este diretório vem primeiro no -L e carrega SÓ a versão estática,
+# sem o libstdc++.dll.a ao lado.
+cp -f "$MINGW_DIR/lib/libstdc++.a" "$ALIAS/libstdc++.a"
+
 export CC_x86_64_pc_windows_gnu=x86_64-w64-mingw32-gcc
 export CXX_x86_64_pc_windows_gnu=x86_64-w64-mingw32-g++
 export AR_x86_64_pc_windows_gnu=x86_64-w64-mingw32-ar
 export BINDGEN_EXTRA_CLANG_ARGS="--target=x86_64-w64-mingw32 -I$MINGW_DIR/include"
 export CMAKE_TOOLCHAIN_FILE="$TRABALHO/mingw-toolchain.cmake"
-export RUSTFLAGS="-L $ALIAS"
+# -static-libstdc++/-static-libgcc: sem isso o whisper-rs-sys pede
+# `dylib=stdc++` e o .exe sai dependendo de libstdc++-6.dll, que não existe em
+# Windows nenhum — o app morre no start com "libstdc++-6.dll não foi
+# encontrado". A conferência de DLLs no fim deste script existe para pegar
+# justamente esse tipo de dependência pendurada.
+export RUSTFLAGS="-L $ALIAS -C link-arg=-static-libstdc++ -C link-arg=-static-libgcc"
 
 # Primeira passada: só para o cmake produzir ggml*.a e podermos criar os aliases.
 # Ela falha no link do whisper-rs-sys — esperado, por isso o `|| true`.
@@ -194,6 +206,35 @@ SAIDA="$GUI/src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis"
 echo ""
 echo "Pronto:"
 ls -la "$SAIDA"/*.exe
+
+# Conferência de DLLs. Verificar só que os arquivos estão dentro do instalador
+# NÃO basta: a v0.1.8 saiu "completa" por esse critério e mesmo assim não abria,
+# porque o .exe pedia libstdc++-6.dll. Aqui a lista de imports é comparada com
+# o que existe de fábrica no Windows; qualquer sobra é um app que não inicia.
+echo ""
+echo "==> conferindo dependências de DLL"
+NATIVAS="kernel32|advapi32|api-ms-win|bcrypt|comctl32|crypt32|dwmapi|gdi32|imm32|ntdll|ole32|oleaut32|propsys|shell32|shlwapi|user32|userenv|ws2_32|msvcrt|version|dbghelp|powrprof|d3d11|dxgi|dcomp|uxtheme|winmm|setupapi|cfgmgr32|avrt|mf|ksuser"
+# WebView2Loader.dll não é do sistema, mas o próprio Tauri a empacota.
+PENDENTES=0
+for exe in "$GUI/src-tauri/target/x86_64-pc-windows-gnu/release/mangaba-desktop.exe" \
+           "$SIDECAR/mangaba-server.exe"; do
+    SOBRA="$(x86_64-w64-mingw32-objdump -p "$exe" 2>/dev/null \
+        | grep "DLL Name" | sed 's/.*DLL Name: //' | sort -u \
+        | grep -viE "^($NATIVAS)" | grep -vi "^WebView2Loader" || true)"
+    if [ -n "$SOBRA" ]; then
+        echo "  FALHA: $(basename "$exe") depende de DLL não distribuída:"
+        echo "$SOBRA" | sed 's/^/    /'
+        PENDENTES=1
+    else
+        echo "  OK    $(basename "$exe") — só DLLs presentes no Windows"
+    fi
+done
+if [ "$PENDENTES" = "1" ]; then
+    echo "" >&2
+    echo "Abortando: o app não iniciaria no Windows. Linke essas libs" >&2
+    echo "estaticamente (ex.: -C link-arg=-static-libstdc++) ou empacote as DLLs." >&2
+    exit 1
+fi
 
 # Verificação estrutural — o mais perto de um teste que dá para fazer no macOS.
 if command -v 7zz >/dev/null 2>&1; then
