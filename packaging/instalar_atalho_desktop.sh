@@ -1,83 +1,76 @@
 #!/usr/bin/env bash
-# Cria o Mangaba.app na Área de Trabalho (macOS): dois cliques → sobe o Docker
-# Desktop se preciso, roda `docker compose up -d` e abre http://127.0.0.1:8765.
+# Instala o app nativo Mangaba (Tauri) em /Applications e cria um atalho de
+# verdade — um Finder ALIAS, não um lançador de navegador — na Área de
+# Trabalho, com o logo mangaba.ai completo como ícone.
+#
+# Dois cliques abrem a JANELA NATIVA do app (o sidecar Python sobe embutido,
+# sem depender de Docker). Para o caminho via Docker/navegador, veja
+# packaging/instalar_atalho_docker.sh.
 #
 # Uso: bash packaging/instalar_atalho_desktop.sh
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-DESKTOP="$HOME/Desktop"
-APP="$DESKTOP/Mangaba.app"
-TRABALHO="$(mktemp -d)"
-trap 'rm -rf "$TRABALHO"' EXIT
+DESTINO="/Applications/Mangaba.app"
+BUILD_LOCAL="$REPO/surfaces/gui/src-tauri/target/release/bundle/macos/Mangaba.app"
 
-# -- 1. o script que o .app executa -------------------------------------------------
-# AppleScript puro: mostra progresso, espera o daemon do Docker acordar (até 90s),
-# sobe o compose e abre o navegador. Erros aparecem em diálogo, não somem.
-cat > "$TRABALHO/mangaba.applescript" <<APPLESCRIPT
-on run
-    try
-        do shell script "open -ga Docker"
-        -- o daemon leva alguns segundos depois do app abrir
-        set pronto to false
-        repeat 45 times
-            try
-                do shell script "/usr/local/bin/docker info >/dev/null 2>&1 || /opt/homebrew/bin/docker info >/dev/null 2>&1 || docker info >/dev/null 2>&1"
-                set pronto to true
-                exit repeat
-            on error
-                delay 2
-            end try
-        end repeat
-        if not pronto then error "O Docker não respondeu em 90 segundos. Abra o Docker Desktop e tente de novo."
+echo "==> Localizando o app nativo"
+if [ -d "$BUILD_LOCAL" ]; then
+    echo "    build local encontrado: $BUILD_LOCAL"
+    ORIGEM="$BUILD_LOCAL"
+else
+    echo "    sem build local — baixando o .dmg da release mais recente do GitHub"
+    TRABALHO="$(mktemp -d)"
+    trap 'rm -rf "$TRABALHO"' EXIT
+    DMG="$TRABALHO/Mangaba.dmg"
 
-        do shell script "PATH=/usr/local/bin:/opt/homebrew/bin:\$PATH docker compose -f '$REPO/docker-compose.yml' up -d"
+    if command -v gh >/dev/null 2>&1; then
+        gh release download --repo dheiver2/mangaba-openworker --pattern '*.dmg' --output "$DMG" --clobber
+    else
+        URL="$(curl -fsSL https://api.github.com/repos/dheiver2/mangaba-openworker/releases/latest \
+            | grep -o '"browser_download_url": *"[^"]*\.dmg"' \
+            | head -1 | sed 's/.*"\(https[^"]*\)"/\1/')"
+        if [ -z "$URL" ]; then
+            echo "Não achei um .dmg na release mais recente. Instale o GitHub CLI (gh) ou" >&2
+            echo "rode packaging/build_dmg.sh para gerar um build local." >&2
+            exit 1
+        fi
+        curl -fsSL "$URL" -o "$DMG"
+    fi
 
-        -- espera o Mangaba responder antes de abrir o navegador (primeiro build demora)
-        repeat 60 times
-            try
-                do shell script "curl -s -o /dev/null --max-time 2 http://127.0.0.1:8765/v1/health"
-                exit repeat
-            on error
-                delay 2
-            end try
-        end repeat
-        do shell script "open http://127.0.0.1:8765"
-    on error mensagem
-        display dialog "Mangaba: " & mensagem buttons {"OK"} default button 1 with icon caution
-    end try
-end run
-APPLESCRIPT
+    MONTAGEM="$TRABALHO/mnt"
+    hdiutil attach "$DMG" -nobrowse -mountpoint "$MONTAGEM" >/dev/null
+    ORIGEM="$MONTAGEM/Mangaba.app"
+    # copia antes do detach (que desmontaria a origem)
+    rm -rf "$DESTINO"
+    cp -R "$ORIGEM" "$DESTINO"
+    hdiutil detach "$MONTAGEM" >/dev/null
+    ORIGEM=""  # já copiado
+fi
 
-rm -rf "$APP"
-osacompile -o "$APP" "$TRABALHO/mangaba.applescript"
+if [ -n "${ORIGEM:-}" ]; then
+    echo "==> Instalando em $DESTINO"
+    rm -rf "$DESTINO"
+    cp -R "$ORIGEM" "$DESTINO"
+fi
 
-# -- 2. o ícone da manga -------------------------------------------------------------
-# O applet usa Contents/Resources/applet.icns; trocamos pelo nosso, gerado do PNG
-# oficial (quadrado, transparente) em todos os tamanhos que o macOS espera.
-ORIGEM="$REPO/docs/assets/mangaba-icon-1024.png"
-ICONSET="$TRABALHO/mangaba.iconset"
-mkdir -p "$ICONSET"
-for lado in 16 32 64 128 256 512; do
-    sips -z "$lado" "$lado" "$ORIGEM" --out "$ICONSET/icon_${lado}x${lado}.png" >/dev/null
-    dobro=$((lado * 2))
-    sips -z "$dobro" "$dobro" "$ORIGEM" --out "$ICONSET/icon_${lado}x${lado}@2x.png" >/dev/null
-done
-iconutil -c icns "$ICONSET" -o "$TRABALHO/mangaba.icns"
-cp "$TRABALHO/mangaba.icns" "$APP/Contents/Resources/applet.icns"
+# Tira o "quarantine" de arquivo baixado — sem isso o Gatekeeper reclama mesmo
+# de um app que o próprio usuário mandou instalar.
+xattr -cr "$DESTINO" 2>/dev/null || true
 
-# O osacompile também gera Contents/Resources/Assets.car (um asset catalog compilado
-# com o ícone padrão de applet AppleScript) — e o Finder/IconServices PRIORIZA esse
-# arquivo sobre o applet.icns solto quando os dois existem. Sem remover o .car, a
-# troca de ícone acima é ignorada silenciosamente (raiz de um bug real: o app
-# continuava mostrando o ícone genérico de script mesmo com o .icns já correto).
-rm -f "$APP/Contents/Resources/Assets.car"
+echo "==> Criando o atalho na Área de Trabalho (Finder alias, não symlink)"
+rm -f "$HOME/Desktop/Mangaba" "$HOME/Desktop/Mangaba.app"
+osascript <<OSA
+tell application "Finder"
+    set srcApp to POSIX file "$DESTINO" as alias
+    make new alias file to srcApp at desktop
+    set name of result to "Mangaba"
+end tell
+OSA
 
-# O Finder guarda ícone em cache por caminho, e o IconServices mantém um cache
-# PRÓPRIO (fora do alcance de um simples killall Finder) em
-# $(getconf DARWIN_USER_CACHE_DIR)/com.apple.iconservices*. Sem derrubar os dois,
-# a troca de ícone não aparece mesmo com o Assets.car já removido.
-touch "$APP"
+# Mesmo cache "fantasma" de ícone do IconServices que afeta apps recém-instalados
+# (ver o histórico do commit anterior) — reinicia os serviços de ícone pra o
+# alias mostrar o ícone certo de primeira, sem precisar de um segundo clique.
 CACHE_ICONES="$(getconf DARWIN_USER_CACHE_DIR 2>/dev/null)"
 if [ -n "$CACHE_ICONES" ]; then
     rm -rf "$CACHE_ICONES/com.apple.dock.iconcache" \
@@ -88,5 +81,5 @@ killall iconservicesagent >/dev/null 2>&1 || true
 killall Dock >/dev/null 2>&1 || true
 killall Finder >/dev/null 2>&1 || true
 
-echo "Pronto: $APP"
-echo "Dois cliques nele sobem o Docker e abrem o Mangaba em http://127.0.0.1:8765"
+echo "Pronto: $HOME/Desktop/Mangaba → $DESTINO"
+echo "Dois cliques abrem a janela nativa do Mangaba (sem navegador, sem Docker)."

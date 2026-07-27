@@ -44,20 +44,19 @@ Abra http://127.0.0.1:8765, crie a senha e pronto. A porta é publicada apenas e
 conversas, segredos de conectores) persistem no volume `mangaba-dados`, e a
 pasta `~/Mangaba` da máquina fica visível ao agente.
 
-**Atalho na Área de Trabalho:**
+**Atalho na Área de Trabalho (via Docker + navegador):**
 
 ```shell
 # macOS
-bash packaging/instalar_atalho_desktop.sh
+bash packaging/instalar_atalho_docker.sh
 
 # Windows (PowerShell)
-powershell -ExecutionPolicy Bypass -File packaging\instalar_atalho_desktop.ps1
+powershell -ExecutionPolicy Bypass -File packaging\instalar_atalho_docker.ps1
 ```
 
-Isso cria um ícone da manga na sua Área de Trabalho (`Mangaba.app` no macOS,
-`Mangaba.lnk` no Windows): dois cliques sobem o Docker Desktop se preciso, rodam
-o compose e abrem o navegador. Requer o [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-instalado — nos dois sistemas.
+Cria um atalho com o logo mangaba.ai: dois cliques sobem o Docker Desktop se
+preciso, rodam o compose e abrem o navegador em `http://127.0.0.1:8765`.
+Requer o [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
 ### App desktop nativo (sem Docker)
 

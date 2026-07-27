@@ -6,13 +6,13 @@
   em http://127.0.0.1:8765.
 
 .DESCRIPTION
-  Equivalente Windows de packaging/instalar_atalho_desktop.sh. Não empacota um
+  Equivalente Windows de packaging/instalar_atalho_docker.sh. Não empacota um
   app nativo (isso é o Tauri/build_windows.ps1, que precisa rodar EM um Windows
   de verdade) — este atalho é a via rápida: o mesmo container que roda no
   macOS e no Linux, chamado por um .lnk com o ícone da manga.
 
 .USO
-  powershell -ExecutionPolicy Bypass -File packaging\instalar_atalho_desktop.ps1
+  powershell -ExecutionPolicy Bypass -File packaging\instalar_atalho_docker.ps1
 #>
 $ErrorActionPreference = "Stop"
 
