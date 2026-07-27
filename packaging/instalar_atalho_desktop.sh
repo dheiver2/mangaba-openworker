@@ -58,6 +58,14 @@ fi
 # de um app que o próprio usuário mandou instalar.
 xattr -cr "$DESTINO" 2>/dev/null || true
 
+# Reforço defensivo: builds do Tauri sem identidade Apple às vezes saem só
+# "linker-signed" (cobre o Mach-O, não os Resources — spctl acusa "code has no
+# resources but signature indicates they must be present"). build_dmg.sh já
+# corrige isso na origem, mas um .dmg baixado de outro lugar (ou de antes dessa
+# correção) pode não ter passado por lá — reassinar aqui garante o bundle
+# sempre íntegro, não custa nada quando já está correto.
+codesign --force --deep --sign - "$DESTINO" 2>/dev/null || true
+
 echo "==> Criando o atalho na Área de Trabalho (Finder alias, não symlink)"
 rm -f "$HOME/Desktop/Mangaba" "$HOME/Desktop/Mangaba.app"
 osascript <<OSA

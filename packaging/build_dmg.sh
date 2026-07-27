@@ -148,6 +148,17 @@ fi
 # under set -u on macOS's stock bash 3.2 — hit by keyless (fresh-clone) builds.
 ( cd "$GUI" && npm run tauri build -- --bundles app ${UPDATER_OVERLAY[@]+"${UPDATER_OVERLAY[@]}"} )
 
+if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+  # Sem identidade real, o Tauri deixa o .app com a assinatura "linker-signed" que o
+  # PRÓPRIO linker do Rust aplica — ela cobre o Mach-O mas NUNCA sela os Resources
+  # (spctl acusa "code has no resources but signature indicates they must be present").
+  # Sem quarentena isso raramente barra um duplo-clique comum, mas é uma assinatura
+  # estruturalmente quebrada — um "-s -" com --deep resolve de vez, cobrindo todo o
+  # bundle (owner-hit: usuário reportou "o atalho não abre" com o build linker-signed).
+  echo "==> [3.5/5] re-assinando ad-hoc (--deep) — sem identidade real, cobre todo o bundle"
+  codesign --force --deep --sign - "$GUI/src-tauri/target/release/bundle/macos/$APP.app"
+fi
+
 echo "==> [4/5] hdiutil: wrapping into .dmg"
 BUNDLE="$GUI/src-tauri/target/release/bundle"
 STAGING="$(mktemp -d)"
