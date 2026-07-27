@@ -1,119 +1,216 @@
-# Mangaba
+<p align="center">
+  <img src="docs/assets/mangaba-logo.png" alt="mangaba.ai" width="380">
+</p>
 
-**[mangaba.ai](https://mangaba.ai)** · [Download](#download) · [Issues](https://github.com/andrewyng/mangaba/issues)
+<p align="center">
+  <b>IA que entrega o trabalho pronto — não só a conversa.</b><br>
+  <sub>Agente de IA que roda no seu desktop, com o seu modelo e os seus dados · interface 100% em português</sub>
+</p>
 
-> **Beta** - Mangaba is in open beta: fully usable, updates itself, and we're actively polishing rough edges. [Issues](https://github.com/andrewyng/mangaba/issues) welcome.
+<p align="center">
+  <a href="#instalar">Instalar</a> ·
+  <a href="#como-funciona">Como funciona</a> ·
+  <a href="#rodando-a-partir-do-código">Rodar do código</a> ·
+  <a href="#privacidade">Privacidade</a>
+</p>
 
-**AI that gets your everyday tasks done.** Mangaba is an open-source AI mangaba that lives on your desktop and delivers **finished work**, not just chat: a polished document, a Slack reply with the numbers, an updated calendar, a triaged inbox.
+---
 
-It runs on your machine and doesn't lock you into any model: bring your own API key for OpenAI, Anthropic, Google, or an open-weight provider, or run fully local with Ollama. Your data leaves your machine only through the model and integrations *you* choose.
+> **Beta.** Totalmente usável e em polimento ativo. Este é um fork brasileiro do
+> [OpenWorker](https://github.com/andrewyng/openworker), com a interface, os prompts e a
+> documentação em **português do Brasil** — veja [Créditos](#créditos).
 
-[![How Mangaba works](docs/assets/how-it-works.png)](https://mangaba.ai)
+O Mangaba vive no seu desktop e devolve **trabalho terminado**: um documento
+pronto, uma resposta no Slack com os números, a agenda organizada, a caixa de
+entrada triada. Ele roda na sua máquina e não te prende a nenhum modelo — traga a
+sua chave da OpenAI, Anthropic, Google, DeepSeek e afins, ou rode tudo local com o
+Ollama. Seus dados só saem daqui pelo modelo e pelas integrações que **você**
+escolher.
 
-## Download
+[![Como o Mangaba funciona](docs/assets/how-it-works.png)](https://mangaba.ai)
 
-[**⬇ macOS (Apple Silicon)**](https://download.mangaba.ai/mac)
-<sub>macOS 12+ · signed & notarized · auto-updates</sub>
+## Instalar
 
-[**⬇ Windows 10/11 (x64)**](https://download.mangaba.ai/windows)
-<sub>builds are not yet code-signed, so SmartScreen will warn; signing is in progress</sub>
+O jeito rápido é rodar a partir do código (veja
+[Rodando a partir do código](#rodando-a-partir-do-código)). Os instaladores
+assinados ficam em [mangaba.ai](https://mangaba.ai):
 
-Open the app, add a model key (or point it at Ollama), and ask for something real.
+- **macOS (Apple Silicon)** — macOS 12+, assinado e notarizado, atualiza sozinho
+- **Windows 10/11 (x64)** — os builds ainda não são assinados, então o SmartScreen avisa
 
-## How it works
+Abra o app, crie a senha de acesso, aponte para um modelo (ou para o Ollama) e
+peça algo de verdade.
 
-1. Tell Mangaba the outcome you want - "prepare a customer brief," "untangle my calendar," "draft a report," "check where the release stands across Jira and GitHub."
-2. It breaks the task into steps and works across your desktop, files, and connected apps.
-3. Before anything consequential - sending a message, changing a calendar, running a command - it checks in and you approve or redirect.
-4. You get the finished deliverable, not a to-do list.
+## Como funciona
 
-Under the hood:
+1. Diga o **resultado** que você quer — "prepare um resumo do cliente",
+   "desembarace minha agenda", "veja como está o release entre o Jira e o GitHub".
+2. Ele divide a tarefa em etapas e trabalha nos seus arquivos, no terminal e nos
+   apps conectados.
+3. Antes de qualquer coisa séria — mandar uma mensagem, mexer na agenda, rodar um
+   comando — ele pergunta, e você aprova ou redireciona.
+4. Você recebe o entregável pronto, não uma lista de tarefas.
+
+Por dentro:
 
 ```text
 ┌────────────────────────────────────────────────┐
-│              Mangaba desktop app            │  native shell + GUI
+│              app desktop Mangaba               │  shell nativo + interface React
 ├────────────────────────────────────────────────┤
-│           local agent server (Python)          │  engine · tools · connectors - built on aisuite
+│      servidor de agente local (Python)         │  motor · ferramentas · conectores (sobre aisuite)
 ├───────────────┬────────────────┬───────────────┤
-│  your files   │   your tools   │  your model   │  everything runs with your keys,
-│  & terminal   │ 25+ connectors │  any provider │  on your machine
+│  seus         │  suas          │  seu          │  tudo roda com as suas chaves,
+│  arquivos     │  ferramentas   │  modelo       │  na sua máquina
+│  & terminal   │  40 conectores │  qualquer um  │
 └───────────────┴────────────────┴───────────────┘
 ```
 
-## What it can do
+## O que ele faz
 
-- **Produce real deliverables** - documents, spreadsheets, reports, and web pages land as files you can open and share.
-- **Work from Slack** - mention `@Mangaba` in a channel; a session opens on your desktop, the work happens with your tools, and the answer comes back as a thread reply.
-- **Use your everyday tools** - 25+ integrations including GitHub, Slack, Jira, Notion, Linear, HubSpot, Outlook, monday.com, Gmail, and Google Calendar, plus your **terminal and local files**. Any tool reachable over [MCP](https://modelcontextprotocol.io/) plugs in too, with per-tool control.
-- **Run on a schedule** - automations for recurring work: a morning brief, a weekly report, a standing watch over a channel. Runs land in the app with full transcripts.
-- **Ask before acting** - writes, sends, and shell commands are approval-gated. Unattended runs park their asks in an inbox instead of acting on their own.
+- **Entregáveis de verdade** — documentos, planilhas, relatórios e páginas web
+  aparecem como arquivos prontos para abrir e compartilhar.
+- **Trabalha pelo Slack** — mencione o `@Mangaba` num canal: a sessão abre no seu
+  desktop, o trabalho acontece com as suas ferramentas e a resposta volta na thread.
+- **Usa suas ferramentas do dia a dia** — 40 conectores, entre eles GitHub, Slack,
+  Jira, Notion, Linear, HubSpot, Outlook, monday.com, Gmail e Google Agenda, além
+  do seu **terminal e arquivos locais**. Qualquer ferramenta que fale
+  [MCP](https://modelcontextprotocol.io/) também entra, com controle por ferramenta.
+- **Roda no horário** — automações para o que é recorrente: briefing matinal,
+  relatório semanal, vigília num canal. Cada execução vira uma conversa com
+  transcrição completa.
+- **Pergunta antes de agir** — escritas, envios e comandos de shell passam por
+  aprovação. Rodando sem supervisão, os pedidos ficam na caixa de entrada em vez
+  de o agente decidir sozinho.
 
-## Bring your own model
+## Segurança e acesso
 
-Model access is yours: pick a provider, paste your key, switch anytime. Supported out of the box:
+O app abre atrás de uma **senha local**. O token do sidecar prova que a chamada
+saiu desta máquina; a senha prova que é a **pessoa** certa nela.
 
-**OpenAI · Anthropic · Google Gemini · Inkling (Thinking Machines) · GLM (Z.ai) · DeepSeek · Kimi (Moonshot) · Qwen · MiniMax · Mistral · Grok (xAI)** - plus open-weight models via **Together** and **Fireworks**, and fully local models via **Ollama**.
+- Guardada como hash PBKDF2-HMAC-SHA256 (salt de 16 bytes, 480 mil iterações) em
+  `<state-dir>/passcode.json`, com permissão `0600`. A senha em claro nunca é
+  gravada nem registrada em log.
+- As sessões vivem **só em memória** e duram 12h: reiniciar o servidor exige a
+  senha de novo.
+- Cinco tentativas erradas bloqueiam novas tentativas por 60 segundos.
+- Trocar a senha (Configurações ▸ Senha de acesso) exige a atual e derruba as
+  outras sessões.
 
-A curated model list marks what we've verified for tool-calling work. Adding any model string works at your own risk.
+Esqueceu a senha? Apague `~/.config/mangaba/passcode.json` e o app pede uma nova
+na próxima abertura.
 
-## Privacy
+## Escolha o seu modelo
 
-Mangaba is local-first. Everything lives on your machine: the agent loop, your conversations, connector tokens, and model keys - all in the app's local secret store. The only cloud piece is a small service that brokers OAuth handshakes for connectors. You can always use the App without signing-in - use the connectors via manually-created credentials/API-keys.
+O acesso ao modelo é seu: escolha o provedor, cole a chave, troque quando quiser.
 
-## Run from source
+**OpenAI · Anthropic · Google Gemini · DeepSeek · Qwen · Kimi (Moonshot) · GLM
+(Z.ai) · MiniMax · Mistral · Grok (xAI)** — mais modelos de peso aberto via
+**Together** e **Fireworks**, e modelos totalmente locais via **Ollama**.
 
-Prerequisites: Python 3.10+, Node 20+, and (for the desktop shell) the Rust toolchain via [rustup](https://rustup.rs/).
+A lista curada marca o que já foi verificado para trabalho com ferramentas.
+Qualquer outro identificador de modelo funciona por sua conta e risco.
+
+## Privacidade
+
+O Mangaba é local-first. Tudo mora na sua máquina: o laço do agente, suas
+conversas, os tokens dos conectores e as chaves de modelo — no armazenamento
+local de segredos do app. A única peça na nuvem é um serviço pequeno que
+intermedeia o OAuth dos conectores, e ele é opcional: dá para usar o app sem
+entrar em conta nenhuma, conectando tudo com credenciais criadas à mão.
+
+Além disso: filtros de privacidade removem remetentes e campos sensíveis antes de
+o agente ver os resultados, e cada chamada de conector fica registrada na aba
+Atividade.
+
+## Rodando a partir do código
+
+Pré-requisitos: Python 3.10+, Node 20+ e — para o shell desktop — o toolchain do
+Rust via [rustup](https://rustup.rs/).
 
 ```shell
-git clone https://github.com/andrewyng/mangaba
-cd mangaba
+git clone https://github.com/dheiver2/mangaba-openworker
+cd mangaba-openworker
 
-# 1. One-time bootstrap - creates the Python venv at .venv
-#    (on Windows, run from Git Bash or WSL)
+# 1. Bootstrap único — cria o venv Python em .venv
+#    (no Windows, rode pelo Git Bash ou WSL)
 bash packaging/setup_dev_env.sh
 
-# 2. Start the local agent server
-.venv/bin/mangaba-server --cwd ~/some/project --port 8765
+# 2. Suba o servidor de agente local
+.venv/bin/mangaba-server --cwd ~/algum/projeto --port 8765
 #    (Windows: .venv\Scripts\mangaba-server.exe)
 
-# 3. In a second terminal, start the UI
+# 3. Em outro terminal, suba a interface
 cd surfaces/gui
 npm install
-npm run dev        # browser UI on the Vite dev port
+npm run dev        # interface no navegador, na porta do Vite
 ```
 
-The standalone server creates a per-launch token at
-`<state-dir>/sidecar-8765.token`; Vite reads that user-only file when it starts.
-For direct API calls, send its value in the `X-Mangaba-Token` header. The
-desktop app uses an in-memory launch token instead and never writes it to disk.
+> Se o `python3` do sistema for anterior ao 3.10, crie o venv com uma versão mais
+> nova antes do passo 1 — por exemplo `uv venv --python 3.12 .venv`.
 
-To run the full desktop app instead of the browser UI, replace step 3 with `npm run tauri dev` (from `surfaces/gui/`) - the Tauri shell launches the window and supervises the server itself.
+O servidor standalone cria um token por execução em
+`<state-dir>/sidecar-8765.token`; o Vite lê esse arquivo (de leitura restrita ao
+usuário) ao iniciar. Para chamadas diretas à API, mande o valor no cabeçalho
+`X-Mangaba-Token` — e, se já houver senha configurada, a sessão em
+`X-Mangaba-Session`. O app desktop usa um token em memória e nunca o grava em
+disco.
 
-Tests: `.venv/bin/pytest` (server), `npm test` and `npm run e2e` in `surfaces/gui` (GUI unit + hermetic end-to-end). Desktop bundles are built with `packaging/build_dmg.sh` / `packaging/build_windows.ps1`.
+Para rodar o app desktop completo em vez da interface no navegador, troque o
+passo 3 por `npm run tauri dev` (dentro de `surfaces/gui/`) — o shell Tauri abre a
+janela e supervisiona o servidor.
 
-## Repository layout
+### Landing page
 
-| Directory | What's in it |
+A página de apresentação é estática e autocontida em `surfaces/landing/`:
+
+```shell
+python3 -m http.server 4321 --directory surfaces/landing
+```
+
+Quando o app está aberto na mesma máquina, os botões da landing viram
+"Abrir o Mangaba" e levam direto para a sessão.
+
+### Testes
+
+```shell
+.venv/bin/pytest                      # backend Python
+cd surfaces/gui && npm test           # unidade da interface (vitest)
+cd surfaces/gui && npm run e2e        # ponta a ponta com rede mockada (Playwright)
+```
+
+Estado atual: **899 testes Python** e **79 de unidade** passando. Na suíte e2e,
+**131 passam** e cerca de 31 ainda esperam textos em inglês — dívida da tradução
+das assertivas, não regressão de comportamento. A jornada de entrada tem
+cobertura dedicada em `surfaces/gui/e2e/login-journey.spec.ts`.
+
+Os pacotes desktop saem de `packaging/build_dmg.sh` e
+`packaging/build_windows.ps1`.
+
+## Estrutura do repositório
+
+| Diretório | O que tem dentro |
 |---|---|
-| `mangaba/` | Python backend - agent engine, model providers, connectors, MCP client, memory, automations |
-| `surfaces/gui/` | Desktop app - React UI + Tauri shell that supervises the server |
-| `stt/` | Speech-to-text sidecar (Rust) for voice input |
-| `packaging/` | Installer builds (macOS DMG, Windows), auto-update manifest, dev bootstrap |
-| `docs/` | Design specs and decision logs |
-| `tests/` | Backend test suite |
+| `mangaba/` | Backend Python — motor do agente, provedores de modelo, conectores, cliente MCP, memória, automações, senha local |
+| `surfaces/gui/` | App desktop — interface React + shell Tauri que supervisiona o servidor |
+| `surfaces/landing/` | Landing page estática (PT-BR, responsiva, tema claro/escuro) |
+| `stt/` | Sidecar de fala para texto (Rust), para a entrada de voz |
+| `darktok/` | App experimental estilo TikTok do ecossistema Mangaba |
+| `packaging/` | Builds de instalador (DMG do macOS, Windows), manifesto de atualização, bootstrap de desenvolvimento |
+| `docs/` | Especificações de design e registros de decisão |
+| `tests/` | Suíte de testes do backend |
 
-## Built on aisuite
+## Créditos
 
-Mangaba's engine is built on [**aisuite**](https://github.com/andrewyng/aisuite), a lightweight Python library providing a unified chat-completions API across LLM providers and an agents layer with tools, toolkits, and MCP support. If you want to build your own agent harness rather than use ours, start there; this repo is a working reference for what aisuite can carry.
+Este projeto é um fork do [**OpenWorker**](https://github.com/andrewyng/openworker),
+de Andrew Ng e colaboradores, rebrandizado como Mangaba e traduzido para o
+português do Brasil. Todo o crédito pela arquitetura original é deles.
 
-Mangaba was originally developed inside the aisuite repository before moving to its own home here; thanks to the aisuite contributors whose work it builds on.
+O motor é construído sobre o [**aisuite**](https://github.com/andrewyng/aisuite),
+biblioteca Python leve que oferece uma API unificada de chat-completions entre
+provedores de LLM, além de uma camada de agentes com ferramentas, toolkits e
+suporte a MCP. Se você quer montar o seu próprio arcabouço de agente em vez de
+usar este, comece por lá.
 
-## Contributing
+## Licença
 
-Contributions and bug reports are welcome - open an [issue](https://github.com/andrewyng/mangaba/issues) or a pull request. The app updates itself, so fixes reach installs quickly.
-For any PR, please attach screenshots of what was broken and how it is fixed now. We will shortly add features that you can contribute to.
-Please note that we are actively developing based off a internal list and goal, so we may not approve PRs that add features that are already under-development or deviates from our vision.
-
-## License
-
-MIT - see [LICENSE](LICENSE).
+MIT — veja [LICENSE](LICENSE).
