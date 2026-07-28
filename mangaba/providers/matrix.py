@@ -18,6 +18,7 @@ deferred to bound how much needs verifying at once.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from .base import ModelCapabilities
@@ -122,6 +123,41 @@ def entry_for(model: str) -> ModelEntry | None:
 def model_labels() -> dict[str, str]:
     """Full-id → display-label map, shipped to the GUI so every picker shows human names."""
     return {mid: e.label for mid, e in MATRIX.items()}
+
+
+# Local (Ollama) models are pulled by the user, so their raw ids can't live in MATRIX above —
+# there's no fixed catalog to curate. Without a label they showed the tag verbatim in every
+# picker ("qwen2.5:3b-instruct"), the one un-rebranded corner of a UI whose whole point is
+# looking like Mangaba end to end. This derives a "Mangaba Local" label from the tag instead
+# of hand-maintaining one per model someone might pull.
+_SIZE_SUFFIX = re.compile(r"(?<=\d)b$", re.IGNORECASE)
+_LETTERS_THEN_DIGITS = re.compile(r"^([a-zA-Z]{3,})(\d.*)$")
+
+
+def _prettify_ollama_token(token: str) -> str:
+    m = _LETTERS_THEN_DIGITS.match(token)
+    if m:
+        token = f"{m.group(1)} {m.group(2)}"
+    token = _SIZE_SUFFIX.sub("B", token)  # "3b" → "3B" (a real size marker, not a word)
+    return token[:1].upper() + token[1:] if token else token
+
+
+def ollama_display_label(tag: str) -> str:
+    """`qwen2.5:3b-instruct` → "Qwen 2.5 3B Instruct · Mangaba Local"`.
+    A model built locally as `mangaba-<name>` (our own branded persona, e.g. Modelfile.mangaba
+    over gemma4) is recognized by that prefix and gets the "Mangaba <Name>" form instead —
+    it already IS ours, "· Mangaba Local" would read as crediting a vendor for our own work."""
+    name, _, variant = tag.partition(":")
+    if variant == "latest":
+        variant = ""
+    branded = name.startswith("mangaba-")
+    if branded:
+        name = name[len("mangaba-") :]
+    tokens = [t for t in re.split(r"[-_]", name) if t] + [
+        t for t in re.split(r"[-_]", variant) if t
+    ]
+    label = " ".join(_prettify_ollama_token(t) for t in tokens)
+    return f"Mangaba {label}".strip() if branded else f"{label} · Mangaba Local"
 
 
 def models_for_provider(provider: str) -> list[str]:

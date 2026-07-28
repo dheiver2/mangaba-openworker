@@ -1772,7 +1772,20 @@ class SessionManager:
         selectable = [m for m in self._curated_models() if _selectable(m)]
         if self.model not in selectable:
             selectable.insert(0, self.model)
-        from ..providers.matrix import model_labels
+        from ..providers.matrix import model_labels, ollama_display_label
+
+        labels = model_labels()
+        # Ollama ids are user-pulled, so they can't live in the static MATRIX — without this
+        # they were the one place in the app still showing a raw vendor tag ("qwen2.5:3b-
+        # instruct") instead of a Mangaba-branded name, in a UI whose whole point is looking
+        # like Mangaba end to end. Every model the local Ollama actually reports gets a label
+        # (not just `selectable`/curated ones) — the Settings ▸ Modelos checklist shows the
+        # full pulled list before the user ticks anything, and an unbranded row sitting next
+        # to branded ones would look like a labeling bug rather than a deliberate choice.
+        for name in self._suggested_models("ollama"):
+            full_id = f"ollama:{name}"
+            if full_id not in labels:
+                labels[full_id] = ollama_display_label(name)
 
         return {
             "provider": "openai",
@@ -1780,7 +1793,7 @@ class SessionManager:
             "models": selectable,
             # Curated-matrix display names ({full id → "GLM-5.2 · via Together"}) so every
             # picker shows human labels; custom models absent here render their raw id.
-            "model_labels": model_labels(),
+            "model_labels": labels,
             "has_key": env_key or stored,
             # Provider-agnostic "can this default model actually run?" — true when the default
             # model's provider is configured (any provider, not just OpenAI). Drives the GUI's

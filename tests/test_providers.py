@@ -401,6 +401,22 @@ def test_matrix_labels_and_custom_model_fallback():
     assert caps.tools and not caps.parallel_tool_calls
 
 
+def test_ollama_display_label_brands_local_models():
+    """Ollama ids are user-pulled, so they can't live in the static MATRIX above — without a
+    generated label they were the one place in the app still showing a raw vendor tag
+    ("qwen2.5:3b-instruct") in a UI whose whole point is looking like Mangaba end to end."""
+    from mangaba.providers.matrix import ollama_display_label
+
+    assert ollama_display_label("qwen2.5:3b-instruct") == "Qwen 2.5 3B Instruct · Mangaba Local"
+    assert ollama_display_label("gemma4:e4b") == "Gemma 4 E4B · Mangaba Local"
+    assert ollama_display_label("llama3.3:70b") == "Llama 3.3 70B · Mangaba Local"
+    # A model built locally from Modelfile.mangaba is OUR OWN persona, not a third-party
+    # model we're running — "· Mangaba Local" would read as crediting a vendor for our own
+    # work, so the "mangaba-" prefix gets the plain "Mangaba <Name>" form instead.
+    assert ollama_display_label("mangaba-gemma4:latest") == "Mangaba Gemma 4"
+    assert ollama_display_label("mangaba-gemma4") == "Mangaba Gemma 4"
+
+
 def test_reseller_descriptors_and_matrix_stay_in_lockstep():
     """Together/Fireworks suggested models derive from the matrix, and each descriptor's
     recommended model must be one of them (set_provider's auto-add depends on it)."""

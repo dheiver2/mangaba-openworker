@@ -223,3 +223,25 @@ def test_ollama_detect_persists_profile_so_local_models_surface(tmp_path, monkey
     # The exact recommended_model (qwen3-coder:30b) almost never matches what a real user has
     # pulled — falling back to whatever IS installed beats leaving the composer empty.
     assert "ollama:qwen2.5:3b-instruct" in manager.get_settings()["models"]
+
+
+def test_settings_labels_ollama_models_even_before_theyre_curated(tmp_path, monkeypatch):
+    """The Settings ▸ Modelos checklist shows every model Ollama reports, not just the ones
+    already ticked into the composer picker — an unbranded raw tag sitting next to branded
+    rows (because only `selectable`/curated ids got a label) would look like a labeling bug,
+    not a deliberate choice. Every model Ollama reports should be labeled up front."""
+    from mangaba.server.manager import SessionManager
+
+    manager = SessionManager(data_dir=tmp_path / "data")
+    manager.secrets.put("provider:ollama", {})
+
+    class FakeResp:
+        def json(self):
+            return {"models": [{"name": "qwen2.5:3b-instruct"}, {"name": "mangaba-gemma4:latest"}]}
+
+    monkeypatch.setattr("httpx.get", lambda url, timeout=None: FakeResp())
+    monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
+
+    labels = manager.get_settings()["model_labels"]
+    assert labels["ollama:qwen2.5:3b-instruct"] == "Qwen 2.5 3B Instruct · Mangaba Local"
+    assert labels["ollama:mangaba-gemma4:latest"] == "Mangaba Gemma 4"
