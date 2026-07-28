@@ -16,6 +16,18 @@ export const platformOS = (): string => {
   return /mac/i.test(navigator.userAgent) ? "macos" : /win/i.test(navigator.userAgent) ? "windows" : "linux";
 };
 
+// Rótulo da tecla modificadora para MOSTRAR ao usuário. Os atalhos em si já
+// aceitam as duas teclas (metaKey || ctrlKey), mas as dicas na interface vinham
+// com "⌘" fixo — no Windows isso anuncia uma tecla que não existe no teclado.
+export const modKeyLabel = (): string => (platformOS() === "macos" ? "⌘" : "Ctrl");
+
+// Junta modificador e tecla no formato de cada sistema: "⌘B" no macOS (sem
+// separador, como a Apple escreve) e "Ctrl+B" no Windows/Linux.
+export const shortcutLabel = (key: string): string => {
+  const mod = modKeyLabel();
+  return mod === "⌘" ? `${mod}${key}` : `${mod}+${key}`;
+};
+
 export type DictationStatus = {
   recording: boolean;
   model_installed: boolean;
@@ -76,6 +88,9 @@ export const setKeepAwake = (enabled: boolean) => invoke<boolean>("set_keep_awak
 
 /** Begin native window dragging from a custom title/header region. */
 export const startWindowDrag = () => invoke<boolean>("start_window_drag");
+// `document.title` nao chega a barra nativa no Tauri (ao contrario de uma aba de
+// navegador), por isso o titulo da janela passa pelo shell.
+export const setWindowTitle = (title: string) => invoke<boolean>("set_window_title", { title });
 
 // Local dictation is native-only. The browser build deliberately keeps this unavailable rather
 // than silently sending microphone audio to a server.

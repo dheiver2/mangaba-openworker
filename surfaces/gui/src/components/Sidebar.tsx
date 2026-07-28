@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { shortcutLabel } from "../tauri";
 import {
   announceCloudChanged,
   exportSession,
@@ -1010,7 +1011,9 @@ export function Sidebar(props: Props) {
         {props.onCollapse && (
           <button
             className="nav-pin-btn w-7 h-7 grid place-items-center rounded-md text-faint hover:text-ink hover:bg-paper shrink-0"
-            title={props.collapsed ? "Fixar barra lateral (⌘B)" : "Recolher barra lateral (⌘B)"}
+            title={props.collapsed
+              ? `Fixar barra lateral (${shortcutLabel("B")})`
+              : `Recolher barra lateral (${shortcutLabel("B")})`}
             aria-label={props.collapsed ? "Fixar barra lateral" : "Recolher barra lateral"}
             onClick={props.onCollapse}
           >
@@ -1203,7 +1206,7 @@ export function Sidebar(props: Props) {
                   "Configurações",
                   props.onManage,
                   false,
-                  <span className="text-[11px] text-faint">⌘ ,</span>,
+                  <span className="text-[11px] text-faint">{shortcutLabel(",")}</span>,
                 )}
                 {appMenuItem("clock", "Automações", props.onOpenScheduled, props.scheduledActive)}
                 {appMenuItem("audit", "Atividade", props.onOpenAudit, props.auditActive)}
@@ -1245,8 +1248,13 @@ export function Sidebar(props: Props) {
             >
               {cloud?.signed_in ? accountName.slice(0, 1).toUpperCase() : "?"}
             </span>
+            {/* Dizia apenas "Não conectado" e, lido no pé da barra lateral, parecia
+                que o APP estava offline — foi o que levou um usuário a concluir que o
+                Mangaba não havia subido, quando faltava só a conta do Cloud (opcional,
+                usada para conectar integrações com um clique). Nomear o que está
+                desconectado evita o alarme falso. */}
             <span className={"truncate " + (cloud?.signed_in ? "" : "text-muted")}>
-              {cloud?.signed_in ? accountName : "Não conectado"}
+              {cloud?.signed_in ? accountName : "Conta Cloud (opcional)"}
             </span>
             {cloud?.signed_in && (
               <span

@@ -195,7 +195,10 @@ export function RightRail({
                     <span className="artifact-ico" title={a.kind}>
                       <Icon name={kindIcon(a.kind)} size={17} />
                     </span>
-                    <span className="artifact-name">
+                    {/* O painel é estreito e nomes reais de entregável costumam estourar
+                        ("relatorio_fechamento_junho_2026.md" aparece cortado). Sem title
+                        não havia como descobrir o nome completo sem abrir o arquivo. */}
+                    <span className="artifact-name" title={a.name}>
                       {a.name}
                       <span className="artifact-row-meta">{formatBytes(a.size)} · {formatTime(a.modified_at)}</span>
                     </span>
@@ -510,7 +513,7 @@ function PdfViewer({ dataUrl }: { dataUrl: string }) {
     };
   }, [dataUrl]);
 
-  if (error) return <div className="rail-error artifact-table-note">Could not render PDF: {error}</div>;
+  if (error) return <div className="rail-error artifact-table-note">Não foi possível exibir o PDF: {error}</div>;
   return (
     <div className="artifact-pdfjs">
       {loading && <div className="rail-muted artifact-table-note">Renderizando PDF…</div>}
@@ -547,7 +550,7 @@ function SheetViewer({ dataUrl }: { dataUrl: string }) {
     };
   }, [dataUrl]);
 
-  if (error) return <div className="rail-error artifact-table-note">Could not parse spreadsheet: {error}</div>;
+  if (error) return <div className="rail-error artifact-table-note">Não foi possível ler a planilha: {error}</div>;
   if (!sheets) return <div className="rail-muted artifact-table-note">Lendo a planilha…</div>;
   const sheet = sheets[active];
   return (

@@ -18,6 +18,9 @@ tauri-plugin-dialog = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
+# Lembra tamanho/posição da janela entre execuções: sem isso ela reabria
+# sempre em 1360x900, descartando o ajuste do usuário a cada abertura.
+tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }

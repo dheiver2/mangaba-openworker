@@ -45,7 +45,7 @@ export function AddFolderForm({
   if (!open) {
     return (
       <button className={"addfolder-trigger" + (compact ? " compact" : "")} onClick={() => setOpen(true)}>
-        <Icon name="folderPlus" size={15} /> Give access to a folder
+        <Icon name="folderPlus" size={15} /> Dar acesso a uma pasta
       </button>
     );
   }

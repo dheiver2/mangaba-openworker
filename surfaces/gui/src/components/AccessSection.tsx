@@ -451,7 +451,7 @@ export function AccessSection({
                     className="mt-1 text-[12px] text-accent hover:underline text-left"
                     onClick={() => setAddingFolder(true)}
                   >
-                    + Give access to a folder…
+                    + Dar acesso a uma pasta…
                   </button>
                 )}
                 {rootsError && <div className="roots-err">{rootsError}</div>}
@@ -461,7 +461,7 @@ export function AccessSection({
                 className="text-[12px] text-accent font-medium hover:underline text-left"
                 onClick={() => onOpenIntegrations?.()}
               >
-                Manage all connectors (global) →
+                Gerenciar todos os conectores (global) →
               </button>
             </div>
           )}

@@ -11,6 +11,10 @@ export interface HumanLine {
   pre: string;
   obj?: string;
   post?: string;
+  /** Caminho completo por trás de um `obj` encurtado, para o card de aprovação
+   *  mostrar no tooltip. Aprovar uma gravação vendo apenas "relatorio.md", sem a
+   *  pasta, esconde exatamente a informação que decide se a ação é segura. */
+  objTitle?: string;
 }
 
 const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
@@ -106,12 +110,24 @@ export function humanizeTool(name: string, args: any): HumanLine {
 export function humanizeApprovalTitle(name: string, args: any): HumanLine {
   const a = args && typeof args === "object" ? args : {};
   switch (name) {
-    case "write_file":
-      return { pre: "Escrever ", obj: baseName(String(a.path ?? "um arquivo")) };
+    case "write_file": {
+      const caminho = String(a.path ?? "");
+      return {
+        pre: "Escrever ",
+        obj: baseName(caminho || "um arquivo"),
+        objTitle: caminho || undefined,
+      };
+    }
     case "replace_in_file":
     case "apply_patch":
-    case "apply_unified_diff":
-      return { pre: "Editar ", obj: a.path ? baseName(String(a.path)) : "arquivos" };
+    case "apply_unified_diff": {
+      const caminho = a.path ? String(a.path) : "";
+      return {
+        pre: "Editar ",
+        obj: caminho ? baseName(caminho) : "arquivos",
+        objTitle: caminho || undefined,
+      };
+    }
     case "run_shell": {
       const desc = typeof a.description === "string" && a.description.trim() ? a.description.trim() : "";
       return {

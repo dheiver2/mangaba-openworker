@@ -35,7 +35,7 @@ import { itemsFromMessages } from "./itemsFromMessages";
 import { streamMode } from "./streamGate";
 import { redactSecrets } from "./secretGuard";
 import { InboxItemCard } from "./components/InboxItemCard";
-import { isTauri, platformOS, startWindowDrag } from "./tauri";
+import { isTauri, platformOS, setWindowTitle, shortcutLabel, startWindowDrag } from "./tauri";
 import { Icon } from "./components/Icon";
 import { BrandLockup, BrandMark } from "./components/Brand";
 import { Sidebar } from "./components/Sidebar";
@@ -1117,6 +1117,16 @@ export function App() {
   const activeInfo = sessions.find((s) => s.session_id === sessionId);
   const activeTitle = activeInfo?.title || "Nova sessão";
 
+  // O título da janela acompanha a sessão. No macOS a barra é sobreposta e o título
+  // fica escondido, mas no Windows ele aparece na barra da janela, na barra de
+  // tarefas e no Alt+Tab — mostrar sempre "Mangaba" deixava impossível distinguir
+  // duas janelas ou saber em que sessão se está sem trazê-la para frente.
+  useEffect(() => {
+    const titulo = activeTitle === "Nova sessão" ? "Mangaba" : `${activeTitle} — Mangaba`;
+    document.title = titulo; // build de navegador (aba)
+    if (isTauri()) void setWindowTitle(titulo).catch(() => {});
+  }, [activeTitle]);
+
   const desktop = isTauri();
   // Dev-only: `?overlay=1` simulates the desktop overlay layout in the browser (adds the
   // tauri-overlay class + draws fake traffic lights at the real position) so the top-left can be
@@ -1230,7 +1240,7 @@ export function App() {
           className="nav-reveal-btn"
           onClick={toggleNav}
           onMouseEnter={() => setNavPeek(true)}
-          title="Mostrar barra lateral (⌘B)"
+          title={`Mostrar barra lateral (${shortcutLabel("B")})`}
           aria-label="Mostrar barra lateral"
         >
           <Icon name="sidebar" size={16} />
@@ -1336,7 +1346,7 @@ export function App() {
                   className="topbar-icon-btn"
                   onClick={toggleNav}
                   aria-label="Mostrar barra lateral"
-                  title="Mostrar barra lateral (⌘B)"
+                  title={`Mostrar barra lateral (${shortcutLabel("B")})`}
                 >
                   <Icon name="sidebar" size={16} />
                 </button>
@@ -1552,6 +1562,7 @@ export function App() {
               mode={mode}
               model={model}
               models={models}
+              onRetryModels={loadSettings}
               modelLabels={modelLabels}
               running={running}
               connected={connected}

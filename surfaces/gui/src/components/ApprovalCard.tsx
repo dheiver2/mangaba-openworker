@@ -52,7 +52,7 @@ export function TitleText({ line }: { line: HumanLine }) {
   return (
     <span className="approval-title">
       {line.pre}
-      {line.obj && <b>{line.obj}</b>}
+      {line.obj && <b title={line.objTitle}>{line.obj}</b>}
       {line.post}
     </span>
   );

@@ -4,6 +4,7 @@ import type { SessionInfo } from "../types";
 import { isProjectScoped, shortPersonaName } from "../personaScope";
 import { Icon } from "./Icon";
 import { baseName } from "../paths";
+import { shortcutLabel } from "../tauri";
 
 // Command-palette search (Codex-style): clicking Search opens this overlay over the whole app
 // rather than filtering the sidebar in place (which made the grouped list collapse). It searches
@@ -102,7 +103,7 @@ export function SearchModal({
         <span className="text-[12px] text-faint shrink-0">{tagFor(s)}</span>
         {idx < 9 && (
           <kbd className="text-[10.5px] text-faint bg-paper border border-line rounded px-1.5 py-0.5 shrink-0 font-sans">
-            ⌘{idx + 1}
+            {shortcutLabel(String(idx + 1))}
           </kbd>
         )}
       </button>

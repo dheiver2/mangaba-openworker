@@ -276,6 +276,18 @@ fn start_window_drag(window: tauri::WebviewWindow) -> bool {
     window.start_dragging().is_ok()
 }
 
+/// Atualiza o título da janela para refletir a sessão aberta.
+///
+/// `document.title` NÃO chega à barra nativa no Tauri (diferente de uma aba de
+/// navegador), então a GUI precisa pedir por aqui. No macOS o título fica oculto
+/// (barra sobreposta), mas no Windows ele aparece na barra da janela, na barra de
+/// tarefas e no Alt+Tab — mostrar sempre "Mangaba" tornava impossível distinguir
+/// duas janelas ou saber em que sessão se está sem trazê-la para frente.
+#[tauri::command]
+fn set_window_title(window: tauri::WebviewWindow, title: String) -> bool {
+    window.set_title(&title).is_ok()
+}
+
 // -- local dictation ---------------------------------------------------------------------------
 // The actual microphone/model code lives in the Tauri-free `mangaba-stt` crate. This shell owns the
 // macOS permission prompt and translates the reusable API into React-friendly Tauri commands.
@@ -598,6 +610,11 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Restaura tamanho e posição da janela. Sem isso ela reabria sempre em
+        // 1360x900 no centro, descartando o ajuste do usuário a cada abertura —
+        // e num monitor ultrawide, onde a janela costuma ficar encostada num
+        // lado, ser recentralizada toda vez incomoda de verdade.
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
@@ -609,6 +626,7 @@ pub fn run() {
             get_keep_awake,
             set_keep_awake,
             start_window_drag,
+            set_window_title,
             get_dictation_status,
             start_dictation,
             stop_dictation,

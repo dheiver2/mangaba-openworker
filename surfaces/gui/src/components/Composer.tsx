@@ -47,6 +47,9 @@ interface Props {
   mode: string;
   model: string;
   models?: string[];
+  // Rebusca as configurações (e portanto a lista de modelos). Sem isso, quando a
+  // primeira busca falha o usuário fica sem nenhuma saída além de reabrir o app.
+  onRetryModels?: () => void;
   modelLabels?: Record<string, string>; // curated display names (raw id when absent)
   // The model is FIXED once the session has history (§17): the picker renders ONLY on a fresh
   // session; after the first turn the fact lives in the topbar subtitle (§22) — no
@@ -321,6 +324,21 @@ export function Composer(props: Props) {
   };
 
   const modelsLoaded = !!(props.models && props.models.length);
+
+  // "Carregando modelos…" girava para sempre quando o servidor não respondia: o
+  // erro da busca é engolido, então a interface não tinha como saber que falhou.
+  // Um usuário no Windows passou por exatamente isso — janela aberta, nenhuma
+  // informação. Passado o prazo, assume-se falha e oferece-se uma saída.
+  const [modelsTimedOut, setModelsTimedOut] = useState(false);
+  useEffect(() => {
+    if (modelsLoaded) {
+      setModelsTimedOut(false);
+      return;
+    }
+    const t = setTimeout(() => setModelsTimedOut(true), 12000);
+    return () => clearTimeout(t);
+  }, [modelsLoaded]);
+
   const modelOptions: Option[] = Array.from(
     new Set([props.model, ...(props.models || [])]),
   ).map((m) => ({
@@ -477,6 +495,18 @@ export function Composer(props: Props) {
             </button>
           ) : modelsLoaded ? (
             <Dropdown value={props.model} options={modelOptions} onChange={props.onModelChange} align="right" />
+          ) : modelsTimedOut ? (
+            <button
+              className="pill chip text-red-600 hover:bg-red-50"
+              data-testid="models-failed"
+              title="O servidor local não respondeu. Clique para tentar de novo."
+              onClick={() => {
+                setModelsTimedOut(false);
+                props.onRetryModels?.();
+              }}
+            >
+              <span className="pill-label">Sem resposta do servidor · tentar de novo</span>
+            </button>
           ) : (
             <button
               className="pill chip text-faint cursor-default"
@@ -529,7 +559,16 @@ export function Composer(props: Props) {
               }
               onClick={submit}
               disabled={!props.connected || !!dictation?.recording || !!dictationBusy}
-              title={needsModel ? "Conecte um modelo para enviar" : undefined}
+              // Nada dizia como enviar nem como quebrar linha: quem escrevia um pedido
+              // longo descobria por tentativa, mandando a mensagem no meio. A dica mora
+              // no tooltip para não poluir a barra.
+              title={
+                needsModel
+                  ? "Conecte um modelo para enviar"
+                  : "Enviar (Enter) · Shift+Enter quebra linha"
+              }
+              // O nome acessível fica curto de propósito: um leitor de tela repetiria
+              // "(Enter)" a cada leitura do botão, e o atalho já vem no tooltip.
               aria-label="Enviar"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

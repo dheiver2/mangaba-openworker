@@ -36,6 +36,7 @@ function BubbleMeta({ text, ts, align }: { text: string; ts?: number; align: "le
           className="flex items-center cursor-pointer hover:text-muted"
           data-testid="bubble-copy"
           title="Copiar mensagem"
+          aria-label="Copiar mensagem"
           onClick={copy}
         >
           {copied ? "Copiado" : <Icon name="copy" size={11} />}
