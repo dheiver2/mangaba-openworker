@@ -30,6 +30,29 @@ TRABALHO="${MANGABA_WIN_BUILD_DIR:-/tmp/mangaba-winbuild}"
 PY_VER="3.11.9"
 PY_TAG="311"
 
+# Qual Python roda o pip. NÃO pode ser o `python3` do PATH: no macOS isso costuma ser o
+# 3.9.6 do sistema, e o `aisuite` (dependência git) exige >=3.10 — o download aborta com
+# "requires a different Python", o build segue e termina SEM instalador. Preferimos o venv
+# do repo, que é o mesmo interpretador usado no build do macOS.
+# Precisa ser >=3.10 E ter pip: as duas faltas produzem exatamente a mesma falha silenciosa
+# (o passo aborta, `set -e` não pega dentro do `if`, e o build termina sem instalador).
+_py_serve() {
+    [ -x "$1" ] || command -v "$1" >/dev/null 2>&1 || return 1
+    "$1" -c 'import sys; sys.exit(0 if sys.version_info[:2] >= (3, 10) else 1)' 2>/dev/null || return 1
+    "$1" -m pip --version >/dev/null 2>&1 || return 1
+    return 0
+}
+PY=""
+for cand in "$REPO/.venv/bin/python" "$HOME/.pyenv/shims/python3" python3; do
+    if _py_serve "$cand"; then PY="$cand"; break; fi
+done
+if [ -z "$PY" ]; then
+    echo "Nenhum Python >= 3.10 COM pip encontrado (o do sistema costuma ser 3.9)." >&2
+    echo "Resolva com: python3 -m venv .venv && .venv/bin/python -m ensurepip && .venv/bin/pip install -e ." >&2
+    exit 1
+fi
+echo "==> Python de build: $PY ($("$PY" -c 'import sys;print(".".join(map(str,sys.version_info[:3])))'))"
+
 MINGW_DIR="$(ls -d /opt/homebrew/Cellar/mingw-w64/*/toolchain-x86_64/x86_64-w64-mingw32 2>/dev/null | head -1)"
 if [ -z "$MINGW_DIR" ]; then
     echo "mingw-w64 não encontrado. Rode: brew install mingw-w64" >&2
@@ -49,9 +72,26 @@ echo "==> [2/6] wheels win_amd64"
 # uvicorn[standard] NÃO pode ser pedido como extra: ele arrasta uvloop, que é
 # Unix-only, e o resolvedor do pip aborta mesmo com --platform win_amd64. Os
 # componentes do extra que existem no Windows entram nomeados um a um.
+# As faixas abaixo são soltas (">=") e, sozinhas, resolvem para o MAIS NOVO de cada
+# pacote. O que segurava isso era o cache de wheels: enquanto ele existia, a release saía
+# com as versões da primeira vez. Limpar o cache mudava silenciosamente o conteúdo do
+# instalador — foi assim que o `mcp` pulou 1.28 → 2.0 (major!) só no Windows, enquanto o
+# macOS continuava em 1.28 pelo venv. Duas plataformas com dependências diferentes é
+# exatamente como nasce um bug que só aparece em uma delas.
+# O venv é a referência testada: exportamos as versões dele como constraints. `-c` só
+# fixa a versão de quem já foi pedido — não acrescenta pacote nenhum.
+CONSTRAINTS="$TRABALHO/constraints-do-venv.txt"
+"$PY" -m pip freeze 2>/dev/null \
+    | grep -E '^[A-Za-z0-9._-]+==' \
+    > "$CONSTRAINTS" || true
+if [ ! -s "$CONSTRAINTS" ]; then
+    echo "Não consegui exportar as versões do venv ($PY) para travar o build." >&2
+    exit 1
+fi
+
 if [ ! -d "$TRABALHO/wheels" ]; then
-    python3 -m pip download --platform win_amd64 --python-version "$PY_TAG" \
-        --only-binary=:all: -d "$TRABALHO/wheels" \
+    "$PY" -m pip download --platform win_amd64 --python-version "$PY_TAG" \
+        --only-binary=:all: -d "$TRABALHO/wheels" -c "$CONSTRAINTS" \
         "openai>=1.0" "anthropic>=0.40" "google-genai>=1.0" "textual>=1.0" \
         "fastapi>=0.110" "uvicorn>=0.27" httptools python-dotenv watchfiles colorama \
         docstring_parser "pyyaml>=6" "pydantic>=2" "mcp>=1.1" "httpx>=0.27" \
@@ -61,7 +101,7 @@ fi
 # aisuite é dependência git (sem wheel publicada) — baixa como sdist e extrai.
 if [ ! -d "$TRABALHO/aisuite-ext" ]; then
     AISUITE_PIN="1b4bbf303ec21968230b1ec869a144d054e9b3c4"
-    python3 -m pip download --no-deps -d "$TRABALHO/aisuite-dl" \
+    "$PY" -m pip download --no-deps -d "$TRABALHO/aisuite-dl" \
         "aisuite @ git+https://github.com/andrewyng/aisuite.git@$AISUITE_PIN"
     unzip -o -q "$TRABALHO"/aisuite-dl/aisuite-*.zip -d "$TRABALHO/aisuite-ext"
 fi
@@ -101,7 +141,7 @@ x86_64-w64-mingw32-gcc -O2 -o "$SIDECAR/mangaba-server.exe" "$REPO/packaging/win
 # faltando só apareceria em Windows, com o servidor morrendo no import e o app
 # preso em "Não conectado". Falhar agora custa segundos; falhar lá custa uma
 # release.
-python3 "$REPO/tests/packaging/verificar_deps_sidecar.py" \
+"$PY" "$REPO/tests/packaging/verificar_deps_sidecar.py" \
     --site-packages "$SIDECAR/Lib/site-packages"
 
 echo "==> [4/6] libs do whisper.cpp (aliases + stub BLAS)"
@@ -183,7 +223,7 @@ if [ ! -f "$NSI_SRC" ]; then
 fi
 rm -rf "$TRABALHO/nsis"
 cp -R "$(dirname "$NSI_SRC")" "$TRABALHO/nsis"
-python3 - "$TRABALHO/nsis/installer.nsi" <<'PY'
+"$PY" - "$TRABALHO/nsis/installer.nsi" <<'PY'
 import sys
 caminho = sys.argv[1]
 dados = open(caminho, "rb").read()
@@ -211,9 +251,19 @@ echo "==> [6/6] empacotando o instalador"
     --bundles nsis --config "$TRABALHO/nsis-overlay.json" )
 
 SAIDA="$GUI/src-tauri/target/x86_64-pc-windows-gnu/release/bundle/nsis"
+# O diretório acumula os .exe de TODAS as versões já construídas, então o glob antigo
+# ("$SAIDA"/*.exe) passava cinco caminhos para um verificador que aceita um só — o build
+# morria com "unrecognized arguments" DEPOIS de já ter produzido o instalador, e a
+# verificação (a única que temos aqui) nunca chegava a rodar.
+VERSAO_ATUAL="$("$PY" -c "import json,sys; print(json.load(open('$GUI/src-tauri/tauri.conf.json'))['version'])")"
+INSTALADOR="$SAIDA/Mangaba_${VERSAO_ATUAL}_x64-setup.exe"
+if [ ! -f "$INSTALADOR" ]; then
+    echo "Instalador da versão $VERSAO_ATUAL não foi produzido em $SAIDA." >&2
+    exit 1
+fi
 echo ""
 echo "Pronto:"
-ls -la "$SAIDA"/*.exe
+ls -la "$INSTALADOR"
 
 # Verificação do artefato. É o que substitui o teste que não dá para fazer daqui
 # (rodar em Windows), e cada checagem existe por um build quebrado que chegou aos
@@ -221,7 +271,7 @@ ls -la "$SAIDA"/*.exe
 # ponto: um instalador que não passa não deve ser publicado.
 echo ""
 echo "==> verificando o instalador"
-python3 "$REPO/tests/packaging/verificar_windows.py" "$SAIDA"/*.exe \
+"$PY" "$REPO/tests/packaging/verificar_windows.py" "$INSTALADOR" \
     --icone "$GUI/src-tauri/icons/icon.ico"
 
 echo ""
