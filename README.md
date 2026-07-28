@@ -65,27 +65,27 @@ O app nativo (Tauri) é distribuído pelas releases —
 (o Gatekeeper bloqueia apps sem assinatura Apple); no Windows, o SmartScreen
 avisa — clique em "Mais informações" ▸ "Executar assim mesmo".
 
+Baixe sempre a [release mais recente](https://github.com/dheiver2/mangaba-openworker/releases/latest)
+— **v0.1.12**, com os dois sistemas em paridade:
+
 - **Windows (x64)** —
-  [`Mangaba_0.1.11_x64-setup.exe`](https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.11/Mangaba_0.1.11_x64-setup.exe)
-  ([release v0.1.11](https://github.com/dheiver2/mangaba-openworker/releases/tag/v0.1.11)).
+  [`Mangaba_0.1.12_x64-setup.exe`](https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.12/Mangaba_0.1.12_x64-setup.exe)
   Gerado por cross-compile a partir do macOS
   (`packaging/build_windows_cross.sh`), porque não há máquina nem runner Windows
   disponível. O sidecar Python vem do runtime *embeddable* oficial do Windows
   com wheels `win_amd64` — não do PyInstaller, que exigiria rodar em Windows.
 
-  > **Use sempre a release mais recente.** As anteriores têm defeitos conhecidos no
-  > Windows: a v0.1.8 nem abre (`libstdc++-6.dll não foi encontrado`), e a v0.1.9/v0.1.10
-  > abrem mas o sidecar não sobe.
+  > Se o app abrir e ficar sem conectar, os logs em `%APPDATA%\mangaba\logs\`
+  > (`mangaba-launcher.log` e `mangaba-server.log`) dizem onde parou. Mais direto
+  > ainda: `python tests\packaging\testar_app_instalado.py` sobe o sidecar
+  > instalado e imprime o erro na tela.
   >
-  > Se o app abrir e ficar em "Não conectado", os logs em
-  > `%APPDATA%\mangaba\logs\` (`mangaba-launcher.log` e `mangaba-server.log`)
-  > dizem exatamente onde parou.
+  > Não use as releases anteriores: a v0.1.8 nem abre
+  > (`libstdc++-6.dll não foi encontrado`) e a v0.1.9/v0.1.10 abrem sem o sidecar.
 
 - **macOS (Apple Silicon)** —
-  [`Mangaba_0.1.8_aarch64.dmg`](https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.8/Mangaba_0.1.8_aarch64.dmg)
-  ([release v0.1.8](https://github.com/dheiver2/mangaba-openworker/releases/tag/v0.1.8)),
-  gerado via `packaging/build_dmg.sh`. A v0.1.9 corrigiu só o lado Windows, então
-  o `.dmg` da v0.1.8 continua sendo o atual.
+  [`Mangaba_0.1.12_aarch64.dmg`](https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.12/Mangaba_0.1.12_aarch64.dmg),
+  gerado via `packaging/build_dmg.sh`.
 
 Quem tiver uma máquina Windows pode gerar um build nativo (com PyInstaller e
 instalador Unicode) usando `packaging/build_windows.ps1`.
