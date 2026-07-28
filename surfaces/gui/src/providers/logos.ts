@@ -8,7 +8,10 @@
 import anthropic from "./logos/anthropic.svg";
 import openai from "./logos/openai.svg";
 import gemini from "./logos/gemini.svg";
-import ollama from "./logos/ollama.svg";
+// "Mangaba Local" é o rebranding do provedor Ollama — a marca do card também vira própria,
+// não a manga (mango, Ollama's own mark) de terceiro. O motor por baixo continua sendo
+// Ollama (MIT), já creditado no blurb do provedor (registry.py) e no texto de ajuda da UI.
+import mangabaLocal from "./logos/mangaba.png";
 import fireworks from "./logos/fireworks.svg";
 import together from "./logos/together.svg";
 import zai from "./logos/zai.svg";
@@ -25,7 +28,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   openai,
   gemini,
   meta,
-  ollama,
+  ollama: mangabaLocal,
   fireworks,
   together,
   zai,
