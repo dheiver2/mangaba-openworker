@@ -202,7 +202,13 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
       setVerify({ state: "error", msg: res.error || "couldn't verify" });
       return false;
     }
-    if (dirty || !info?.configured) await setProvider(sel, fields).catch(() => {});
+    // Keyless providers (Ollama) report `configured: true` from the moment they're LISTED —
+    // before any profile ever exists — so `!info?.configured` never fires here and a
+    // successful Detect never persisted anything. Without a saved profile, the backend's
+    // live-model lookup (which reads it) always came back empty, so "Detectar" showed
+    // ✓ Rodando while the composer stayed with zero local models to choose. Persisting
+    // unconditionally for keyless providers is safe — it's the same idempotent save.
+    if (dirty || !info?.configured || !info?.needs_key) await setProvider(sel, fields).catch(() => {});
     if (!info?.needs_key) setKeylessOk((s) => new Set(s).add(sel));
     setVerify({ state: "ok" });
     setDirty(false);

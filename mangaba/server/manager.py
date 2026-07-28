@@ -1552,6 +1552,15 @@ class SessionManager:
             # OpenAI models stay bare (the router's default); others carry their prefix.
             added = rec if name == "openai" else f"{name}:{rec}"
             self.add_model(added)
+        elif name == "ollama":
+            # `recommended_model` names ONE specific pull (qwen3-coder:30b) that almost nobody
+            # already has — Ollama users bring their own models. Requiring an exact match left
+            # the composer with nothing to pick even right after a successful Detect. Whatever
+            # IS actually installed is a better default than silence.
+            avail = self._suggested_models(name)
+            if avail:
+                added = f"{name}:{avail[0]}"
+                self.add_model(added)
         # First working provider wins the default: if the current default model belongs to a
         # provider with no usable config (the fresh-install gpt-5.6-sol case), switch the default to
         # this provider's model. A default that already works is never stolen.
@@ -1671,7 +1680,11 @@ class SessionManager:
         `/api/tags`), as `ollama:<name>` so they're directly selectable. Empty if Ollama isn't
         configured or unreachable — best-effort, never raises."""
         profile = self.secrets.get("provider:ollama")
-        if not profile:
+        # `{}` is a REAL saved profile (detected with no custom endpoint — the common case
+        # now that Detect always persists) but is falsy in Python, so `if not profile` treated
+        # it the same as "never configured" and returned early before the default localhost
+        # URL below ever got a chance to apply. Only an actual absence (None) should bail.
+        if profile is None:
             return []
         base = (profile.get("base_url") or "http://localhost:11434").strip().rstrip("/")
         if base.endswith("/v1"):

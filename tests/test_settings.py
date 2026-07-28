@@ -174,3 +174,52 @@ def test_ollama_models_gated_on_liveness(tmp_path, monkeypatch):
 
     monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
     assert "ollama:llama3.3" in manager.get_settings()["models"]
+
+
+def test_ollama_saved_profile_with_no_custom_fields_still_lists_models(tmp_path, monkeypatch):
+    """`{}` is a REAL saved profile (Detect on the default localhost URL — the common case),
+    but is falsy in Python. `_ollama_models` used to treat `if not profile` as "never
+    configured" and bail before the default URL ever applied, so a user who never typed a
+    custom endpoint saw zero local models forever, even with Ollama running and reachable.
+    Only an actual `None` (never saved at all) should mean "nothing to look up"."""
+    from mangaba.server.manager import SessionManager
+
+    manager = SessionManager(data_dir=tmp_path / "data")
+    manager.secrets.put("provider:ollama", {})  # exactly what set_provider("ollama", {}) saves
+
+    class FakeResp:
+        def json(self):
+            return {"models": [{"name": "qwen2.5:3b-instruct"}]}
+
+    monkeypatch.setattr(
+        "httpx.get", lambda url, timeout=None: FakeResp() if "/api/tags" in url else (_ for _ in ()).throw(AssertionError)
+    )
+    assert manager._ollama_models() == ["ollama:qwen2.5:3b-instruct"]
+
+
+def test_ollama_detect_persists_profile_so_local_models_surface(tmp_path, monkeypatch):
+    """Clicking Detect on a KEYLESS provider must persist a profile, or the live-model lookup
+    (which reads that profile) always comes back empty and the composer never gets local
+    models — Ollama can report `verify: ok` and `configured: true` forever without a single
+    model ever reaching the picker. `configured` is always true for Ollama (usable out of
+    the box), so the frontend's old `!info?.configured` save-gate never fired for it; this
+    checks the SERVER side of the fix, that persisting on every successful set_provider call
+    (regardless of "configured") makes the models actually show up afterwards."""
+    from mangaba.server.manager import SessionManager
+
+    manager = SessionManager(data_dir=tmp_path / "data")
+    assert manager.secrets.get("provider:ollama") is None  # nothing saved yet
+
+    class FakeResp:
+        def json(self):
+            return {"models": [{"name": "qwen2.5:3b-instruct"}, {"name": "gemma4:e4b"}]}
+
+    monkeypatch.setattr("httpx.get", lambda url, timeout=None: FakeResp())
+
+    res = manager.set_provider("ollama", {})
+    assert res["ok"] is True
+    assert manager.secrets.get("provider:ollama") is not None  # now persisted
+
+    # The exact recommended_model (qwen3-coder:30b) almost never matches what a real user has
+    # pulled — falling back to whatever IS installed beats leaving the composer empty.
+    assert "ollama:qwen2.5:3b-instruct" in manager.get_settings()["models"]
