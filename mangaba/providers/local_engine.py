@@ -1,0 +1,202 @@
+"""Motor local (Ollama) — detecção do binário, auto-start do servidor e instalação sob demanda.
+
+O provedor "Mangaba Local" fala com o Ollama pela API OpenAI-compatível em `/v1`, mas até aqui
+o app só *apontava* para uma instalação que o usuário tinha de providenciar e manter no ar.
+Este módulo fecha essa lacuna em três degraus, do mais barato ao mais caro:
+
+1. `engine_status()` — o servidor já responde? Então não há nada a fazer.
+2. `ensure_running()` — binário instalado mas servidor parado ⇒ sobe `ollama serve` em segundo
+   plano e espera a porta abrir.
+3. `install()` — binário ausente ⇒ baixa o instalador oficial e o executa.
+
+O nome do produto na UI é "Mangaba Local"; o motor por baixo continua sendo o Ollama (MIT) e é
+creditado no blurb do provedor. Renomear o rótulo não pode esconder a origem.
+"""
+
+from __future__ import annotations
+
+import os
+import platform
+import shutil
+import subprocess
+import time
+from pathlib import Path
+from typing import Any, Optional
+
+import httpx
+
+DEFAULT_HOST = "http://localhost:11434"
+
+# Onde o instalador oficial deixa o binário em cada plataforma. O PATH cobre a maioria dos
+# casos, mas no macOS o app do menu-bar não põe nada no PATH de um processo que não veio de
+# um shell de login — que é exatamente o caso do nosso sidecar.
+_EXTRA_PATHS = {
+    "Darwin": [
+        "/Applications/Ollama.app/Contents/Resources/ollama",
+        "/usr/local/bin/ollama",
+        "/opt/homebrew/bin/ollama",
+    ],
+    "Linux": ["/usr/local/bin/ollama", "/usr/bin/ollama"],
+    "Windows": [
+        r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe",
+        r"%PROGRAMFILES%\Ollama\ollama.exe",
+    ],
+}
+
+
+def find_binary() -> Optional[str]:
+    """Caminho do binário do motor local, ou None se não estiver instalado."""
+    found = shutil.which("ollama")
+    if found:
+        return found
+    for raw in _EXTRA_PATHS.get(platform.system(), []):
+        candidate = Path(os.path.expandvars(raw))
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
+def is_serving(host: str = DEFAULT_HOST, timeout: float = 1.5) -> bool:
+    """O servidor local está no ar e falando a API OpenAI-compatível?"""
+    try:
+        resp = httpx.get(host.rstrip("/") + "/v1/models", timeout=timeout)
+        return resp.status_code < 300
+    except Exception:
+        return False
+
+
+def engine_status(host: str = DEFAULT_HOST) -> dict[str, Any]:
+    """Estado do motor para a UI decidir o que oferecer: rodar, iniciar ou instalar."""
+    binary = find_binary()
+    running = is_serving(host)
+    if running:
+        state = "running"
+    elif binary:
+        state = "stopped"
+    else:
+        state = "absent"
+    return {"state": state, "installed": bool(binary), "running": running, "binary": binary}
+
+
+def ensure_running(host: str = DEFAULT_HOST, wait_secs: float = 20.0) -> dict[str, Any]:
+    """Sobe `ollama serve` se o binário existir e o servidor estiver parado.
+
+    Idempotente: se já estiver servindo, retorna de imediato sem gastar um spawn.
+    """
+    if is_serving(host):
+        return {"ok": True, "state": "running"}
+
+    binary = find_binary()
+    if not binary:
+        return {"ok": False, "state": "absent", "error": "O motor local não está instalado."}
+
+    # `serve` é um processo de longa duração: desgarramos do sidecar (start_new_session) para
+    # que ele sobreviva a um restart nosso, e silenciamos a saída para não encher o log do app.
+    # No Windows, CREATE_NO_WINDOW evita o console piscando — mesmo cuidado que o sidecar toma.
+    creationflags = 0x08000000 if platform.system() == "Windows" else 0
+    try:
+        subprocess.Popen(
+            [binary, "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,
+            creationflags=creationflags,
+        )
+    except Exception as exc:
+        return {"ok": False, "state": "stopped", "error": f"Não consegui iniciar o motor local ({exc.__class__.__name__})."}
+
+    deadline = time.monotonic() + wait_secs
+    while time.monotonic() < deadline:
+        if is_serving(host):
+            return {"ok": True, "state": "running"}
+        time.sleep(0.4)
+    return {
+        "ok": False,
+        "state": "stopped",
+        "error": "O motor local foi iniciado mas não respondeu a tempo.",
+    }
+
+
+_RELEASE = "https://github.com/ollama/ollama/releases/latest/download"
+_DOWNLOADS = {
+    "Darwin": (f"{_RELEASE}/Ollama-darwin.zip", "Ollama-darwin.zip"),
+    "Windows": (f"{_RELEASE}/OllamaSetup.exe", "OllamaSetup.exe"),
+}
+
+
+def _cache_dir() -> Path:
+    d = Path.home() / ".cache" / "mangaba" / "engine"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def install(progress: Optional[Any] = None) -> dict[str, Any]:
+    """Baixa o motor local oficial e o instala.
+
+    macOS: o pacote é só um .app — extraímos direto em /Applications, sem privilégios.
+    Windows: entregamos o instalador ao usuário em vez de executá-lo por conta própria. Rodar
+    um .exe recém-baixado de forma silenciosa é exatamente o padrão que não queremos no app;
+    o instalador oficial já pede consentimento via UAC, e essa confirmação é do usuário.
+    Linux: o método oficial é um script shell — apontamos a instrução em vez de canalizar
+    `curl | sh` sem o usuário ver o que roda.
+    """
+    system = platform.system()
+    if find_binary():
+        return {"ok": True, "already": True}
+
+    if system == "Linux":
+        return {
+            "ok": False,
+            "error": "No Linux, instale com: curl -fsSL https://ollama.com/install.sh | sh",
+            "manual": True,
+        }
+
+    target = _DOWNLOADS.get(system)
+    if not target:
+        return {"ok": False, "error": f"Sem instalador automático para {system}."}
+
+    url, filename = target
+    dest = _cache_dir() / filename
+    try:
+        with httpx.stream("GET", url, follow_redirects=True, timeout=60.0) as resp:
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length") or 0)
+            done = 0
+            with open(dest, "wb") as fh:
+                for chunk in resp.iter_bytes(1 << 20):
+                    fh.write(chunk)
+                    done += len(chunk)
+                    if progress and total:
+                        progress(done / total)
+    except Exception as exc:
+        return {"ok": False, "error": f"Falha ao baixar o motor local ({exc.__class__.__name__})."}
+
+    try:
+        if system == "Darwin":
+            import zipfile
+
+            with zipfile.ZipFile(dest) as zf:
+                zf.extractall("/Applications")
+            # O .zip perde o bit de execução; sem isto o app extraído não abre.
+            binary = Path("/Applications/Ollama.app/Contents/Resources/ollama")
+            if binary.exists():
+                binary.chmod(0o755)
+        else:  # Windows — o usuário conclui a instalação no diálogo oficial.
+            os.startfile(str(dest))  # type: ignore[attr-defined]
+            return {"ok": True, "handed_off": True}
+    except Exception as exc:
+        return {"ok": False, "error": f"Falha ao instalar o motor local ({exc.__class__.__name__})."}
+
+    return {"ok": True, "installed": bool(find_binary())}
+
+
+def list_models(host: str = DEFAULT_HOST, timeout: float = 5.0) -> list[str]:
+    """Modelos já baixados na máquina. Lista vazia se o servidor não responder."""
+    try:
+        resp = httpx.get(host.rstrip("/") + "/v1/models", timeout=timeout)
+        if resp.status_code >= 300:
+            return []
+        return [m.get("id", "") for m in resp.json().get("data", []) if m.get("id")]
+    except Exception:
+        return []

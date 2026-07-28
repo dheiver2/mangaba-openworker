@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  getLocalEngine,
   getProviders,
+  installLocalEngine,
   removeProvider,
   setProvider,
   verifyProvider,
+  type LocalEngineStatus,
   type ProviderInfo,
 } from "../api";
 import { openExternal } from "../tauri";
@@ -66,6 +69,8 @@ export interface ProviderSetupState {
   providers: ProviderInfo[];
   ordered: ProviderInfo[];
   refreshProviders: () => Promise<void>;
+  providersLoaded: boolean;
+  providersTimedOut: boolean;
   sel: string | null;
   info: ProviderInfo | undefined;
   fields: Record<string, string>;
@@ -84,6 +89,10 @@ export interface ProviderSetupState {
   removeKey: () => Promise<void>;
   cancelBackTimer: () => void;
   statusFor: (p: ProviderInfo, opts?: { lastUsed?: boolean }) => ReactNode;
+  // Local engine (Mangaba Local): null until probed. Drives install-vs-detect in the form.
+  engine: LocalEngineStatus | null;
+  installing: boolean;
+  installEngine: () => Promise<void>;
   // Blur-save for non-secret fields on an already-configured provider (the Test button is
   // the KEY's save path; extras like anthropic's thinking_budget must not need a re-test —
   // owner-hit 2026-07-23: the budget silently never saved).
@@ -93,6 +102,13 @@ export interface ProviderSetupState {
 
 export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetupState {
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  // Distinguishes "sidecar hasn't answered yet" from "answered with zero providers" —
+  // `providers` alone can't tell those apart, so the empty gallery used to look identical
+  // to a dead sidecar (same silent-catch bug fixed for model loading in Composer.tsx).
+  const [providersLoaded, setProvidersLoaded] = useState(false);
+  const [providersTimedOut, setProvidersTimedOut] = useState(false);
+  const [engine, setEngine] = useState<LocalEngineStatus | null>(null);
+  const [installing, setInstalling] = useState(false);
   // null = the gallery; a provider name = that provider's key form.
   const [sel, setSel] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
@@ -109,10 +125,15 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
   const [fieldSaved, setFieldSaved] = useState<string | null>(null);
   const fieldSavedTimer = useRef<number | null>(null);
 
-  const refreshProviders = () =>
-    getProviders()
-      .then(setProviders)
+  const refreshProviders = () => {
+    setProvidersTimedOut(false);
+    return getProviders()
+      .then((p) => {
+        setProviders(p);
+        setProvidersLoaded(true);
+      })
       .catch(() => {});
+  };
   useEffect(() => {
     refreshProviders();
     return () => {
@@ -120,11 +141,36 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     };
   }, []);
 
+  // Same fix as Composer.tsx's model list: the sidecar fetch above swallows its error, so
+  // without this the gallery just sits empty forever with no sign anything went wrong.
+  // Re-arms on every refreshProviders() call (not just the initial one) by keying off
+  // providersTimedOut too, so a retry that fails again still surfaces the failure.
+  useEffect(() => {
+    if (providersLoaded || providersTimedOut) return;
+    const t = setTimeout(() => setProvidersTimedOut(true), 12000);
+    return () => clearTimeout(t);
+  }, [providersLoaded, providersTimedOut]);
+
   const info = providers.find((p) => p.name === sel);
   const credentialed = !!info?.configured && !!info?.needs_key;
 
+  const installEngine = async () => {
+    setInstalling(true);
+    const res = await installLocalEngine().catch(() => ({ ok: false, error: "unreachable" }));
+    setInstalling(false);
+    if (!res.ok) {
+      setVerify({ state: "error", msg: res.error || "Não consegui instalar o motor local." });
+      return;
+    }
+    setEngine(await getLocalEngine().catch(() => null));
+    await refreshProviders();
+  };
+
   const openProvider = (name: string) => {
     const p = providers.find((x) => x.name === name);
+    // Só sondamos o motor quando o usuário abre um provedor sem chave — é uma chamada que
+    // pode disparar spawn de processo, não cabe rodar no carregamento da galeria inteira.
+    if (!p?.needs_key) void getLocalEngine().then(setEngine).catch(() => {});
     if (sel) setDrafts((d) => ({ ...d, [sel]: fields }));
     const draft = drafts[name];
     const next: Record<string, string> = {};
@@ -233,6 +279,8 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     providers,
     ordered: [...providers].sort((a, b) => providerRank(a.name) - providerRank(b.name)),
     refreshProviders,
+    providersLoaded,
+    providersTimedOut,
     sel,
     info,
     fields,
@@ -261,6 +309,9 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
       if (backTimer.current) window.clearTimeout(backTimer.current);
     },
     statusFor,
+    engine,
+    installing,
+    installEngine,
   };
 }
 
@@ -278,6 +329,26 @@ export function ProviderCards({
 }) {
   const card =
     "flex items-center gap-2.5 rounded-xl border border-line bg-panel px-3 py-2.5 text-left hover:border-lineStrong transition-colors";
+
+  if (!ps.providersLoaded) {
+    if (ps.providersTimedOut)
+      return (
+        <button
+          className="text-[12.5px] text-warnInk hover:underline"
+          data-testid={`${tp}-providers-failed`}
+          title="O servidor local não respondeu. Clique para tentar de novo."
+          onClick={() => ps.refreshProviders()}
+        >
+          Sem resposta do servidor · tentar de novo
+        </button>
+      );
+    return (
+      <div className="text-[12.5px] text-faint" data-testid={`${tp}-providers-loading`}>
+        Carregando provedores…
+      </div>
+    );
+  }
+
   return (
     <div className={gridClass}>
       {ps.ordered.map((p) => (
@@ -319,7 +390,7 @@ export function ProviderForm({
   return (
     <div>
       <button className="text-[12.5px] text-muted hover:text-ink" onClick={ps.backToGallery} data-testid={`${tp}-back`}>
-        ‹ All providers
+        ‹ Todos os provedores
       </button>
       <div className="flex items-center gap-3 mt-3 mb-1">
         <ProviderMark name={info?.name || ""} title={info?.title || ""} size={36} />
@@ -396,25 +467,34 @@ export function ProviderForm({
 
       {info?.needs_key && KEY_HELP[sel] && (
         <p className="text-[11.5px] text-faint mt-2">
-          No key yet?{" "}
+          Ainda não tem chave?{" "}
           <button
             className="text-muted underline decoration-line underline-offset-2 hover:text-ink"
             onClick={() => openExternal(KEY_HELP[sel].url)}
           >
-            Create one at {KEY_HELP[sel].label} ↗
+            Crie uma em {KEY_HELP[sel].label} ↗
           </button>{" "}
-          — takes about a minute.
+          — leva cerca de um minuto.
         </p>
       )}
       {info && !info.needs_key && (
         <p className="text-[11.5px] text-faint mt-2">
-          No API key needed — Ollama runs models on this Mac.{" "}
-          <button
-            className="text-muted underline decoration-line underline-offset-2 hover:text-ink"
-            onClick={() => openExternal("https://ollama.com/download")}
-          >
-            Install Ollama ↗
-          </button>
+          Não precisa de chave — os modelos rodam neste computador.{" "}
+          {ps.engine?.installed === false ? (
+            // Motor ausente: instalar é o próximo passo, não "Detectar" (que só falharia).
+            <button
+              className="text-muted underline decoration-line underline-offset-2 hover:text-ink disabled:opacity-50"
+              onClick={() => void ps.installEngine()}
+              disabled={ps.installing}
+              data-testid={`${tp}-install-engine`}
+            >
+              {ps.installing ? "Instalando o motor local…" : "Instalar o motor local"}
+            </button>
+          ) : (
+            <span data-testid={`${tp}-engine-ready`}>
+              {ps.engine?.running ? "Motor local ativo." : "Motor local instalado — clique em Detectar."}
+            </span>
+          )}
         </p>
       )}
 

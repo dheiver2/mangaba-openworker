@@ -110,7 +110,7 @@ describe("ApprovalCard — §35 shapes", () => {
     expect(onApprove).toHaveBeenCalledWith("once");
   });
 
-  it("send_file gets the full external card: destination title, file chip, leaves-the-Mac note", () => {
+  it("send_file gets the full external card: destination title, file chip, leaves-the-device note", () => {
     render(
       <ApprovalCard
         item={sendApproval({
@@ -121,7 +121,9 @@ describe("ApprovalCard — §35 shapes", () => {
       />,
     );
     expect(screen.getByText(/Enviar um arquivo para/).textContent).toContain("C9");
-    expect(screen.getByText(/sai deste Mac → Slack/)).toBeTruthy();
+    // O substantivo do aparelho é por plataforma ("Mac" no macOS, "computador" no resto),
+    // então a asserção fixa o que importa: que o card diz que o dado SAI daqui, e para onde.
+    expect(screen.getByText(/sai deste .+ → Slack/)).toBeTruthy();
     expect(screen.getByText(/report\.pdf/)).toBeTruthy();
     expect(screen.getByText(/here you go/)).toBeTruthy();
     expect(screen.getByText("Permitir uma vez")).toBeTruthy();
@@ -159,7 +161,7 @@ describe("ApprovalCard — §35 shapes", () => {
     );
     expect(screen.getByText(/Rodar um comando — fetch semiconductor stock data/)).toBeTruthy();
     expect(screen.getByText(/python3 fetch\.py/)).toBeTruthy();
-    expect(screen.getByText(/fica neste Mac/)).toBeTruthy();
+    expect(screen.getByText(/fica neste /)).toBeTruthy();
     expect(screen.getByText("Permitir sempre este comando")).toBeTruthy();
   });
 });
@@ -213,7 +215,7 @@ describe("InboxItemCard — Allow every time on parked run approvals", () => {
     expect(screen.getByText("fetch_data.py")).toBeTruthy();
     expect(screen.queryByText("Run `send_message`?")).toBeNull();
     expect(screen.getByText(/import json/)).toBeTruthy();
-    expect(screen.getByText(/fica neste Mac/)).toBeTruthy();
+    expect(screen.getByText(/fica neste /)).toBeTruthy();
     // §35 labels; resolution vocabulary unchanged (works on every approver path).
     fireEvent.click(screen.getByText("Permitir uma vez"));
     expect(onResolve).toHaveBeenCalledWith("i1", "allow");

@@ -1436,6 +1436,23 @@ def create_app(manager: SessionManager) -> FastAPI:
     def providers_remove(name: str) -> dict[str, Any]:
         return manager.remove_provider(name)
 
+    # -- local engine (Mangaba Local / Ollama) -----------------------------------
+    @app.get("/v1/providers/local-engine")
+    async def local_engine_status() -> dict[str, Any]:
+        from ..providers import local_engine
+
+        return await asyncio.to_thread(local_engine.engine_status)
+
+    @app.post("/v1/providers/local-engine/install")
+    async def local_engine_install() -> dict[str, Any]:
+        # Download de ~180 MB (macOS): fora do event loop, senão trava a UI inteira.
+        from ..providers import local_engine
+
+        res = await asyncio.to_thread(local_engine.install)
+        if res.get("ok") and not res.get("handed_off"):
+            res["serve"] = await asyncio.to_thread(local_engine.ensure_running)
+        return res
+
     @app.post("/v1/providers/verify")
     async def providers_verify(body: dict) -> dict[str, Any]:
         # Live read-only credential check (sync httpx) — run off the event loop.

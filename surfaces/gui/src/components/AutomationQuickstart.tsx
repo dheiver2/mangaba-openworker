@@ -11,6 +11,7 @@ import {
   type RecentChannel,
 } from "../api";
 import { ConnectorBadge } from "../connectors/ConnectorIcon";
+import { deviceLabel } from "../tauri";
 import { ChannelPicker } from "./SubscriptionsChip";
 import { SelectMenu } from "./SelectMenu";
 
@@ -472,7 +473,7 @@ export function AutomationQuickstart({
               <span className="block text-[13px] text-ink font-medium">
                 Um único login libera todas as conexões com um clique
               </span>
-              As conexões são intermediadas pelo Mangaba Cloud — seus tokens ficam neste Mac.
+              As conexões são intermediadas pelo Mangaba Cloud — seus tokens ficam neste {deviceLabel()}.
               <div className="flex items-center gap-3 mt-2">
                 {signinPhase ? (
                   <>

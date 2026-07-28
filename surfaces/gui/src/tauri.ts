@@ -28,6 +28,12 @@ export const shortcutLabel = (key: string): string => {
   return mod === "⌘" ? `${mod}${key}` : `${mod}+${key}`;
 };
 
+// Como CHAMAR a máquina do usuário nos textos da interface. Frases como "fica neste Mac"
+// e "os tokens ficam neste Mac" estavam fixas no código — no Windows isso descreve um
+// aparelho que o usuário não tem, e essas frases são justamente as que explicam onde os
+// dados dele ficam. Mesma classe do "⌘" fixo corrigido acima.
+export const deviceLabel = (): string => (platformOS() === "macos" ? "Mac" : "computador");
+
 export type DictationStatus = {
   recording: boolean;
   model_installed: boolean;

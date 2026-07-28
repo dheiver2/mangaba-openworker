@@ -1,6 +1,6 @@
 """Secret store — one canonical, file-backed store for connector/MCP credentials.
 
-Design (from OpenClaw): secrets **never enter the model's context, prompts, or traces**.
+Design invariant: secrets **never enter the model's context, prompts, or traces**.
 The store holds profiles keyed by `connector[:account]`; values may be literals OR
 `${ENV_VAR}` references resolved at read time from the process env / `~/.config/mangaba/.env`.
 

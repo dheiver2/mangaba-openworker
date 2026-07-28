@@ -1461,11 +1461,35 @@ export async function removeProvider(name: string): Promise<{ ok: boolean; error
   return res.json();
 }
 
+export type LocalEngineStatus = {
+  state: "running" | "stopped" | "absent";
+  installed: boolean;
+  running: boolean;
+  binary: string | null;
+};
+
+/** Is the local engine (Mangaba Local) installed and serving? Decides install vs. detect. */
+export async function getLocalEngine(): Promise<LocalEngineStatus> {
+  const res = await fetch(`${httpBase()}/v1/providers/local-engine`);
+  return res.json();
+}
+
+/** Download + install the local engine on demand. Slow (hundreds of MB) — show progress. */
+export async function installLocalEngine(): Promise<{
+  ok: boolean;
+  error?: string;
+  manual?: boolean;
+  handed_off?: boolean;
+}> {
+  const res = await fetch(`${httpBase()}/v1/providers/local-engine/install`, { method: "POST" });
+  return res.json();
+}
+
 /** Live read-only credential check (does NOT save the key). Triggered by the user's "Test" click. */
 export async function verifyProvider(
   name: string,
   fields: Record<string, string>,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; needs_install?: boolean }> {
   const res = await fetch(`${httpBase()}/v1/providers/verify`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

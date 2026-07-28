@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ApprovalDecision, Item } from "../types";
 import { humanizeApprovalTitle, type HumanLine } from "../humanize";
+import { deviceLabel } from "../tauri";
 import { Icon } from "./Icon";
 
 export function shortArgs(args: any): string {
@@ -69,10 +70,16 @@ export function scopeNote(
   if (EXTERNAL.has(name)) {
     const platform = String(args?.target ?? "").split(":")[0];
     const names: Record<string, string> = { slack: "Slack", telegram: "Telegram" };
-    return { text: `sai deste Mac → ${names[platform] || platform || "um chat conectado"}`, external: true };
+    return {
+      text: `sai deste ${deviceLabel()} → ${names[platform] || platform || "um chat conectado"}`,
+      external: true,
+    };
   }
   const overwrite = name === "write_file" && args?.overwrite;
-  return { text: "fica neste Mac" + (overwrite ? " · sobrescreve o arquivo existente" : ""), external: false };
+  return {
+    text: `fica neste ${deviceLabel()}` + (overwrite ? " · sobrescreve o arquivo existente" : ""),
+    external: false,
+  };
 }
 
 // The proposed content/command, straight from the tool call's ARGS — the file/action

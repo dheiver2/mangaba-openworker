@@ -22,6 +22,7 @@ import {
 import {
   cancelDictationModelDownload,
   deleteDictationModel,
+  deviceLabel,
   downloadDictationModel,
   getAutostart,
   getDictationStatus,
@@ -428,7 +429,7 @@ function AppearanceSection() {
             </button>
           ))}
         </div>
-        <div className={FIELD_HELP}>O modo automático segue a aparência do seu Mac.</div>
+        <div className={FIELD_HELP}>O modo automático segue a aparência do seu {deviceLabel()}.</div>
       </div>
 
       <SidebarCard />

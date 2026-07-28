@@ -9,6 +9,7 @@ import {
   type Connector,
 } from "../api";
 import { ConnectorBadge } from "../connectors/ConnectorIcon";
+import { deviceLabel } from "../tauri";
 import { ProviderCards, ProviderForm, useProviderSetup } from "../providers/ProviderSetup";
 import { Spinner } from "./AutomationQuickstart";
 
@@ -121,8 +122,9 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
             {/* Persistent header — stays put while the region below swaps (§39). */}
             <h1 className="text-[19px] font-semibold">Bem-vindo ao Mangaba<span className="beta-tag">BETA</span></h1>
             <p className="text-[13px] text-muted mt-0.5 mb-4">
-              Escolha um provedor de modelo para começar — o Mangaba usa a sua própria chave, e
-              tanto a chave quanto seus dados ficam neste Mac.
+              Escolha um provedor de modelo para começar. Com o <strong>Mangaba Local</strong> os
+              modelos rodam aqui mesmo, sem chave e sem custo; nos demais você usa a sua própria
+              chave — e, em qualquer caso, chave e dados ficam neste {deviceLabel()}.
             </p>
 
             {!ps.sel ? (
@@ -239,7 +241,7 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                     Entre para ter conexões com um clique
                   </span>
                   O Mangaba cuida do OAuth de mais de 20 ferramentas — sem consoles de dev, sem colar chaves.
-                  Os tokens ficam neste Mac.
+                  Os tokens ficam neste {deviceLabel()}.
                 </span>
                 {signinPhase ? (
                   <span className="inline-flex items-center gap-2 text-[12.5px] text-muted shrink-0">
@@ -310,7 +312,7 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
             </div>
             <p className="text-[11px] text-faint mt-3">
               Mais de 30 ferramentas na página de Conectores — adicione ou remova quando quiser. Os tokens
-              ficam neste Mac.
+              ficam neste {deviceLabel()}.
             </p>
           </section>
         )}

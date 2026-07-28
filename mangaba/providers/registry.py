@@ -335,16 +335,19 @@ DESCRIPTORS: list[ProviderDescriptor] = [
     ),
     ProviderDescriptor(
         name="ollama",
-        title="Ollama (modelos locais)",
+        # Marca própria na UI; o motor por baixo continua sendo o Ollama (MIT), creditado
+        # no blurb e no texto de ajuda — renomear o rótulo não pode esconder a origem.
+        title="Mangaba Local",
         needs_key=False,
+        blurb="Roda modelos direto nesta máquina, sem chave e sem enviar nada para a nuvem. Motor: Ollama.",
         fields=[
             ProviderField(
                 "base_url",
-                "Ollama server URL",
+                "Endereço do servidor local",
                 secret=False,
                 required=False,
                 placeholder=DEFAULT_OLLAMA_URL,
-                help="Where `ollama serve` is listening. The OpenAI-compatible /v1 path is added automatically.",
+                help="Onde o `ollama serve` está escutando. O caminho /v1 compatível com OpenAI é acrescentado automaticamente.",
             ),
         ],
         build=_build_ollama,
@@ -423,6 +426,13 @@ def verify_provider_key(
             )
         elif name == "ollama":
             base = _normalize_ollama_url(base_url)
+            # "Detectar" tem de FAZER funcionar, não só relatar que não funciona: se o motor
+            # está instalado mas parado, subimos antes de testar. Só vale para o host padrão —
+            # um endereço customizado é máquina de outra pessoa, não cabe a nós iniciar nada.
+            if not base_url or base.startswith(_normalize_ollama_url(None).rsplit("/v1", 1)[0]):
+                from . import local_engine
+
+                local_engine.ensure_running()
             resp = httpx.get(base.rstrip("/") + "/models", timeout=timeout)
         else:  # openai + any OpenAI-compatible endpoint (Azure, OpenRouter, vendors, vLLM…)
             default_base = next(
@@ -439,6 +449,17 @@ def verify_provider_key(
                 timeout=timeout,
             )
     except Exception as exc:  # DNS/connection/timeout — never let it bubble to a 500
+        if name == "ollama":
+            # "Não consegui alcançar" não ajuda quem simplesmente não tem o motor instalado —
+            # a UI precisa saber se deve oferecer instalar ou investigar rede.
+            from . import local_engine
+
+            if not local_engine.find_binary():
+                return {
+                    "ok": False,
+                    "error": "O motor local ainda não está instalado nesta máquina.",
+                    "needs_install": True,
+                }
         return {
             "ok": False,
             "error": f"Couldn't reach {d.title} ({exc.__class__.__name__}).",
