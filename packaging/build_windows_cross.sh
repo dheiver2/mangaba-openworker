@@ -89,13 +89,22 @@ if [ ! -s "$CONSTRAINTS" ]; then
     exit 1
 fi
 
+# pywin32 tem de ser pedido EXPLICITAMENTE: o mcp o declara como
+# `pywin32; sys_platform == 'win32'`, mas o pip avalia marcadores de ambiente contra o
+# interpretador que está RODANDO (macOS), não contra o --platform alvo — a dependência era
+# descartada em silêncio. No Windows real, `import mcp` → mcp/os/win32/utilities →
+# `import pywintypes` → ModuleNotFoundError, e como o manager importa mcp no TOPO, o
+# servidor morria no boot com o app preso em "Não conectado". Enviado assim na v0.1.12
+# e v0.1.13; pego rodando o payload sob Wine (o dep-check em macOS não exercita o ramo
+# win32 do mcp).
 if [ ! -d "$TRABALHO/wheels" ]; then
     "$PY" -m pip download --platform win_amd64 --python-version "$PY_TAG" \
         --only-binary=:all: -d "$TRABALHO/wheels" -c "$CONSTRAINTS" \
         "openai>=1.0" "anthropic>=0.40" "google-genai>=1.0" "textual>=1.0" \
         "fastapi>=0.110" "uvicorn>=0.27" httptools python-dotenv watchfiles colorama \
         docstring_parser "pyyaml>=6" "pydantic>=2" "mcp>=1.1" "httpx>=0.27" \
-        "websockets>=13" "ddgs>=9" "croniter>=2" certifi tzdata pypdf pypdfium2
+        "websockets>=13" "ddgs>=9" "croniter>=2" certifi tzdata pypdf pypdfium2 \
+        "pywin32>=306"
 fi
 
 # aisuite é dependência git (sem wheel publicada) — baixa como sdist e extrai.
@@ -116,6 +125,23 @@ cp -R "$TRABALHO/pyembed/"* "$SIDECAR/"
 # supported wheel on this platform"). Como aqui só queremos *posicionar* os
 # arquivos, não instalar de fato, extrair o .whl (que é um zip) faz o serviço.
 ( cd "$SIDECAR/Lib/site-packages" && for w in "$TRABALHO"/wheels/*.whl; do unzip -o -q "$w"; done )
+
+# pywin32 vem inteiro na wheel, mas o mcp (único consumidor) importa SÓ pywintypes,
+# win32api, win32con e win32job (mcp/os/win32/utilities.py). O resto — MAPI/Exchange,
+# DirectSound, ADSI, ODBC, Pythonwin — é peso morto que ainda por cima dispara o detector
+# de DLLs (exchange.pyd quer MSVCP140, adsi.pyd quer ACTIVEDS…). Podamos ao núcleo:
+# mantemos win32/lib (Python puro: win32con vive lá), os .pyd realmente importados e as
+# DLLs de runtime em pywin32_system32. A poda é VERIFICADA: o payload roda sob Wine no
+# fim (import mcp) — se faltar um módulo, quebra aqui e não na máquina do usuário.
+(
+    cd "$SIDECAR/Lib/site-packages"
+    rm -rf win32comext Pythonwin pythonwin isapi win32/Demos win32/test
+    # _win32sysloader.pyd fica: e' o carregador que o pywintypes.py usa para achar a
+    # pywintypes311.dll — sem ele, ModuleNotFoundError no import (pego sob Wine).
+    find win32 -maxdepth 1 -name "*.pyd" \
+        ! -name "win32api.pyd" ! -name "win32job.pyd" ! -name "win32event.pyd" \
+        ! -name "win32process.pyd" ! -name "_win32sysloader.pyd" -delete
+)
 
 cp -R "$(find "$TRABALHO/aisuite-ext" -maxdepth 3 -type d -name aisuite | tail -1)" \
       "$SIDECAR/Lib/site-packages/aisuite"

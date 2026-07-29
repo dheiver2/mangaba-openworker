@@ -82,6 +82,23 @@ def checar_site_packages(site_packages: pathlib.Path) -> list[str]:
                 f"{modulo} e importado pelo mangaba mas nao esta no sidecar "
                 f"(o servidor morre no import e o app fica em 'Nao conectado')"
             )
+
+    # Dependencias CONDICIONAIS de Windows que a varredura de imports acima nao enxerga:
+    # ela roda em macOS e os ramos `sys_platform == 'win32'` dos pacotes nunca executam
+    # aqui. O caso real: mcp declara `pywin32; sys_platform == 'win32'`, o pip descarta o
+    # marcador em download cross-platform, e no Windows `import mcp` morria com
+    # ModuleNotFoundError: pywintypes ja no boot do servidor (enviado na v0.1.12/13,
+    # pego rodando o payload sob Wine). Checagem estatica: presenca do gatilho exige a
+    # presenca do satelite.
+    condicionais_win32 = {"mcp": ["pywin32_system32", "win32"]}
+    for gatilho, satelites in condicionais_win32.items():
+        if gatilho in presentes:
+            for s in satelites:
+                if s.lower() not in presentes:
+                    faltando.append(
+                        f"{gatilho} esta no sidecar mas {s} (pywin32) nao — no Windows "
+                        f"`import {gatilho}` importa pywintypes e o servidor morre no boot"
+                    )
     return faltando
 
 
