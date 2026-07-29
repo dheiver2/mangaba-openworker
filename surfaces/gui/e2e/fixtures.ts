@@ -1491,6 +1491,15 @@ export async function mockApi(page: import("@playwright/test").Page) {
 // A `test` whose page has the API mocked before navigation.
 export const test = base.extend({
   page: async ({ page }, use) => {
+    // Pin the platform the way the real app does: Tauri's Rust shell injects
+    // __OCW_PLATFORM__ before the SPA loads (lib.rs), so platformOS() never guesses in
+    // production. In tests there's no Rust shell and the fallback reads the browser's
+    // User-Agent — and Playwright's "Desktop Chrome" device claims WINDOWS regardless of
+    // the host OS, which flipped every deviceLabel() string ("fica neste Mac" →
+    // "fica neste computador") and broke the specs asserting them.
+    await page.addInitScript(() => {
+      (globalThis as any).__OCW_PLATFORM__ = "macos";
+    });
     await mockApi(page);
     await use(page);
   },
