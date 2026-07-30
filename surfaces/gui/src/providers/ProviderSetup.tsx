@@ -3,6 +3,7 @@ import {
   getLocalEngine,
   getProviders,
   installLocalEngine,
+  pullLocalModel,
   removeProvider,
   setProvider,
   verifyProvider,
@@ -93,6 +94,7 @@ export interface ProviderSetupState {
   engine: LocalEngineStatus | null;
   installing: boolean;
   installEngine: () => Promise<void>;
+  reloadEngine: () => void;
   // Blur-save for non-secret fields on an already-configured provider (the Test button is
   // the KEY's save path; extras like anthropic's thinking_budget must not need a re-test —
   // owner-hit 2026-07-23: the budget silently never saved).
@@ -155,12 +157,13 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
   // o card precisa acompanhar de perto — senão fica preso em "ausente" até reabrir.
   useEffect(() => {
     const phase = engine?.bootstrap?.phase;
-    if (phase !== "installing" && phase !== "starting" && phase !== "pulling") return;
+    const pulling = engine?.pull?.phase === "pulling";
+    if (!pulling && phase !== "installing" && phase !== "starting" && phase !== "pulling") return;
     const t = setInterval(() => {
       void getLocalEngine()
         .then((e) => {
           setEngine(e);
-          if (e.bootstrap?.phase === "ready") void refreshProviders();
+          if (e.bootstrap?.phase === "ready" || e.pull?.phase === "done") void refreshProviders();
         })
         .catch(() => {});
     }, 2000);
@@ -169,6 +172,10 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
 
   const info = providers.find((p) => p.name === sel);
   const credentialed = !!info?.configured && !!info?.needs_key;
+
+  const reloadEngine = () => {
+    void getLocalEngine().then(setEngine).catch(() => {});
+  };
 
   const installEngine = async () => {
     setInstalling(true);
@@ -334,6 +341,7 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     engine,
     installing,
     installEngine,
+    reloadEngine,
   };
 }
 
@@ -512,6 +520,10 @@ export function ProviderForm({
                   ? `Instalando o motor local… ${Math.round((ps.engine.bootstrap.progress || 0) * 100)}%`
                   : "Iniciando o motor local…"}
             </span>
+          ) : ps.engine?.pull?.phase === "pulling" ? (
+            <span data-testid={`${tp}-engine-pulling`}>
+              Baixando {ps.engine.pull.tag}… {Math.round((ps.engine.pull.progress || 0) * 100)}%
+            </span>
           ) : ps.engine?.installed === false ? (
             // Motor ausente: instalar é o próximo passo, não "Detectar" (que só falharia).
             <button
@@ -525,6 +537,19 @@ export function ProviderForm({
           ) : (
             <span data-testid={`${tp}-engine-ready`}>
               {ps.engine?.running ? "Motor local ativo." : "Motor local instalado — clique em Detectar."}
+              {/* O maior modelo que ESTA máquina roda bem (por RAM detectada): um clique baixa. */}
+              {ps.engine?.running && ps.engine?.recommended && (
+                <>
+                  {" "}
+                  <button
+                    className="text-muted underline decoration-line underline-offset-2 hover:text-ink"
+                    onClick={() => void pullLocalModel(ps.engine!.recommended!.tag).then(() => ps.reloadEngine())}
+                    data-testid={`${tp}-pull-recommended`}
+                  >
+                    Baixar o recomendado p/ esta máquina ({ps.engine.recommended.tag}, ~{ps.engine.recommended.download_gb} GB)
+                  </button>
+                </>
+              )}
             </span>
           )}
         </p>

@@ -226,6 +226,99 @@ def pull_model(
 # tag que a UI já rebrandiza ("Qwen 2.5 3B Instruct · Mangaba Local").
 STARTER_MODEL = "qwen2.5:3b-instruct"
 
+
+def total_ram_gb() -> float:
+    """RAM física total, em GB. 0.0 se não der para descobrir (aí ninguém recomenda nada)."""
+    system = platform.system()
+    try:
+        if system == "Windows":
+            import ctypes
+
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_uint64),
+                    ("ullAvailPhys", ctypes.c_uint64),
+                    ("ullTotalPageFile", ctypes.c_uint64),
+                    ("ullAvailPageFile", ctypes.c_uint64),
+                    ("ullTotalVirtual", ctypes.c_uint64),
+                    ("ullAvailVirtual", ctypes.c_uint64),
+                    ("ullAvailExtendedVirtual", ctypes.c_uint64),
+                ]
+
+            stat = MEMORYSTATUSEX()
+            stat.dwLength = ctypes.sizeof(stat)
+            ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))  # type: ignore[attr-defined]
+            return stat.ullTotalPhys / 1e9
+        if system == "Darwin":
+            out = subprocess.run(
+                ["sysctl", "-n", "hw.memsize"], capture_output=True, text=True, timeout=5
+            )
+            return int(out.stdout.strip()) / 1e9
+        # Linux
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemTotal:"):
+                    return int(line.split()[1]) * 1024 / 1e9
+    except Exception:
+        pass
+    return 0.0
+
+
+# Curadoria por RAM (tags padrão do Ollama = Q4_K_M, o piso de qualidade que oferecemos —
+# quantizações abaixo de Q4 degradam demais, ver o caso Bonsai Q1). Regra: o arquivo deve
+# caber em ~2/3 da RAM; o resto é sistema + contexto. Tamanhos conferidos no registro
+# em 30/07/2026.
+_TIERS = [
+    # (ram mínima em GB, tag, tamanho do download em GB)
+    (24.0, "qwen3:32b", 20.2),  # o maior generalista que vale a pena hoje
+    (12.0, "qwen3:14b", 9.3),  # melhor 14B geral; par do gemma4:e4b
+    (6.0, "qwen2.5:7b-instruct", 4.7),  # entrada digna em 8 GB
+    (0.0, STARTER_MODEL, 1.9),  # máquinas mínimas ficam no starter
+]
+
+
+def recommended_model(ram_gb: Optional[float] = None) -> dict[str, Any]:
+    """O maior modelo local que ESTA máquina roda bem — recomendação do card da UI."""
+    ram = total_ram_gb() if ram_gb is None else ram_gb
+    for minimo, tag, download_gb in _TIERS:
+        if ram >= minimo:
+            return {"tag": tag, "download_gb": download_gb, "ram_gb": round(ram, 1)}
+    return {"tag": STARTER_MODEL, "download_gb": 1.9, "ram_gb": round(ram, 1)}
+
+
+# Download de modelo disparado pela UI (card "Baixar recomendado") — mesmo formato de
+# progresso do bootstrap, para o polling do frontend ser um só.
+_pull_state: dict[str, Any] = {"phase": "idle", "tag": None, "progress": 0.0, "error": None}
+
+
+def pull_status() -> dict[str, Any]:
+    return dict(_pull_state)
+
+
+def pull_in_progress() -> bool:
+    return _pull_state["phase"] == "pulling"
+
+
+def start_pull(tag: str, host: str = DEFAULT_HOST) -> dict[str, Any]:
+    """Baixa um modelo em thread própria; o estado fica em pull_status() para a UI."""
+    import threading
+
+    if pull_in_progress():
+        return {"ok": False, "error": f"Já baixando {_pull_state['tag']}."}
+    _pull_state.update(phase="pulling", tag=tag, progress=0.0, error=None)
+
+    def _run() -> None:
+        res = pull_model(tag, host, progress=lambda p: _pull_state.update(progress=p))
+        if res.get("ok"):
+            _pull_state.update(phase="done", progress=1.0)
+        else:
+            _pull_state.update(phase="error", error=res.get("error"))
+
+    threading.Thread(target=_run, daemon=True, name=f"pull-{tag}").start()
+    return {"ok": True, "tag": tag}
+
 # Estado do bootstrap de primeiro uso, para a UI acompanhar sem bloquear nada.
 # Fases: idle → installing → starting → pulling → ready | needs_user | error
 _bootstrap_state: dict[str, Any] = {"phase": "idle", "progress": 0.0, "error": None}

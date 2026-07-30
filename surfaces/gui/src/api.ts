@@ -1472,7 +1472,21 @@ export type LocalEngineStatus = {
     progress: number;
     error: string | null;
   };
+  /** Largest local model THIS machine runs well (picked by detected RAM). */
+  recommended?: { tag: string; download_gb: number; ram_gb: number };
+  /** UI-triggered model download in flight (card's "Baixar recomendado"). */
+  pull?: { phase: "idle" | "pulling" | "done" | "error"; tag: string | null; progress: number; error: string | null };
 };
+
+/** Start downloading a local model by tag; progress arrives via getLocalEngine().pull. */
+export async function pullLocalModel(tag: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/providers/local-engine/pull`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag }),
+  });
+  return res.json();
+}
 
 /** Is the local engine (Mangaba Local) installed and serving? Decides install vs. detect. */
 export async function getLocalEngine(): Promise<LocalEngineStatus> {

@@ -1,0 +1,2 @@
+16cf2bbfd2e55c70c573d0ea07c52674ff605540a25eaf201542ee4c8ec9bf61  Mangaba_0.1.15_aarch64.dmg
+3ed596bccc1b57de724c7bc678fc2229d5cb45d03ef15fc8f0d8efc62c055b8a  Mangaba_0.1.15_x64-setup.exe

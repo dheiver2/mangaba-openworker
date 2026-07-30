@@ -1453,7 +1453,24 @@ def create_app(manager: SessionManager) -> FastAPI:
         # O primeiro boot pode estar instalando o motor ou baixando o modelo inicial em
         # segundo plano — a UI usa isto para mostrar "preparando… X%" em vez de "ausente".
         status["bootstrap"] = local_engine.bootstrap_status()
+        # O maior modelo que ESTA máquina roda bem (por RAM) + o download em andamento,
+        # se houver — o card usa para oferecer "Baixar recomendado" com progresso.
+        status["recommended"] = await asyncio.to_thread(local_engine.recommended_model)
+        status["pull"] = local_engine.pull_status()
         return status
+
+    @app.post("/v1/providers/local-engine/pull")
+    async def local_engine_pull(body: dict) -> dict[str, Any]:
+        from ..providers import local_engine
+
+        tag = ((body or {}).get("tag") or "").strip()
+        if not tag:
+            return {"ok": False, "error": "informe o tag do modelo"}
+        # Garante o motor de pé antes de pedir o download a ele.
+        run = await asyncio.to_thread(local_engine.ensure_running)
+        if not run.get("ok"):
+            return run
+        return local_engine.start_pull(tag)
 
     @app.post("/v1/providers/local-engine/install")
     async def local_engine_install() -> dict[str, Any]:

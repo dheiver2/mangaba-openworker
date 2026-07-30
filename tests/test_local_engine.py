@@ -144,3 +144,29 @@ def test_bootstrap_skips_pull_when_models_already_exist(monkeypatch):
 
     res = le.bootstrap()
     assert res["ok"] is True and res["models"] == ["gemma4:e4b"]
+
+
+# -- recomendação por RAM (o maior modelo que a máquina roda bem) ------------------
+def test_recommended_model_scales_with_ram():
+    """Cada tier de RAM ganha o maior modelo viável — recomendação fixa (qwen3-coder:30b)
+    só servia para quem tem 32 GB; todo o resto via um download impossível."""
+    assert le.recommended_model(ram_gb=4)["tag"] == le.STARTER_MODEL
+    assert le.recommended_model(ram_gb=8)["tag"] == "qwen2.5:7b-instruct"
+    assert le.recommended_model(ram_gb=16)["tag"] == "qwen3:14b"
+    assert le.recommended_model(ram_gb=32)["tag"] == "qwen3:32b"
+    assert le.recommended_model(ram_gb=64)["tag"] == "qwen3:32b"  # teto deliberado
+
+
+def test_recommended_model_detects_real_ram():
+    """total_ram_gb() precisa funcionar de verdade nesta plataforma (sysctl/meminfo/ctypes)."""
+    ram = le.total_ram_gb()
+    assert ram > 1.0  # qualquer máquina real tem mais de 1 GB
+    assert le.recommended_model()["ram_gb"] == round(ram, 1)
+
+
+def test_start_pull_refuses_concurrent_downloads(monkeypatch):
+    """Dois downloads de GBs em paralelo saturam disco/banda e confundem o progresso da UI."""
+    monkeypatch.setitem(le._pull_state, "phase", "pulling")
+    monkeypatch.setitem(le._pull_state, "tag", "qwen3:14b")
+    res = le.start_pull("qwen3:32b")
+    assert res["ok"] is False and "qwen3:14b" in res["error"]
