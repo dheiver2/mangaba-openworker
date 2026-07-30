@@ -70,8 +70,8 @@
 
   <div class="aviso">⚠️ Builds ainda não assinados: no macOS use Ajustes ▸ Privacidade e Segurança ▸ "Abrir Mesmo Assim" na primeira execução; no Windows, SmartScreen ▸ "Mais informações" ▸ "Executar assim mesmo". Confira sempre o SHA-256 no arquivo de checksums da release.</div>
 
-  <h2>Releases</h2>
-  <div id="lista" class="spin">Carregando releases…</div>
+  <h2>Arquivos desta versão</h2>
+  <div id="lista" class="spin">Carregando…</div>
 
   <footer>
     <a href="https://github.com/dheiver2/mangaba-openworker">Código no GitHub</a> · MIT · feito em Alagoas 🇧🇷
@@ -83,14 +83,12 @@ const REPO = "dheiver2/mangaba-openworker";
 const fmt = b => b > 1e6 ? (b/1048576).toFixed(0) + " MB" : (b/1024).toFixed(0) + " KB";
 const dataBr = s => new Date(s).toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" });
 
-fetch(`https://api.github.com/repos/${REPO}/releases?per_page=15`)
+fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
   .then(r => r.json())
-  .then(rels => {
-    if (!Array.isArray(rels) || !rels.length) throw new Error("vazio");
-    const ultima = rels[0];
+  .then(ultima => {
+    if (!ultima || !ultima.assets) throw new Error("vazio");
     document.getElementById("versao").textContent = `versão atual: ${ultima.tag_name}`;
 
-    // Botões principais: DMG e EXE da release mais recente
     const dmg = ultima.assets.find(a => a.name.endsWith(".dmg"));
     const exe = ultima.assets.find(a => a.name.endsWith(".exe"));
     const botoes = document.getElementById("botoes");
@@ -100,24 +98,24 @@ fetch(`https://api.github.com/repos/${REPO}/releases?per_page=15`)
       `<a class="dl-btn" href="${exe.browser_download_url}">⊞ Windows x64<small>${exe.name} · ${fmt(exe.size)}</small></a>`);
 
     document.getElementById("lista").className = "";
-    document.getElementById("lista").innerHTML = rels.map((r, i) => `
+    document.getElementById("lista").innerHTML = `
       <div class="release">
         <div class="head">
-          <h3>${r.name || r.tag_name}</h3>
-          ${i === 0 ? '<span class="latest">MAIS RECENTE</span>' : ""}
-          <span class="date">${dataBr(r.published_at)}</span>
+          <h3>${ultima.name || ultima.tag_name}</h3>
+          <span class="latest">MAIS RECENTE</span>
+          <span class="date">${dataBr(ultima.published_at)}</span>
         </div>
-        <div class="notes">${(r.body || "").replace(/[#*`>]/g, "").slice(0, 600)}</div>
-        <div class="assets">${r.assets.map(a =>
+        <div class="notes">${(ultima.body || "").replace(/[#*`>]/g, "").slice(0, 600)}</div>
+        <div class="assets">${ultima.assets.map(a =>
           `<a href="${a.browser_download_url}">${a.name} (${fmt(a.size)})</a>`).join("")}
-          <a href="${r.html_url}">notas completas ↗</a>
+          <a href="${ultima.html_url}">notas completas ↗</a>
         </div>
-      </div>`).join("");
+      </div>`;
   })
   .catch(() => {
-    document.getElementById("versao").textContent = "veja as releases no GitHub";
+    document.getElementById("versao").textContent = "veja a release no GitHub";
     document.getElementById("lista").innerHTML =
-      `<div class="spin">Não consegui falar com a API do GitHub agora — <a href="https://github.com/${REPO}/releases">abra as releases direto ↗</a></div>`;
+      `<div class="spin">Não consegui falar com a API do GitHub agora — <a href="https://github.com/${REPO}/releases/latest">abra a versão mais recente direto ↗</a></div>`;
   });
 </script>
 </body>
