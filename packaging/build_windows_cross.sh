@@ -273,6 +273,16 @@ cat > "$TRABALHO/nsis-overlay.json" <<JSON
 JSON
 
 echo "==> [6/6] empacotando o instalador"
+# Chave do auto-update (minisign): mesma convenção do build_dmg.sh — sem ela o exe sai
+# sem .sig e usuários instalados nunca receberão a atualização.
+UPDATER_ENV="${OCW_UPDATER_ENV:-$REPO/../.ocw-updater.env}"
+if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && [ -z "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ] && [ -f "$UPDATER_ENV" ]; then
+  # shellcheck disable=SC1090
+  source "$UPDATER_ENV"
+fi
+if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ] && [ -z "${TAURI_SIGNING_PRIVATE_KEY_PATH:-}" ]; then
+  echo "    WARNING: sem chave do updater — instalador NÃO ASSINADO para auto-update (não publique)."
+fi
 ( cd "$GUI" && npm run tauri build -- --target x86_64-pc-windows-gnu \
     --bundles nsis --config "$TRABALHO/nsis-overlay.json" )
 

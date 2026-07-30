@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Mangaba",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "identifier": "com.mangaba.desktop",
   "build": {
     "frontendDist": "../dist",
@@ -41,15 +41,15 @@
       "nsis": {
         "installMode": "currentUser"
       }
-    }
+    },
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://download.mangaba.ai/latest.json",
-        "https://github.com/andrewyng/mangaba/releases/latest/download/latest.json"
+        "https://github.com/dheiver2/mangaba-openworker/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDVCNzEzRjY5OTkzNUNBNjkKUldScHlqV1phVDl4VzBvTnFLLytzaDkzNVd3WWNuUm8yNE95WTBFNnBtcGF1RENxeTRuNVhQeloK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJBMTVFRTk4NTQwMkQzN0QKUldSOTB3SlVtTzRWS2pDQzBVMmpTWEs2aHk0QVFuRm04d0lpQTZaS1pGalhIS00vUjN6TG5JWDUK",
       "windows": {
         "installMode": "passive"
       }
