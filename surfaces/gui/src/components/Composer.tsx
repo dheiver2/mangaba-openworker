@@ -405,6 +405,7 @@ export function Composer(props: Props) {
           if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
         }}
       >
+        <div className="drop-hint" aria-hidden="true">Solte os arquivos aqui para anexar</div>
         <textarea
           ref={textareaRef}
           className="w-full block px-3.5 pt-3.5 pb-1.5 text-[14.5px]"

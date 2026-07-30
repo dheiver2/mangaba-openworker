@@ -264,6 +264,11 @@ export function App() {
         toggleNav();
       }
       // ⌘, — the platform Settings shortcut (advertised in the account menu, §26).
+      // ⌘K — busca global, o atalho que todo app de chat ensina.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
         e.preventDefault();
         setSurface("settings");
@@ -1545,7 +1550,9 @@ export function App() {
             {/* Scrolled up while the transcript is still growing → offer the way back down.
                 Zero-height strip keeps the pill floating over the scroll area, above the
                 composer, without reserving layout space. */}
-            {!following && (running || !!streaming) && (
+            {/* Fora de streaming a pill também vale: quem rolou para cima lendo histórico
+                merece o caminho de volta sem caçar a barra de rolagem. */}
+            {!following && (
               <div className="relative h-0 z-10">
                 <button
                   className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-panel shadow-md text-[12px] text-muted hover:text-ink cursor-pointer whitespace-nowrap"

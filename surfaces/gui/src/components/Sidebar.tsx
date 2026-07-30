@@ -1044,6 +1044,7 @@ export function Sidebar(props: Props) {
           onClick={() => setSearchModalOpen(true)}
         >
           <Icon name="search" size={15} className="shrink-0" /> Buscar
+          <span className="kbd-hint">⌘K</span>
         </button>
       </div>
 

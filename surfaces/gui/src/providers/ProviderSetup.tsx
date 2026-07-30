@@ -373,8 +373,16 @@ export function ProviderCards({
         </button>
       );
     return (
-      <div className="text-[12.5px] text-faint" data-testid={`${tp}-providers-loading`}>
-        Carregando provedores…
+      <div className={gridClass} data-testid={`${tp}-providers-loading`} aria-label="Carregando provedores…">
+        {Array.from({ length: 6 }, (_, i) => (
+          <div className="skel-card" key={i} aria-hidden="true">
+            <span className="skel" style={{ width: 32, height: 32 }} />
+            <span className="min-w-0 flex-1">
+              <span className="skel block" style={{ width: "60%", height: 11, marginBottom: 6 }} />
+              <span className="skel block" style={{ width: "40%", height: 9 }} />
+            </span>
+          </div>
+        ))}
       </div>
     );
   }
@@ -519,10 +527,16 @@ export function ProviderForm({
                 : ps.engine.bootstrap.phase === "installing"
                   ? `Instalando o motor local… ${Math.round((ps.engine.bootstrap.progress || 0) * 100)}%`
                   : "Iniciando o motor local…"}
+              <span className="engine-bar"><i style={{ width: `${Math.round((ps.engine.bootstrap.progress || 0) * 100)}%` }} /></span>
             </span>
           ) : ps.engine?.pull?.phase === "pulling" ? (
             <span data-testid={`${tp}-engine-pulling`}>
               Baixando {ps.engine.pull.tag}… {Math.round((ps.engine.pull.progress || 0) * 100)}%
+              <span className="engine-bar"><i style={{ width: `${Math.round((ps.engine.pull.progress || 0) * 100)}%` }} /></span>
+            </span>
+          ) : ps.engine?.pull?.phase === "done" ? (
+            <span className="text-ok" data-testid={`${tp}-engine-pull-done`}>
+              ✓ {ps.engine.pull.tag} pronto — clique em Detectar para usá-lo.
             </span>
           ) : ps.engine?.installed === false ? (
             // Motor ausente: instalar é o próximo passo, não "Detectar" (que só falharia).
@@ -547,7 +561,8 @@ export function ProviderForm({
                     data-testid={`${tp}-pull-recommended`}
                   >
                     Baixar o recomendado p/ esta máquina ({ps.engine.recommended.tag}, ~{ps.engine.recommended.download_gb} GB)
-                  </button>
+                  </button>{" "}
+                  <span className="text-faint">RAM detectada: {Math.round(ps.engine.recommended.ram_gb)} GB.</span>
                 </>
               )}
             </span>

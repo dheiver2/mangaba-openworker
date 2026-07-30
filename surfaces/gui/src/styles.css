@@ -1794,3 +1794,35 @@ button { transition: background-color 0.15s ease, border-color 0.15s ease, color
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ============== polimento UX round 2 (10 melhorias, 2026-07-30) ============== */
+
+/* Skeleton da galeria de provedores: enquanto o sidecar responde, a área mostra a
+   FORMA do que vem (cards fantasma pulsando) em vez de uma linha de texto — o olho
+   já entende que é uma lista carregando, não um erro. */
+.skel-card { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.skel { background: var(--line); border-radius: 8px; animation: skel-pulse 1.2s ease-in-out infinite; }
+@keyframes skel-pulse { 50% { opacity: 0.45; } }
+
+/* Barra de progresso dos downloads do motor/modelo: número sozinho não transmite
+   ritmo; a barra mostra que está andando. */
+.engine-bar { display: block; width: 100%; max-width: 320px; height: 4px; border-radius: 99px; background: var(--line); margin-top: 6px; overflow: hidden; }
+.engine-bar > i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), #e94a12); transition: width 0.4s ease; }
+
+/* Mensagens novas entram com um fade curto — dá continuidade visual ao fluxo do chat
+   (o interruptor global de prefers-reduced-motion desliga isto junto com o resto). */
+.bubble-user, .bubble-assistant { animation: msg-in 0.18s ease-out; }
+@keyframes msg-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+/* Overlay de arrastar-e-soltar do composer: a borda acesa sozinha não dizia O QUE
+   fazer; o véu com a instrução diz. pointer-events:none para não roubar o drop. */
+.composer { position: relative; }
+.composer .drop-hint { position: absolute; inset: 0; z-index: 5; display: none; place-items: center; border-radius: inherit; background: var(--glass-strong); font-size: 14px; font-weight: 600; color: var(--accent); pointer-events: none; }
+.composer.dragging .drop-hint { display: grid; }
+
+/* Dica de atalho (⌘K etc.) — mesma linguagem visual de kbd em todo o app. */
+.kbd-hint { margin-left: auto; font-size: 10.5px; color: var(--faint); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; background: var(--panel); }
+
+/* Tabelas do markdown roláveis: uma tabela larga estourava a coluna do chat inteira;
+   agora ela rola sozinha dentro do próprio bloco. */
+.md table { display: block; max-width: 100%; overflow-x: auto; }
