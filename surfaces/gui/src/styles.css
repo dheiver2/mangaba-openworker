@@ -1738,3 +1738,59 @@ select:focus-visible,
 @media (forced-colors: active) {
   :focus-visible { outline: 2px solid Highlight; }
 }
+
+/* ================= polimento de UI (10 melhorias, 2026-07-29) ================= */
+
+/* 1 · Balão do usuário na identidade Mangaba: o cinza-azulado (--solid) lia como
+   componente de outro produto sobre o creme; um creme quente mantém contraste AA
+   com --ink e conversa com o papel. A classe vence o `bg-solid` utilitário. */
+:root { --bubble-user: #f3e9dc; }
+html[data-theme="dark"] { --bubble-user: #2b2620; }
+.bubble-user { background: var(--bubble-user) !important; color: var(--ink) !important; }
+
+/* 2 · Seleção de texto no laranja da marca (o azul do sistema destoava do creme). */
+::selection { background: rgba(245, 134, 29, 0.30); }
+
+/* 3 · Navegação por teclado: anel de foco consistente em tudo que é interativo.
+   :focus-visible não dispara em clique — só Tab —, então não suja o uso com mouse. */
+:where(button, a, [role="button"], input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 4 · Botão primário "Nova sessão" com o gradiente oficial (laranja → #E94A12) e
+   estado de pressionar — o hover:opacity-95 sozinho parecia um link, não O botão. */
+.newsplit-primary, .newsplit-secondary {
+  background: linear-gradient(135deg, #f5861d, #e94a12) !important;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+.newsplit-primary:hover, .newsplit-secondary:hover { filter: brightness(1.06); }
+.newsplit-primary:active, .newsplit-secondary:active { transform: translateY(1px); }
+
+/* 5 · Composer "acorda" quando recebe foco: hoje nada muda ao clicar para digitar,
+   e o olho não encontra onde está o cursor numa tela cheia de cards. */
+.composer { transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.composer:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 6 · Micro-interações padronizadas: todo botão responde a hover/press no mesmo
+   ritmo (só propriedades de cor — layout/transform ficam de fora para não brigar
+   com animações existentes). */
+button { transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease; }
+
+/* 7 · Links do markdown: sublinhado sutil sempre visível (cor sozinha exclui
+   daltônicos), reforçado no hover. */
+.md a { text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent); text-underline-offset: 2.5px; }
+.md a:hover { text-decoration-color: var(--accent); }
+
+/* 8 · Acessibilidade de movimento: um só interruptor global (os dois blocos
+   pontuais existentes continuam valendo; isto cobre o resto do app). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

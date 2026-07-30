@@ -552,7 +552,7 @@ export function Composer(props: Props) {
           ) : (
             <button
               className={
-                "w-7 h-7 rounded-full grid place-items-center shrink-0 transition-colors " +
+                "w-7 h-7 rounded-full grid place-items-center shrink-0 transition-all active:scale-90 " +
                 (hasContent && props.connected && !dictation?.recording && !dictationBusy
                   ? "bg-accent text-white hover:brightness-105"
                   : "bg-paper border border-line text-faint")

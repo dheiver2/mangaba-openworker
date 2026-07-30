@@ -582,7 +582,7 @@ export function Sidebar(props: Props) {
               }
             >
               {s.pinned && <Icon name="pin" size={11} className="text-faint shrink-0" />}
-              <span className="truncate">{title}</span>
+              <span className="truncate" title={title}>{title}</span>
             </span>
             <span
               className={
@@ -649,7 +649,7 @@ export function Sidebar(props: Props) {
           />
         ) : (
           <>
-            <span className="min-w-0 flex-1 block truncate text-[13px] font-medium">
+            <span className="min-w-0 flex-1 block truncate text-[13px] font-medium" title={title}>
               {title}
             </span>
             <span
@@ -1347,7 +1347,7 @@ function NewSessionSplit({
         </button>
         {!solo && (
           <button
-            className="px-2.5 rounded-r-lg bg-accent text-white border-l border-white/25 hover:opacity-95 flex items-center"
+            className="newsplit-secondary px-2.5 rounded-r-lg bg-accent text-white border-l border-white/25 hover:opacity-95 flex items-center"
             title="Começar com uma persona específica"
             aria-label="Escolher uma persona"
             onClick={() => setOpen((v) => !v)}
