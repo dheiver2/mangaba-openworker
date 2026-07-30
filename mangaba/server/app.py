@@ -176,6 +176,14 @@ def create_app(manager: SessionManager) -> FastAPI:
             import traceback
 
             traceback.print_exc()
+        # Mangaba Local pronto de fábrica: em instalação zerada (ou usuário local que voltou),
+        # instala/sobe o motor e garante um modelo — em thread, para o boot não esperar um
+        # download. Erros ficam no estado do bootstrap (rota local-engine), nunca derrubam o app.
+        import threading
+
+        threading.Thread(
+            target=manager.bootstrap_local_engine, daemon=True, name="local-engine-bootstrap"
+        ).start()
         yield
         await manager.aclose()  # stop gateway + close MCP connections on shutdown
 
@@ -1441,7 +1449,11 @@ def create_app(manager: SessionManager) -> FastAPI:
     async def local_engine_status() -> dict[str, Any]:
         from ..providers import local_engine
 
-        return await asyncio.to_thread(local_engine.engine_status)
+        status = await asyncio.to_thread(local_engine.engine_status)
+        # O primeiro boot pode estar instalando o motor ou baixando o modelo inicial em
+        # segundo plano — a UI usa isto para mostrar "preparando… X%" em vez de "ausente".
+        status["bootstrap"] = local_engine.bootstrap_status()
+        return status
 
     @app.post("/v1/providers/local-engine/install")
     async def local_engine_install() -> dict[str, Any]:

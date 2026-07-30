@@ -1466,6 +1466,12 @@ export type LocalEngineStatus = {
   installed: boolean;
   running: boolean;
   binary: string | null;
+  /** First-run auto-setup (install engine + pull starter model) happening in the background. */
+  bootstrap?: {
+    phase: "idle" | "installing" | "starting" | "pulling" | "ready" | "needs_user" | "error";
+    progress: number;
+    error: string | null;
+  };
 };
 
 /** Is the local engine (Mangaba Local) installed and serving? Decides install vs. detect. */

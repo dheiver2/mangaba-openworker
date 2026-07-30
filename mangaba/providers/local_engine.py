@@ -191,6 +191,89 @@ def install(progress: Optional[Any] = None) -> dict[str, Any]:
     return {"ok": True, "installed": bool(find_binary())}
 
 
+def pull_model(
+    tag: str, host: str = DEFAULT_HOST, progress: Optional[Any] = None
+) -> dict[str, Any]:
+    """Baixa um modelo pela API nativa `/api/pull` (streaming de linhas JSON com progresso)."""
+    import json
+
+    try:
+        with httpx.stream(
+            "POST",
+            host.rstrip("/") + "/api/pull",
+            json={"model": tag},
+            timeout=httpx.Timeout(30.0, read=None),  # download longo: sem teto de leitura
+        ) as resp:
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if not line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except ValueError:
+                    continue
+                if ev.get("error"):
+                    return {"ok": False, "error": ev["error"]}
+                total, done = ev.get("total") or 0, ev.get("completed") or 0
+                if progress and total:
+                    progress(done / total)
+        return {"ok": True}
+    except Exception as exc:
+        return {"ok": False, "error": f"Falha ao baixar o modelo {tag} ({exc.__class__.__name__})."}
+
+
+# Modelo inicial do primeiro uso: pequeno o bastante para descer em minutos (~2 GB) e o mesmo
+# tag que a UI já rebrandiza ("Qwen 2.5 3B Instruct · Mangaba Local").
+STARTER_MODEL = "qwen2.5:3b-instruct"
+
+# Estado do bootstrap de primeiro uso, para a UI acompanhar sem bloquear nada.
+# Fases: idle → installing → starting → pulling → ready | needs_user | error
+_bootstrap_state: dict[str, Any] = {"phase": "idle", "progress": 0.0, "error": None}
+
+
+def bootstrap_status() -> dict[str, Any]:
+    return dict(_bootstrap_state)
+
+
+def bootstrap(host: str = DEFAULT_HOST) -> dict[str, Any]:
+    """Deixa o Mangaba Local utilizável de ponta a ponta, sem cliques: instala o motor
+    (onde dá para fazer isso em silêncio), sobe o servidor e garante ao menos um modelo.
+
+    Windows fica de fora da instalação automática de propósito: `install()` ali dispara o
+    instalador oficial com diálogo UAC, e um prompt de privilégio surgindo sozinho na
+    primeira abertura do app é exatamente o comportamento de malware que não vamos imitar —
+    o card do provedor oferece o mesmo caminho com um clique consciente do usuário.
+    """
+    st = _bootstrap_state
+    st.update(phase="starting", progress=0.0, error=None)
+
+    if not find_binary() and not is_serving(host):
+        if platform.system() == "Windows":
+            st.update(phase="needs_user", error=None)
+            return {"ok": False, "needs_user": True}
+        st.update(phase="installing")
+        res = install(progress=lambda p: st.update(progress=p))
+        if not res.get("ok"):
+            st.update(phase="error", error=res.get("error"))
+            return res
+
+    st.update(phase="starting", progress=0.0)
+    run = ensure_running(host)
+    if not run.get("ok"):
+        st.update(phase="error", error=run.get("error"))
+        return run
+
+    if not list_models(host):
+        st.update(phase="pulling", progress=0.0)
+        res = pull_model(STARTER_MODEL, host, progress=lambda p: st.update(progress=p))
+        if not res.get("ok"):
+            st.update(phase="error", error=res.get("error"))
+            return res
+
+    st.update(phase="ready", progress=1.0, error=None)
+    return {"ok": True, "models": list_models(host)}
+
+
 def list_models(host: str = DEFAULT_HOST, timeout: float = 5.0) -> list[str]:
     """Modelos já baixados na máquina. Lista vazia se o servidor não responder."""
     try:

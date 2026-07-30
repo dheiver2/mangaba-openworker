@@ -96,3 +96,51 @@ def test_install_on_linux_instructs_instead_of_piping_curl_to_shell(monkeypatch)
     res = le.install()
     # Rodar `curl | sh` sem o usuário ver o que executa é justamente o que não fazemos.
     assert res["ok"] is False and res["manual"] is True
+
+
+# -- bootstrap (padrão de fábrica: Mangaba Local funcionando sem cliques) ----------
+def test_bootstrap_pulls_starter_model_when_none_installed(monkeypatch):
+    """Instalação zerada: motor presente e rodando mas sem nenhum modelo ⇒ o bootstrap
+    baixa o STARTER_MODEL sozinho — sem isso o app abre 'funcionando' mas mudo."""
+    monkeypatch.setattr(le, "find_binary", lambda: "/usr/local/bin/ollama")
+    monkeypatch.setattr(le, "is_serving", lambda host=le.DEFAULT_HOST, timeout=1.5: True)
+    pulled: list[str] = []
+    # Antes do pull não há nada; depois, o starter aparece — como no mundo real.
+    monkeypatch.setattr(
+        le, "list_models",
+        lambda host=le.DEFAULT_HOST, timeout=5.0: [le.STARTER_MODEL] if pulled else [],
+    )
+    monkeypatch.setattr(
+        le, "pull_model",
+        lambda tag, host=le.DEFAULT_HOST, progress=None: (pulled.append(tag), {"ok": True})[1],
+    )
+
+    res = le.bootstrap()
+    assert res["ok"] is True
+    assert pulled == [le.STARTER_MODEL]
+    assert le.bootstrap_status()["phase"] == "ready"
+
+
+def test_bootstrap_on_windows_never_autoinstalls(monkeypatch):
+    """No Windows a instalação dispara UAC — um prompt de privilégio surgindo sozinho na
+    primeira abertura é comportamento de malware. O bootstrap devolve needs_user e o card
+    oferece o clique consciente."""
+    monkeypatch.setattr(le, "find_binary", lambda: None)
+    monkeypatch.setattr(le, "is_serving", lambda host=le.DEFAULT_HOST, timeout=1.5: False)
+    monkeypatch.setattr(le.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(le, "install", lambda progress=None: (_ for _ in ()).throw(AssertionError("não pode instalar")))
+
+    res = le.bootstrap()
+    assert res == {"ok": False, "needs_user": True}
+    assert le.bootstrap_status()["phase"] == "needs_user"
+
+
+def test_bootstrap_skips_pull_when_models_already_exist(monkeypatch):
+    """Usuário local que voltou: motor no ar e modelos presentes ⇒ nada de puxar 2 GB de novo."""
+    monkeypatch.setattr(le, "find_binary", lambda: "/usr/local/bin/ollama")
+    monkeypatch.setattr(le, "is_serving", lambda host=le.DEFAULT_HOST, timeout=1.5: True)
+    monkeypatch.setattr(le, "list_models", lambda host=le.DEFAULT_HOST, timeout=5.0: ["gemma4:e4b"])
+    monkeypatch.setattr(le, "pull_model", lambda *a, **k: (_ for _ in ()).throw(AssertionError("pull indevido")))
+
+    res = le.bootstrap()
+    assert res["ok"] is True and res["models"] == ["gemma4:e4b"]

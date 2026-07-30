@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "mangaba-server",
+      "runtimeExecutable": "/Users/dheiver/Applications/mangaba-openworker/.venv/bin/mangaba-server",
+      "runtimeArgs": ["--cwd", "/Users/dheiver/Mangaba", "--port", "8765"],
+      "port": 8765
+    },
+    {
       "name": "mangaba-gui",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "surfaces/gui"],

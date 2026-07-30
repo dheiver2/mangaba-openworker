@@ -151,6 +151,22 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     return () => clearTimeout(t);
   }, [providersLoaded, providersTimedOut]);
 
+  // Enquanto o bootstrap de primeiro uso trabalha (instalar motor / baixar modelo inicial),
+  // o card precisa acompanhar de perto — senão fica preso em "ausente" até reabrir.
+  useEffect(() => {
+    const phase = engine?.bootstrap?.phase;
+    if (phase !== "installing" && phase !== "starting" && phase !== "pulling") return;
+    const t = setInterval(() => {
+      void getLocalEngine()
+        .then((e) => {
+          setEngine(e);
+          if (e.bootstrap?.phase === "ready") void refreshProviders();
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => clearInterval(t);
+  }, [engine?.bootstrap?.phase]);
+
   const info = providers.find((p) => p.name === sel);
   const credentialed = !!info?.configured && !!info?.needs_key;
 
@@ -486,7 +502,17 @@ export function ProviderForm({
       {info && !info.needs_key && (
         <p className="text-[11.5px] text-faint mt-2">
           Não precisa de chave — os modelos rodam neste computador.{" "}
-          {ps.engine?.installed === false ? (
+          {ps.engine?.bootstrap &&
+          ["installing", "starting", "pulling"].includes(ps.engine.bootstrap.phase) ? (
+            // Primeiro uso: o app está preparando tudo sozinho — só mostrar o andamento.
+            <span data-testid={`${tp}-engine-bootstrapping`}>
+              {ps.engine.bootstrap.phase === "pulling"
+                ? `Baixando o modelo inicial… ${Math.round((ps.engine.bootstrap.progress || 0) * 100)}%`
+                : ps.engine.bootstrap.phase === "installing"
+                  ? `Instalando o motor local… ${Math.round((ps.engine.bootstrap.progress || 0) * 100)}%`
+                  : "Iniciando o motor local…"}
+            </span>
+          ) : ps.engine?.installed === false ? (
             // Motor ausente: instalar é o próximo passo, não "Detectar" (que só falharia).
             <button
               className="text-muted underline decoration-line underline-offset-2 hover:text-ink disabled:opacity-50"

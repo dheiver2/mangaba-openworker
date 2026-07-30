@@ -245,3 +245,44 @@ def test_settings_labels_ollama_models_even_before_theyre_curated(tmp_path, monk
     labels = manager.get_settings()["model_labels"]
     assert labels["ollama:qwen2.5:3b-instruct"] == "Qwen 2.5 3B Instruct · Mangaba Local"
     assert labels["ollama:mangaba-gemma4:latest"] == "Mangaba Gemma 4"
+
+
+def test_bootstrap_local_engine_skips_configured_non_local_users(tmp_path, monkeypatch):
+    """Quem já usa OpenAI (chave salva) nunca deve ganhar um download de 2 GB no boot."""
+    from mangaba.server.manager import SessionManager
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    manager = SessionManager(data_dir=tmp_path / "data")
+    manager.secrets.put("provider:openai", {"api_key": "sk-x"})
+    manager.set_default_model("gpt-4o")
+
+    monkeypatch.setattr(
+        "mangaba.providers.local_engine.bootstrap",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("bootstrap indevido")),
+    )
+    assert manager.bootstrap_local_engine() == {"ok": True, "skipped": True}
+
+
+def test_bootstrap_local_engine_makes_local_the_default_on_fresh_install(tmp_path, monkeypatch):
+    """Instalação zerada: bootstrap ok ⇒ perfil ollama persistido, modelo local no seletor e
+    promovido a padrão — o app 'já deve funcionar logo que instala'."""
+    from mangaba.server.manager import SessionManager
+
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    manager = SessionManager(data_dir=tmp_path / "data")
+
+    monkeypatch.setattr(
+        "mangaba.providers.local_engine.bootstrap",
+        lambda *a, **k: {"ok": True, "models": ["qwen2.5:3b-instruct"]},
+    )
+
+    class FakeResp:
+        def json(self):
+            return {"models": [{"name": "qwen2.5:3b-instruct"}]}
+
+    monkeypatch.setattr("httpx.get", lambda url, timeout=None: FakeResp())
+
+    res = manager.bootstrap_local_engine()
+    assert res["ok"] is True
+    assert manager.secrets.get("provider:ollama") is not None
+    assert manager.model == "ollama:qwen2.5:3b-instruct"

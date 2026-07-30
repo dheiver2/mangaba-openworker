@@ -2006,6 +2006,29 @@ class SessionManager:
         self._save_prefs()
         return {"ok": True, **self.get_settings()}
 
+    def bootstrap_local_engine(self) -> dict[str, Any]:
+        """Primeiro boot sem nada configurado ⇒ o Mangaba Local vira o padrão sozinho.
+
+        Roda em thread de fundo no startup do servidor. Dois públicos:
+        - instalação zerada (default gpt-5.6-sol sem chave nenhuma): instala/sobe o motor, puxa o
+          modelo inicial e persiste o provedor — o app já abre com um modelo local pronto;
+        - usuário local existente (perfil ollama salvo): só garante o motor no ar de novo.
+        Quem já tem OUTRO provedor funcionando fica intocado — nada de puxar 2 GB por conta
+        própria na máquina de quem usa OpenAI."""
+        from ..providers import local_engine
+
+        fresh = not self._provider_configured(self._model_provider(self.model))
+        local_user = self.secrets.get("provider:ollama") is not None
+        if not fresh and not local_user:
+            return {"ok": True, "skipped": True}
+
+        res = local_engine.bootstrap()
+        if res.get("ok"):
+            # Mesmo caminho do Detectar: persiste o perfil, põe o primeiro modelo instalado
+            # no seletor e, se o padrão atual não funciona, promove o modelo local a padrão.
+            self.set_provider("ollama", {})
+        return res
+
     def set_onboarded(self, value: bool = True) -> dict[str, Any]:
         """Record that first-run setup is complete (so it isn't shown again)."""
         self._prefs["onboarded"] = bool(value)
