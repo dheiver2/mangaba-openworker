@@ -470,3 +470,22 @@ def test_complete_picks_up_reasoning_content():
     provider = OpenAIProvider(client=_FakeClient(SimpleNamespace(choices=[choice])))
     turn = provider.complete(model="deepseek-v4-pro", messages=[{"role": "user", "content": "x"}])
     assert turn.text == "Answer" and turn.reasoning == "deep thought"
+
+
+def test_erro_de_parse_do_motor_local_vira_mensagem_acionavel():
+    """O motor local (Go) devolve 500 com "invalid character '<' looking for beginning of
+    value" quando não consegue interpretar como JSON o que recebeu — tipicamente uma chamada
+    de ferramenta em XML (formato do Qwen) lida por um parser de JSON. O texto cru não diz
+    nada a quem só queria conversar; a tradução aponta as saídas reais."""
+    from mangaba.providers.errors import friendly_model_error
+
+    erro = RuntimeError(
+        "Error code: 500 - {'error': {'message': \"invalid character '<' looking for "
+        "beginning of value\", 'type': 'api_error', 'param': None, 'code': None}}"
+    )
+    msg = friendly_model_error("ollama:qwen3:4b", erro)
+    assert msg and "outro modelo local" in msg and "atualizar o motor local" in msg
+
+    # e não sequestra erros de outros provedores
+    assert friendly_model_error("gpt-4o", RuntimeError("insufficient_quota")) is not None
+    assert "motor local" not in friendly_model_error("gpt-4o", RuntimeError("insufficient_quota"))

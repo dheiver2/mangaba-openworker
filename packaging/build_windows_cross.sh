@@ -251,12 +251,50 @@ rm -rf "$TRABALHO/nsis"
 cp -R "$(dirname "$NSI_SRC")" "$TRABALHO/nsis"
 "$PY" - "$TRABALHO/nsis/installer.nsi" <<'PY'
 import sys
+
 caminho = sys.argv[1]
 dados = open(caminho, "rb").read()
 if dados.startswith(b"\xef\xbb\xbf"):
     dados = dados[3:]
 dados = dados.replace(b"Unicode true", b"Unicode false", 1)
+
+# "Error opening file for writing: ...\mangaba-desktop.exe" (relatado 31/07/2026, v0.1.18):
+# o instalador nao conseguia sobrescrever o executavel porque o app seguia aberto. A macro
+# CheckIfAppIsRunning do Tauri e chamada, mas fecha o app pelo plugin `nsis_tauri_utils`,
+# distribuido SOMENTE em x86-unicode — e este instalador e ANSI (o makensis do macOS estoura
+# memoria em Unicode, veja acima). O `!addplugindir` do Tauri aponta direto para a pasta
+# unicode, entao a DLL carrega sem erro de compilacao e recebe strings ANSI: o
+# `FindProcessCurrentUser` nunca encontra o processo, ninguem e encerrado e a copia falha.
+#
+# Trocamos as CHAMADAS por codigo inline com `nsExec` + `taskkill`, que existem em ANSI.
+# Nao adianta corrigir a macro no utils.nsh: o Tauri regenera esse arquivo e so honra o
+# installer.nsi como template (verificado — o utils.nsh patchado era descartado).
+FECHAR_APP = b'''
+  ; --- encerra o app sem depender do plugin somente-Unicode (patch do build) ---
+  ; taskkill devolve 128 quando o processo nem estava rodando: serve de deteccao.
+  nsExec::Exec 'taskkill /IM "${MAINBINARYNAME}.exe"'
+  Pop $R0
+  ${If} $R0 == 0
+    DetailPrint "Fechando o ${PRODUCTNAME} para atualizar..."
+    Sleep 2000
+    nsExec::Exec 'taskkill /F /IM "${MAINBINARYNAME}.exe"'
+    Pop $R0
+    Sleep 500
+  ${EndIf}
+  ; O sidecar Python vive no diretorio de instalacao e segura os proprios arquivos:
+  ; sem encerra-lo, a copia falha do mesmo jeito, so que num arquivo diferente.
+  nsExec::Exec 'taskkill /F /IM "mangaba-server.exe"'
+  Pop $R0
+  Sleep 500
+'''
+
+ALVO = b'  !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"'
+n = dados.count(ALVO)
+if n == 0:
+    raise SystemExit("ERRO: chamada de CheckIfAppIsRunning nao encontrada no installer.nsi")
+dados = dados.replace(ALVO, FECHAR_APP)
 open(caminho, "wb").write(dados)
+print(f"    fechamento do app trocado por taskkill em {n} ponto(s) (ANSI-safe)")
 PY
 
 cat > "$TRABALHO/nsis-overlay.json" <<JSON

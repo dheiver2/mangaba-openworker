@@ -163,11 +163,19 @@ def ensure_running(host: str = DEFAULT_HOST, wait_secs: float = 20.0) -> dict[st
         "systemroot", "windir", "pathext", "systemdrive", "localappdata",
         "appdata", "programdata", "programfiles", "comspec", "username", "lang",
     }
+    # NO_PROXY explícito: o motor é Go e respeita HTTP_PROXY/HTTPS_PROXY do ambiente. Numa
+    # máquina com proxy corporativo (ou antivírus que intercepta) e sem NO_PROXY, até a
+    # conversa interna do motor com o próprio runner em 127.0.0.1 vai parar no proxy, que
+    # responde HTML — e o motor morre com "invalid character '<' looking for beginning of
+    # value". Nosso filtro já não repassa as variáveis de proxy, mas declarar é de graça e
+    # protege quem tiver um proxy definido no registro do Windows.
     env = {
         k: v
         for k, v in os.environ.items()
         if k.upper().startswith("OLLAMA_") or k.lower() in _ESSENCIAIS
     }
+    env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
+    env.setdefault("no_proxy", "localhost,127.0.0.1,::1")
     env.setdefault("OLLAMA_CONTEXT_LENGTH", "16384")
     env.setdefault("OLLAMA_KEEP_ALIVE", "30m")
     try:
