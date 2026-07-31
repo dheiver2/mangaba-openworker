@@ -430,6 +430,27 @@ def contexto_para_a_maquina(ram_gb: Optional[float] = None) -> int:
     return 4096  # abaixo disso, caber é mais importante que lembrar
 
 
+# Teto do download AUTOMÁTICO do primeiro uso. Adaptar o modelo à máquina é certo, mas
+# puxar 20 GB sem ninguém pedir, logo na primeira abertura, não é: seria horas de download
+# e disco cheio para quem só queria ver o app funcionando. Acima deste teto o modelo maior
+# continua a UM clique no card ("baixar o recomendado"), aí com o usuário decidindo.
+_TETO_DOWNLOAD_AUTOMATICO_GB = 5.0
+
+
+def modelo_inicial_para_a_maquina(ram_gb: Optional[float] = None) -> dict[str, Any]:
+    """O maior modelo que ESTA máquina roda bem E que cabe num download automático.
+
+    Antes o primeiro uso baixava sempre o mesmo modelo pequeno, em qualquer máquina: quem
+    tinha 32 GB ganhava um 4B por padrão, e quem tinha 4 GB ganhava um download que talvez
+    nem coubesse. A escolha passa pelos mesmos tiers da recomendação, só que limitada pelo
+    teto acima."""
+    ram = total_ram_gb() if ram_gb is None else ram_gb
+    for minimo, tag, download_gb in _TIERS:
+        if ram >= minimo and download_gb <= _TETO_DOWNLOAD_AUTOMATICO_GB:
+            return {"tag": tag, "download_gb": download_gb, "ram_gb": round(ram, 1)}
+    return {"tag": STARTER_MODEL, "download_gb": 2.5, "ram_gb": round(ram, 1)}
+
+
 def recommended_model(ram_gb: Optional[float] = None) -> dict[str, Any]:
     """O maior modelo local que ESTA máquina roda bem — recomendação do card da UI."""
     ram = total_ram_gb() if ram_gb is None else ram_gb
@@ -553,14 +574,18 @@ def _bootstrap(host: str) -> dict[str, Any]:
             ja_baixando = pull_in_progress()
             if not ja_baixando:
                 _pull_state.update(
-                    phase="pulling", tag=STARTER_MODEL, progress=0.0, error=None
+                    phase="pulling",
+                    tag=modelo_inicial_para_a_maquina()["tag"],
+                    progress=0.0,
+                    error=None,
                 )
         if ja_baixando:
             st.update(phase="ready", progress=1.0, error=None)
             return {"ok": True, "pull_em_andamento": True}
 
         st.update(phase="pulling", progress=0.0)
-        res = pull_model(STARTER_MODEL, host, progress=lambda p: st.update(progress=p))
+        inicial = modelo_inicial_para_a_maquina()["tag"]
+        res = pull_model(inicial, host, progress=lambda p: st.update(progress=p))
         _pull_state.update(
             phase="done" if res.get("ok") else "error",
             progress=1.0 if res.get("ok") else _pull_state["progress"],

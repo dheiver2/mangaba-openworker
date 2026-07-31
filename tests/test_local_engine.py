@@ -102,8 +102,11 @@ def test_install_on_linux_instructs_instead_of_piping_curl_to_shell(monkeypatch)
 
 # -- bootstrap (padrão de fábrica: Mangaba Local funcionando sem cliques) ----------
 def test_bootstrap_pulls_starter_model_when_none_installed(monkeypatch):
-    """Instalação zerada: motor presente e rodando mas sem nenhum modelo ⇒ o bootstrap
-    baixa o STARTER_MODEL sozinho — sem isso o app abre 'funcionando' mas mudo."""
+    """Instalação zerada: motor presente e rodando mas sem nenhum modelo ⇒ o bootstrap baixa
+    um modelo sozinho — sem isso o app abre 'funcionando' mas mudo. Qual modelo depende da
+    memória da máquina (test_primeiro_uso_baixa_o_modelo_certo_para_cada_maquina); aqui só
+    importa que ALGUM seja baixado, então fixamos a RAM para o teste não depender do host."""
+    monkeypatch.setattr(le, "total_ram_gb", lambda: 4.0)  # máquina modesta ⇒ starter
     monkeypatch.setattr(le, "find_binary", lambda: "/usr/local/bin/ollama")
     monkeypatch.setattr(le, "is_serving", lambda host=le.DEFAULT_HOST, timeout=1.5: True)
     pulled: list[str] = []
@@ -403,3 +406,25 @@ def test_autostart_nao_tenta_sem_binario(monkeypatch):
         le.threading, "Thread", lambda **k: (_ for _ in ()).throw(AssertionError("spawn indevido"))
     )
     assert le.autostart_em_segundo_plano() is False
+
+
+def test_primeiro_uso_baixa_o_modelo_certo_para_cada_maquina():
+    """O primeiro uso baixava sempre o mesmo modelo pequeno em qualquer maquina: quem tinha
+    32 GB ganhava um 4B por padrao e quem tinha 4 GB ganhava um download que talvez nem
+    coubesse. Agora a escolha acompanha a memoria — limitada por um teto, porque puxar 20 GB
+    sozinho na primeira abertura seria abusivo (o modelo maior fica a um clique no card)."""
+    from mangaba.providers.local_engine import (
+        _TETO_DOWNLOAD_AUTOMATICO_GB as TETO,
+        modelo_inicial_para_a_maquina as inicial,
+        recommended_model,
+    )
+
+    assert inicial(ram_gb=4)["tag"] == "qwen3:4b"
+    assert inicial(ram_gb=8)["tag"] == "qwen2.5:7b-instruct"  # maquina melhor, modelo melhor
+
+    # nenhuma maquina, por maior que seja, dispara um download automatico gigante...
+    for ram in (16, 32, 64, 128):
+        assert inicial(ram_gb=ram)["download_gb"] <= TETO
+    # ...mas o card continua oferecendo o modelo grande de verdade para essa maquina
+    assert recommended_model(ram_gb=32)["tag"] == "qwen3:32b"
+    assert recommended_model(ram_gb=32)["download_gb"] > TETO
