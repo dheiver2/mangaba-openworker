@@ -78,6 +78,35 @@ def is_serving(host: str = DEFAULT_HOST, timeout: float = 1.5) -> bool:
         return False
 
 
+# Autostart: o motor é responsabilidade do APP, não do usuário. Quem instalou o Ollama pelo
+# instalador oficial ganha um ícone de bandeja que sobe no login — mas quem instalou pelo
+# nosso card, ou fechou a bandeja, ou está num Windows onde ela não subiu, ficava com o motor
+# parado e o chat "sem modelo" sem nada explicando. Sempre que percebemos o motor parado com
+# binário presente, subimos em segundo plano.
+_ULTIMO_AUTOSTART = 0.0
+_AUTOSTART_INTERVALO = 30.0  # não vale tentar a cada sonda: `get_settings` roda o tempo todo
+
+
+def autostart_em_segundo_plano(host: str = DEFAULT_HOST) -> bool:
+    """Sobe o motor sem bloquear quem chamou. True se uma tentativa foi disparada.
+
+    Não espera o resultado de propósito: os chamadores são caminhos de leitura (a sonda de
+    liveness roda em todo fetch da GUI) e travá-los por até 20 s deixaria a interface
+    pendurada. A próxima sonda, segundos depois, já encontra o motor no ar."""
+    global _ULTIMO_AUTOSTART
+
+    agora = time.monotonic()
+    if agora - _ULTIMO_AUTOSTART < _AUTOSTART_INTERVALO:
+        return False
+    if not find_binary():
+        return False  # sem binário não há o que subir — isso é caso de instalação
+    _ULTIMO_AUTOSTART = agora
+    threading.Thread(
+        target=ensure_running, args=(host,), daemon=True, name="motor-autostart"
+    ).start()
+    return True
+
+
 def engine_status(host: str = DEFAULT_HOST) -> dict[str, Any]:
     """Estado do motor para a UI decidir o que oferecer: rodar, iniciar ou instalar."""
     binary = find_binary()
@@ -86,6 +115,7 @@ def engine_status(host: str = DEFAULT_HOST) -> dict[str, Any]:
         state = "running"
     elif binary:
         state = "stopped"
+        autostart_em_segundo_plano(host)  # instalado e parado ⇒ o app sobe, o usuário não
     else:
         state = "absent"
     # `models`: motor no ar SEM nenhum modelo baixado é exatamente o estado que produz o

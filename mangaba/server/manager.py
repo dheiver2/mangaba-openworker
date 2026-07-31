@@ -1686,7 +1686,16 @@ class SessionManager:
             alive = httpx.get(base + "/api/tags", timeout=2.0).status_code == 200
         except Exception:
             alive = False
-        self._ollama_alive_cache = (now, alive)
+        if not alive:
+            # Motor instalado porém parado é o caso mais comum de "sem modelo" no chat: o
+            # app sobe o servidor sozinho (em segundo plano) e a próxima sonda já o vê.
+            from ..providers import local_engine
+
+            local_engine.autostart_em_segundo_plano()
+        # Cache curto quando está MORTO: um autostart acabou de ser disparado e o motor
+        # deve responder em segundos — 30 s de cache aqui manteriam o chat "sem modelo"
+        # muito depois de o servidor já estar no ar.
+        self._ollama_alive_cache = (now if alive else now - 25, alive)
         return alive
 
     def _ollama_models(self) -> list[str]:

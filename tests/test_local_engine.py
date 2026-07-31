@@ -354,3 +354,36 @@ def test_windows_espera_o_usuario_terminar_o_instalador(monkeypatch):
     assert res["ok"] is True
     assert chamou, "o bootstrap tem de continuar assim que o motor aparece"
     assert tentativas["n"] >= 3  # esperou de verdade em vez de desistir na primeira
+
+
+def test_app_sobe_o_motor_sozinho_quando_o_encontra_parado(monkeypatch):
+    """O motor é responsabilidade do APP: quem fechou a bandeja do Ollama (ou está num
+    Windows onde ela não subiu no login) ficava com o motor parado e o chat "sem modelo",
+    sem nada explicando. Ver o motor parado com binário presente basta para subi-lo."""
+    le._ULTIMO_AUTOSTART = 0.0
+    monkeypatch.setattr(le, "find_binary", lambda: "/usr/local/bin/ollama")
+    monkeypatch.setattr(le, "is_serving", lambda host=le.DEFAULT_HOST, timeout=1.5: False)
+    subiu = []
+    monkeypatch.setattr(
+        le.threading, "Thread", lambda **k: SimpleNamespace(start=lambda: subiu.append(k["name"]))
+    )
+
+    st = le.engine_status()
+    assert st["state"] == "stopped"
+    assert subiu == ["motor-autostart"], "ver parado tem de disparar o autostart"
+
+    # e não pode virar tempestade: get_settings sonda o tempo todo
+    subiu.clear()
+    le.engine_status()
+    assert subiu == [], "tentativas seguidas dentro do intervalo são ignoradas"
+
+
+def test_autostart_nao_tenta_sem_binario(monkeypatch):
+    """Sem binário instalado não há o que subir — esse é caso de INSTALAÇÃO, e insistir só
+    gastaria spawn a cada sonda."""
+    le._ULTIMO_AUTOSTART = 0.0
+    monkeypatch.setattr(le, "find_binary", lambda: None)
+    monkeypatch.setattr(
+        le.threading, "Thread", lambda **k: (_ for _ in ()).throw(AssertionError("spawn indevido"))
+    )
+    assert le.autostart_em_segundo_plano() is False
