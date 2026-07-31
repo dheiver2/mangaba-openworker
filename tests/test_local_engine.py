@@ -75,6 +75,7 @@ def test_ensure_running_spawns_then_waits(monkeypatch):
 
     monkeypatch.setattr("httpx.get", fake_get)
     monkeypatch.setattr(le, "find_binary", lambda: "/usr/local/bin/ollama")
+    monkeypatch.setattr(le, "total_ram_gb", lambda: 16.0)  # sem sondar a máquina real
     spawned = []
     monkeypatch.setattr(le.subprocess, "Popen", lambda *a, **k: spawned.append(a[0]))
     monkeypatch.setattr(le.time, "sleep", lambda _s: None)
@@ -178,6 +179,7 @@ def test_ensure_running_gives_the_engine_room_to_breathe(monkeypatch):
     o system prompt e as tools eram truncados em silêncio. O spawn precisa definir contexto
     e keep-alive — respeitando valores que o usuário já tenha no ambiente."""
     monkeypatch.setattr(le, "find_binary", lambda: "/usr/local/bin/ollama")
+    monkeypatch.setattr(le, "total_ram_gb", lambda: 16.0)  # 16 GB ⇒ contexto de 16k
     calls = {"n": 0}
 
     def fake_serving(host=le.DEFAULT_HOST, timeout=1.5):
@@ -295,6 +297,20 @@ def test_install_concorrente_nao_corrompe_o_download(monkeypatch):
 
 
 # -- caminhos que SÓ existem no Windows (bug relatado: "sem modelo" no chat) --------
+def test_contexto_escala_com_a_memoria_da_maquina():
+    """16k fixo custava ~2,4 GB de KV cache num modelo 4B e, com os pesos, passava de 4,9 GB:
+    numa maquina de 8 GB com Windows a alocacao falha e o motor devolve algo que nao e JSON.
+    Contexto menor degrada a memoria da conversa; contexto grande demais impede conversar."""
+    from mangaba.providers.local_engine import contexto_para_a_maquina as ctx
+
+    assert ctx(ram_gb=4) == 4096
+    assert ctx(ram_gb=8) == 8192
+    assert ctx(ram_gb=16) == 16384
+    assert ctx(ram_gb=64) == 16384  # teto: acima disso o ganho nao paga o KV cache
+    # o piso ainda precisa comportar os ~3.200 tokens fixos do agente
+    assert ctx(ram_gb=4) > 3200
+
+
 def test_env_do_motor_sobrevive_ao_caixa_alta_do_windows(monkeypatch):
     """No Windows o `os.environ` do Python MAIÚSCULA as chaves: SystemRoot vira SYSTEMROOT.
     A lista de essenciais tinha grafia mista, então o SYSTEMROOT era descartado — e sem ele

@@ -145,9 +145,9 @@ def ensure_running(host: str = DEFAULT_HOST, wait_secs: float = 20.0) -> dict[st
     # que ele sobreviva a um restart nosso, e silenciamos a saída para não encher o log do app.
     # No Windows, CREATE_NO_WINDOW evita o console piscando — mesmo cuidado que o sidecar toma.
     creationflags = 0x08000000 if platform.system() == "Windows" else 0
-    # O agente manda ~3.200 tokens fixos por turno (system prompt + 19 schemas de tools).
-    # Com o contexto padrão do Ollama (4096), o INÍCIO da conversa é truncado em silêncio
-    # — o modelo "esquece" as ferramentas. 16k dá folga com ~1–2 GB de KV cache no Q4.
+    # O contexto sai de `contexto_para_a_maquina()`: fixá-lo em 16k custava ~2,4 GB de KV
+    # cache e, somado aos pesos, não cabia numa máquina de 8 GB — o processo do modelo
+    # morria e o motor devolvia algo que não era JSON.
     # KEEP_ALIVE=30m evita descarregar o modelo a cada 5 min ocioso (recarga de 5–15 s
     # na primeira mensagem depois de uma pausa). Valores do usuário no ambiente vencem.
     # Ambiente MÍNIMO: `dict(os.environ)` levava MANGABA_API_TOKEN e todas as chaves de
@@ -176,7 +176,7 @@ def ensure_running(host: str = DEFAULT_HOST, wait_secs: float = 20.0) -> dict[st
     }
     env.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
     env.setdefault("no_proxy", "localhost,127.0.0.1,::1")
-    env.setdefault("OLLAMA_CONTEXT_LENGTH", "16384")
+    env.setdefault("OLLAMA_CONTEXT_LENGTH", str(contexto_para_a_maquina()))
     env.setdefault("OLLAMA_KEEP_ALIVE", "30m")
     try:
         subprocess.Popen(
@@ -409,6 +409,25 @@ _TIERS = [
     (6.0, "qwen2.5:7b-instruct", 4.7),  # entrada digna em 8 GB
     (0.0, STARTER_MODEL, 2.5),  # máquinas mínimas ficam no starter
 ]
+
+
+def contexto_para_a_maquina(ram_gb: Optional[float] = None) -> int:
+    """Janela de contexto que o motor pode servir sem derrubar o processo do modelo.
+
+    O agente manda ~3.200 tokens fixos por turno (system prompt + 19 schemas de ferramenta),
+    então o padrão do Ollama (4096) trunca o começo da conversa em silêncio e o modelo
+    "esquece" as ferramentas — foi por isso que passamos a fixar 16384. Só que o KV cache
+    cresce LINEARMENTE com o contexto: num modelo 4B são ~2,4 GB só de cache a 16k, que
+    somados aos pesos passam de 4,9 GB. Numa máquina de 8 GB rodando Windows isso não cabe,
+    a alocação falha e o motor responde algo que não é JSON ("invalid character '<'...").
+    Um contexto menor degrada a memória da conversa; um contexto grande demais impede
+    qualquer conversa. Escalamos pela RAM e assumimos a primeira perda quando preciso."""
+    ram = total_ram_gb() if ram_gb is None else ram_gb
+    if ram >= 16.0:
+        return 16384
+    if ram >= 8.0:
+        return 8192
+    return 4096  # abaixo disso, caber é mais importante que lembrar
 
 
 def recommended_model(ram_gb: Optional[float] = None) -> dict[str, Any]:
