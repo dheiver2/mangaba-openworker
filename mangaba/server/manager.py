@@ -1544,6 +1544,9 @@ class SessionManager:
             profile["key_set_at"] = date.today().isoformat()
         self.secrets.put(f"provider:{name}", profile)
         self._refresh_provider(name)
+        # Detectar/salvar é justamente quando o usuário espera ver a lista NOVA: o cache de
+        # 30 s não pode fazer o modelo recém-baixado demorar meio minuto para aparecer.
+        self._ollama_models_cache = None
         # Convenience: if the provider recommends a model and it's actually available, add it to
         # the curated list so it shows up in the composer right after configuring the provider.
         rec = d.recommended_model
@@ -1684,7 +1687,23 @@ class SessionManager:
     def _ollama_models(self) -> list[str]:
         """Live list of models pulled into the configured Ollama server (via its native
         `/api/tags`), as `ollama:<name>` so they're directly selectable. Empty if Ollama isn't
-        configured or unreachable — best-effort, never raises."""
+        configured or unreachable — best-effort, never raises.
+
+        Cached por 30 s como `_ollama_alive`: `get_settings` roda em TODO fetch da GUI e
+        chamava isto sem cache, com timeout de 2 s. Com o motor local parado (perfil salvo,
+        Ollama desligado) cada abertura de Settings/onboarding pagava esses 2 s e a interface
+        parecia travada."""
+        import time
+
+        agora = time.monotonic()
+        cache = getattr(self, "_ollama_models_cache", None)
+        if cache and agora - cache[0] < 30:
+            return list(cache[1])
+        modelos = self._ollama_models_uncached()
+        self._ollama_models_cache = (agora, list(modelos))
+        return modelos
+
+    def _ollama_models_uncached(self) -> list[str]:
         profile = self.secrets.get("provider:ollama")
         # `{}` is a REAL saved profile (detected with no custom endpoint — the common case
         # now that Detect always persists) but is falsy in Python, so `if not profile` treated

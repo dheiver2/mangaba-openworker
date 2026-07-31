@@ -286,3 +286,34 @@ def test_bootstrap_local_engine_makes_local_the_default_on_fresh_install(tmp_pat
     assert res["ok"] is True
     assert manager.secrets.get("provider:ollama") is not None
     assert manager.model == "ollama:qwen2.5:3b-instruct"
+
+
+def test_get_settings_nao_paga_timeout_do_ollama_a_cada_fetch(tmp_path, monkeypatch):
+    """`get_settings` roda em TODO fetch da GUI e chamava `_ollama_models` sem cache, com
+    timeout de 2 s. Com o motor local parado (perfil salvo, Ollama desligado), abrir
+    Settings/onboarding pagava esses 2 s e a interface parecia travada."""
+    from mangaba.server.manager import SessionManager
+
+    manager = SessionManager(data_dir=tmp_path / "data")
+    manager.secrets.put("provider:ollama", {})
+    chamadas = {"n": 0}
+
+    class FakeResp:
+        def json(self):
+            return {"models": [{"name": "qwen3:4b"}]}
+
+    def contar(url, timeout=None):
+        chamadas["n"] += 1
+        return FakeResp()
+
+    monkeypatch.setattr("httpx.get", contar)
+    monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
+
+    for _ in range(5):
+        manager.get_settings()
+    assert chamadas["n"] == 1, "o resultado deve ficar em cache entre fetches"
+
+    # Detectar/salvar invalida o cache: o modelo recém-baixado não pode demorar 30 s p/ aparecer
+    manager.set_provider("ollama", {})
+    manager.get_settings()
+    assert chamadas["n"] > 1

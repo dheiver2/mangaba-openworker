@@ -205,3 +205,89 @@ def test_starter_model_is_commercially_licensed():
     """qwen2.5:3b-instruct está sob 'Qwen RESEARCH LICENSE' (uso não comercial) — não pode
     voltar a ser o padrão de fábrica. O starter deve ser um tag da família qwen3 (Apache-2.0)."""
     assert le.STARTER_MODEL.startswith("qwen3")
+
+
+# -- correções da auditoria de 2026-07-31 ------------------------------------------
+def test_pull_recusa_registry_de_terceiros():
+    """`/api/pull` do Ollama aceita registries arbitrários ("evil.example/x"): um POST
+    autenticado bastaria para a máquina baixar dezenas de GB de origem hostil e deixar um
+    modelo estranho selecionável no app. Só a biblioteca oficial e o HF passam."""
+    assert le.tag_permitido("qwen3:4b")
+    assert le.tag_permitido("hf.co/prism-ml/Bonsai-27B-gguf:Q1_0")
+    assert not le.tag_permitido("evil.example/org/modelo")
+    assert not le.tag_permitido("../../etc/passwd")
+    assert not le.tag_permitido("registry.local:5000/x")
+    assert not le.tag_permitido("")
+    assert le.start_pull("evil.example/org/m")["ok"] is False
+
+
+def test_install_recusa_zip_com_travessia(monkeypatch, tmp_path):
+    """Zip Slip: `extractall` puro aceita membros com `../`, então um pacote adulterado
+    escreveria em ~/Library/LaunchAgents (persistência). O pacote inteiro é recusado."""
+    import zipfile
+
+    origem = tmp_path / "origem"
+    origem.mkdir()
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    malicioso = origem / "Ollama-darwin.zip"  # separado do cache: o download grava lá
+    with zipfile.ZipFile(malicioso, "w") as zf:
+        zf.writestr("../../../tmp/evil.plist", "payload")
+
+    monkeypatch.setattr(le, "find_binary", lambda: None)
+    monkeypatch.setattr(le.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(le, "_cache_dir", lambda: cache)
+    monkeypatch.setattr(le, "_DOWNLOADS", {"Darwin": ("https://x/Ollama-darwin.zip", "Ollama-darwin.zip")})
+
+    class FakeStream:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        headers = {"content-length": "1"}
+        def raise_for_status(self): pass
+        def iter_bytes(self, _n): yield malicioso.read_bytes()
+
+    monkeypatch.setattr(le.httpx, "stream", lambda *a, **k: FakeStream())
+    extraiu = []
+    monkeypatch.setattr(
+        zipfile.ZipFile, "extractall", lambda self, *a, **k: extraiu.append(True)
+    )
+    res = le.install()
+    assert res["ok"] is False and "inválidos" in res["error"]
+    assert not extraiu  # nada foi extraído
+
+
+def test_motor_local_nao_herda_segredos_do_sidecar(monkeypatch):
+    """`dict(os.environ)` levava MANGABA_API_TOKEN e chaves de provedor para um processo que
+    sobrevive ao sidecar e cujo ambiente qualquer processo do usuário lê."""
+    monkeypatch.setenv("MANGABA_API_TOKEN", "segredo-do-sidecar")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-nao-vaze-isso")
+    monkeypatch.setenv("OLLAMA_HOST", "127.0.0.1:11434")
+    monkeypatch.setattr(le, "find_binary", lambda: "/usr/local/bin/ollama")
+    n = {"i": 0}
+
+    def alive(host=le.DEFAULT_HOST, timeout=1.5):
+        n["i"] += 1
+        return n["i"] > 1
+
+    monkeypatch.setattr(le, "is_serving", alive)
+    cap = {}
+    monkeypatch.setattr(le.subprocess, "Popen", lambda *a, **k: cap.update(env=k["env"]))
+    monkeypatch.setattr(le.time, "sleep", lambda _s: None)
+
+    le.ensure_running()
+    assert "MANGABA_API_TOKEN" not in cap["env"]
+    assert "OPENAI_API_KEY" not in cap["env"]
+    assert cap["env"]["OLLAMA_HOST"] == "127.0.0.1:11434"  # o que o motor precisa, fica
+    assert "PATH" in cap["env"]
+
+
+def test_install_concorrente_nao_corrompe_o_download(monkeypatch):
+    """Bootstrap e clique em 'Instalar' baixavam ~180 MB para o MESMO arquivo ao mesmo
+    tempo: os streams se intercalavam e o zip saía lixo."""
+    monkeypatch.setattr(le, "find_binary", lambda: None)
+    le._install_lock.acquire()
+    try:
+        res = le.install()
+        assert res["ok"] is False and "andamento" in res["error"]
+    finally:
+        le._install_lock.release()

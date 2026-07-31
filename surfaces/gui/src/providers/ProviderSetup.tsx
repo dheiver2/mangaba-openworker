@@ -95,6 +95,7 @@ export interface ProviderSetupState {
   installing: boolean;
   installEngine: () => Promise<void>;
   reloadEngine: () => void;
+  setVerifyError: (msg: string) => void;
   // Blur-save for non-secret fields on an already-configured provider (the Test button is
   // the KEY's save path; extras like anthropic's thinking_budget must not need a re-test —
   // owner-hit 2026-07-23: the budget silently never saved).
@@ -155,23 +156,37 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
 
   // Enquanto o bootstrap de primeiro uso trabalha (instalar motor / baixar modelo inicial),
   // o card precisa acompanhar de perto — senão fica preso em "ausente" até reabrir.
+  // A dependência tem de listar TUDO que a condição lê: com apenas `bootstrap?.phase`, um
+  // pull iniciado pela UI (bootstrap já "ready") não re-executava o efeito — nenhum
+  // setInterval nascia e a barra de progresso ficava parada em 0%. No sentido inverso, o
+  // intervalo criado pelo bootstrap nunca era limpo quando só a fase do PULL mudava, e o
+  // ramo "done" refazia refreshProviders() a cada 2 s para sempre.
+  const bootPhase = engine?.bootstrap?.phase;
+  const pullPhase = engine?.pull?.phase;
   useEffect(() => {
-    const phase = engine?.bootstrap?.phase;
-    const pulling = engine?.pull?.phase === "pulling";
-    if (!pulling && phase !== "installing" && phase !== "starting" && phase !== "pulling") return;
+    const ativo =
+      pullPhase === "pulling" ||
+      bootPhase === "installing" ||
+      bootPhase === "starting" ||
+      bootPhase === "pulling";
+    if (!ativo) return;
     const t = setInterval(() => {
       void getLocalEngine()
         .then((e) => {
           setEngine(e);
+          // Só recarrega a lista na TRANSIÇÃO para pronto (o efeito para logo em seguida,
+          // porque a fase muda e a condição acima deixa de valer).
           if (e.bootstrap?.phase === "ready" || e.pull?.phase === "done") void refreshProviders();
         })
         .catch(() => {});
     }, 2000);
     return () => clearInterval(t);
-  }, [engine?.bootstrap?.phase]);
+  }, [bootPhase, pullPhase]);
 
   const info = providers.find((p) => p.name === sel);
   const credentialed = !!info?.configured && !!info?.needs_key;
+
+  const setVerifyError = (msg: string) => setVerify({ state: "error", msg });
 
   const reloadEngine = () => {
     void getLocalEngine().then(setEngine).catch(() => {});
@@ -342,6 +357,7 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     installing,
     installEngine,
     reloadEngine,
+    setVerifyError,
   };
 }
 
@@ -534,6 +550,10 @@ export function ProviderForm({
               Baixando {ps.engine.pull.tag}… {Math.round((ps.engine.pull.progress || 0) * 100)}%
               <span className="engine-bar"><i style={{ width: `${Math.round((ps.engine.pull.progress || 0) * 100)}%` }} /></span>
             </span>
+          ) : ps.engine?.pull?.phase === "error" ? (
+            <span className="text-warnInk" data-testid={`${tp}-engine-pull-error`}>
+              Falha ao baixar {ps.engine.pull.tag}: {ps.engine.pull.error || "erro desconhecido"}
+            </span>
           ) : ps.engine?.pull?.phase === "done" ? (
             <span className="text-ok" data-testid={`${tp}-engine-pull-done`}>
               ✓ {ps.engine.pull.tag} pronto — clique em Detectar para usá-lo.
@@ -557,7 +577,17 @@ export function ProviderForm({
                   {" "}
                   <button
                     className="text-muted underline decoration-line underline-offset-2 hover:text-ink"
-                    onClick={() => void pullLocalModel(ps.engine!.recommended!.tag).then(() => ps.reloadEngine())}
+                    onClick={() =>
+                      void pullLocalModel(ps.engine!.recommended!.tag)
+                        .then((r) => {
+                          // Sem isto, disco cheio/sem rede não dizia NADA na tela e o
+                          // usuário clicava de novo achando que o clique não pegou.
+                          if (!r.ok)
+                            ps.setVerifyError(r.error || "Não consegui baixar o modelo.");
+                          ps.reloadEngine();
+                        })
+                        .catch(() => ps.setVerifyError("Não consegui falar com o servidor local."))
+                    }
                     data-testid={`${tp}-pull-recommended`}
                   >
                     Baixar o recomendado p/ esta máquina ({ps.engine.recommended.tag}, ~{ps.engine.recommended.download_gb} GB)

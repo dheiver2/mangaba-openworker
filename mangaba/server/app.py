@@ -1466,6 +1466,10 @@ def create_app(manager: SessionManager) -> FastAPI:
         tag = ((body or {}).get("tag") or "").strip()
         if not tag:
             return {"ok": False, "error": "informe o tag do modelo"}
+        # Antes de qualquer efeito colateral (subir o motor): tag de registry arbitrário
+        # não passa. `start_pull` revalida — este é só o corte barato na porta.
+        if not local_engine.tag_permitido(tag):
+            return {"ok": False, "error": f"Tag de modelo não permitido: {tag}"}
         # Garante o motor de pé antes de pedir o download a ele.
         run = await asyncio.to_thread(local_engine.ensure_running)
         if not run.get("ok"):
@@ -1480,6 +1484,15 @@ def create_app(manager: SessionManager) -> FastAPI:
         res = await asyncio.to_thread(local_engine.install)
         if res.get("ok") and not res.get("handed_off"):
             res["serve"] = await asyncio.to_thread(local_engine.ensure_running)
+        # No Windows o bootstrap para em `needs_user` (instalar exige o UAC) e NADA o
+        # retomava: o usuário concluía a instalação e o modelo inicial nunca era baixado —
+        # o card seguia pedindo instalação com o motor já rodando. Instalar é exatamente o
+        # gesto que destrava o resto, então o primeiro uso continua daqui.
+        import threading
+
+        threading.Thread(
+            target=manager.bootstrap_local_engine, daemon=True, name="bootstrap-pos-install"
+        ).start()
         return res
 
     @app.post("/v1/providers/verify")

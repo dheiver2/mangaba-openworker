@@ -398,7 +398,14 @@ export function Composer(props: Props) {
           e.preventDefault();
           setDragging(true);
         }}
-        onDragLeave={() => setDragging(false)}
+        // `dragleave` dispara ao cruzar QUALQUER filho (textarea, barra de botões), então
+        // sem este teste o overlay piscava durante o arrasto. `relatedTarget` é para onde o
+        // ponteiro foi: se ainda está dentro do composer, não saímos de verdade.
+        onDragLeave={(e) => {
+          const indo = e.relatedTarget as Node | null;
+          if (indo && e.currentTarget.contains(indo)) return;
+          setDragging(false);
+        }}
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);

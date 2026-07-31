@@ -263,11 +263,21 @@ export function App() {
         e.preventDefault();
         toggleNav();
       }
-      // ⌘, — the platform Settings shortcut (advertised in the account menu, §26).
-      // ⌘K — busca global, o atalho que todo app de chat ensina.
+      // ⌘K — busca global. Guardas: dentro de um campo de texto o atalho pertence ao
+      // campo (⌘K é "apagar até o fim da linha" em vários contextos, e roubar o foco de
+      // quem digita uma chave de API é pior que não ter atalho); e com um modal aberto
+      // abrir OUTRO por cima trocaria a sessão por baixo do que o usuário está fazendo.
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setSearchOpen(true);
+        const alvo = e.target as HTMLElement | null;
+        const digitando =
+          !!alvo &&
+          (alvo.tagName === "INPUT" ||
+            alvo.tagName === "TEXTAREA" ||
+            alvo.isContentEditable);
+        if (!digitando) {
+          e.preventDefault();
+          setSearchOpen(true); // idempotente: reabrir o mesmo modal é no-op
+        }
       }
       if ((e.metaKey || e.ctrlKey) && e.key === ",") {
         e.preventDefault();
@@ -1551,8 +1561,10 @@ export function App() {
                 Zero-height strip keeps the pill floating over the scroll area, above the
                 composer, without reserving layout space. */}
             {/* Fora de streaming a pill também vale: quem rolou para cima lendo histórico
-                merece o caminho de volta sem caçar a barra de rolagem. */}
-            {!following && (
+                merece o caminho de volta sem caçar a barra de rolagem. Mas `idle` (painel de
+                sugestões, sem nenhuma mensagem) não tem "mais recente" para onde ir — a pill
+                flutuando ali é ruído puro. */}
+            {!following && !idle && (
               <div className="relative h-0 z-10">
                 <button
                   className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-line bg-panel shadow-md text-[12px] text-muted hover:text-ink cursor-pointer whitespace-nowrap"

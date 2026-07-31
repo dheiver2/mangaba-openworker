@@ -17,8 +17,10 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
+import threading
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -26,6 +28,13 @@ from typing import Any, Optional
 import httpx
 
 DEFAULT_HOST = "http://localhost:11434"
+
+# Instalação e download de modelo são operações longas disparadas por DOIS caminhos (a
+# thread de bootstrap e a UI): sem exclusão mútua, as duas frentes brigam pelo mesmo
+# arquivo/estado.
+_install_lock = threading.Lock()
+_pull_lock = threading.Lock()
+_bootstrap_lock = threading.Lock()
 
 # Onde o instalador oficial deixa o binário em cada plataforma. O PATH cobre a maioria dos
 # casos, mas no macOS o app do menu-bar não põe nada no PATH de um processo que não veio de
@@ -99,7 +108,16 @@ def ensure_running(host: str = DEFAULT_HOST, wait_secs: float = 20.0) -> dict[st
     # — o modelo "esquece" as ferramentas. 16k dá folga com ~1–2 GB de KV cache no Q4.
     # KEEP_ALIVE=30m evita descarregar o modelo a cada 5 min ocioso (recarga de 5–15 s
     # na primeira mensagem depois de uma pausa). Valores do usuário no ambiente vencem.
-    env = dict(os.environ)
+    # Ambiente MÍNIMO: `dict(os.environ)` levava MANGABA_API_TOKEN e todas as chaves de
+    # provedor já carregadas para um processo que sobrevive ao sidecar (start_new_session)
+    # e cujo ambiente qualquer processo do mesmo usuário lê (/proc/<pid>/environ, `ps -E`).
+    # O motor local só precisa de PATH/HOME e das suas próprias OLLAMA_*.
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k.startswith("OLLAMA_")
+        or k in ("PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "SystemRoot", "LOCALAPPDATA")
+    }
     env.setdefault("OLLAMA_CONTEXT_LENGTH", "16384")
     env.setdefault("OLLAMA_KEEP_ALIVE", "30m")
     try:
@@ -154,6 +172,19 @@ def install(progress: Optional[Any] = None) -> dict[str, Any]:
     if find_binary():
         return {"ok": True, "already": True}
 
+    # Sem esta trava, o bootstrap do primeiro boot e um clique em "Instalar" no card
+    # baixavam ~180 MB PARA O MESMO ARQUIVO ao mesmo tempo — os dois streams se
+    # intercalavam e o zip resultante era lixo (extraído por cima de /Applications).
+    if not _install_lock.acquire(blocking=False):
+        return {"ok": False, "error": "A instalação do motor local já está em andamento."}
+    try:
+        return _install(system, progress)
+    finally:
+        _install_lock.release()
+
+
+def _install(system: str, progress: Optional[Any]) -> dict[str, Any]:
+    """Corpo da instalação, já sob `_install_lock`."""
     if system == "Linux":
         return {
             "ok": False,
@@ -186,6 +217,18 @@ def install(progress: Optional[Any] = None) -> dict[str, Any]:
             import zipfile
 
             with zipfile.ZipFile(dest) as zf:
+                # Zip Slip: `extractall` puro aceita membros com `../` e caminhos absolutos —
+                # um pacote adulterado (asset trocado, proxy TLS, redirect) escreveria em
+                # qualquer lugar do perfil do usuário (ex.: ~/Library/LaunchAgents) e ganharia
+                # persistência. Recusamos o pacote inteiro em vez de "pular" o membro ruim:
+                # um zip com travessia não é um Ollama legítimo, é um ataque.
+                for membro in zf.namelist():
+                    destino = (Path("/Applications") / membro).resolve()
+                    if not str(destino).startswith("/Applications/"):
+                        return {
+                            "ok": False,
+                            "error": "O pacote do motor local contém caminhos inválidos e foi recusado.",
+                        }
                 zf.extractall("/Applications")
             # O .zip perde o bit de execução; sem isto o app extraído não abre.
             binary = Path("/Applications/Ollama.app/Contents/Resources/ollama")
@@ -200,6 +243,22 @@ def install(progress: Optional[Any] = None) -> dict[str, Any]:
     return {"ok": True, "installed": bool(find_binary())}
 
 
+# Registries de terceiros são aceitos pelo `/api/pull` do Ollama ("evil.example/org/x"),
+# então um POST autenticado bastaria para a máquina puxar dezenas de GB de origem hostil —
+# e o modelo resultante ficaria selecionável no app. Só liberamos tags da biblioteca
+# oficial (sem host) ou do Hugging Face, que é o caminho que documentamos.
+_TAG_OFICIAL = re.compile(r"^[a-z0-9][a-z0-9._-]*(:[a-zA-Z0-9._-]+)?$")
+_TAG_HF = re.compile(r"^hf\.co/[\w.-]+/[\w.-]+(:[\w.-]+)?$", re.IGNORECASE)
+
+
+def tag_permitido(tag: str) -> bool:
+    """O tag pode ser baixado? Barra registries arbitrários vindos pela API."""
+    tag = (tag or "").strip()
+    if not tag or len(tag) > 200 or ".." in tag:
+        return False
+    return bool(_TAG_OFICIAL.match(tag) or _TAG_HF.match(tag))
+
+
 def pull_model(
     tag: str, host: str = DEFAULT_HOST, progress: Optional[Any] = None
 ) -> dict[str, Any]:
@@ -211,7 +270,11 @@ def pull_model(
             "POST",
             host.rstrip("/") + "/api/pull",
             json={"model": tag},
-            timeout=httpx.Timeout(30.0, read=None),  # download longo: sem teto de leitura
+            # `read=None` (sem teto) travava a thread para sempre quando a conexão estalava
+            # sem fechar (suspend/resume da máquina): o estado ficava em "pulling" eterno e
+            # nenhum download novo era aceito. 180 s é folgado para o intervalo entre linhas
+            # de progresso do Ollama e ainda detecta uma conexão morta.
+            timeout=httpx.Timeout(30.0, read=180.0),
         ) as resp:
             resp.raise_for_status()
             for line in resp.iter_lines():
@@ -316,9 +379,15 @@ def start_pull(tag: str, host: str = DEFAULT_HOST) -> dict[str, Any]:
     """Baixa um modelo em thread própria; o estado fica em pull_status() para a UI."""
     import threading
 
-    if pull_in_progress():
-        return {"ok": False, "error": f"Já baixando {_pull_state['tag']}."}
-    _pull_state.update(phase="pulling", tag=tag, progress=0.0, error=None)
+    if not tag_permitido(tag):
+        return {"ok": False, "error": f"Tag de modelo não permitido: {tag}"}
+    # Checar-e-marcar tem de ser atômico: duas requisições quase simultâneas (duplo clique)
+    # passavam as duas pelo teste e disputavam o MESMO _pull_state — a primeira a terminar
+    # marcava "done" enquanto a outra ainda baixava gigabytes.
+    with _pull_lock:
+        if pull_in_progress():
+            return {"ok": False, "error": f"Já baixando {_pull_state['tag']}."}
+        _pull_state.update(phase="pulling", tag=tag, progress=0.0, error=None)
 
     def _run() -> None:
         res = pull_model(tag, host, progress=lambda p: _pull_state.update(progress=p))
@@ -348,6 +417,18 @@ def bootstrap(host: str = DEFAULT_HOST) -> dict[str, Any]:
     primeira abertura do app é exatamente o comportamento de malware que não vamos imitar —
     o card do provedor oferece o mesmo caminho com um clique consciente do usuário.
     """
+    # Reentrância: o bootstrap roda no lifespan E de novo depois de uma instalação pela UI.
+    # Sem a trava, dois deles se atropelariam no mesmo estado (e disputariam o download do
+    # modelo inicial). Quem chegar segundo sai de mãos abanando, não em erro.
+    if not _bootstrap_lock.acquire(blocking=False):
+        return {"ok": False, "busy": True}
+    try:
+        return _bootstrap(host)
+    finally:
+        _bootstrap_lock.release()
+
+
+def _bootstrap(host: str) -> dict[str, Any]:
     st = _bootstrap_state
     st.update(phase="starting", progress=0.0, error=None)
 
@@ -368,8 +449,27 @@ def bootstrap(host: str = DEFAULT_HOST) -> dict[str, Any]:
         return run
 
     if not list_models(host):
+        # `_pull_state` é a fonte ÚNICA de "há um download de modelo em curso" — o da UI e
+        # o do bootstrap se enxergam por ele. Durante o primeiro boot o card já oferece o
+        # "baixar recomendado"; dois downloads de GBs em paralelo saturam disco e banda.
+        # (A trava só cobre o checar-e-marcar; o download em si roda fora dela.)
+        with _pull_lock:
+            ja_baixando = pull_in_progress()
+            if not ja_baixando:
+                _pull_state.update(
+                    phase="pulling", tag=STARTER_MODEL, progress=0.0, error=None
+                )
+        if ja_baixando:
+            st.update(phase="ready", progress=1.0, error=None)
+            return {"ok": True, "pull_em_andamento": True}
+
         st.update(phase="pulling", progress=0.0)
         res = pull_model(STARTER_MODEL, host, progress=lambda p: st.update(progress=p))
+        _pull_state.update(
+            phase="done" if res.get("ok") else "error",
+            progress=1.0 if res.get("ok") else _pull_state["progress"],
+            error=None if res.get("ok") else res.get("error"),
+        )
         if not res.get("ok"):
             st.update(phase="error", error=res.get("error"))
             return res
