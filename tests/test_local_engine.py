@@ -170,3 +170,38 @@ def test_start_pull_refuses_concurrent_downloads(monkeypatch):
     monkeypatch.setitem(le._pull_state, "tag", "qwen3:14b")
     res = le.start_pull("qwen3:32b")
     assert res["ok"] is False and "qwen3:14b" in res["error"]
+
+
+def test_ensure_running_gives_the_engine_room_to_breathe(monkeypatch):
+    """O agente manda ~3.2k tokens fixos por turno; com o contexto padrão do Ollama (4096)
+    o system prompt e as tools eram truncados em silêncio. O spawn precisa definir contexto
+    e keep-alive — respeitando valores que o usuário já tenha no ambiente."""
+    monkeypatch.setattr(le, "find_binary", lambda: "/usr/local/bin/ollama")
+    calls = {"n": 0}
+
+    def fake_serving(host=le.DEFAULT_HOST, timeout=1.5):
+        calls["n"] += 1
+        return calls["n"] > 1  # 1ª sondagem: parado; depois do spawn: no ar
+
+    monkeypatch.setattr(le, "is_serving", fake_serving)
+    captured = {}
+    monkeypatch.setattr(
+        le.subprocess, "Popen", lambda *a, **k: captured.update(env=k.get("env") or {})
+    )
+    monkeypatch.setattr(le.time, "sleep", lambda _s: None)
+
+    assert le.ensure_running()["ok"] is True
+    assert captured["env"]["OLLAMA_CONTEXT_LENGTH"] == "16384"
+    assert captured["env"]["OLLAMA_KEEP_ALIVE"] == "30m"
+
+    # o usuário manda: valor já presente no ambiente não é sobrescrito
+    calls["n"] = 0
+    monkeypatch.setenv("OLLAMA_CONTEXT_LENGTH", "8192")
+    assert le.ensure_running()["ok"] is True
+    assert captured["env"]["OLLAMA_CONTEXT_LENGTH"] == "8192"
+
+
+def test_starter_model_is_commercially_licensed():
+    """qwen2.5:3b-instruct está sob 'Qwen RESEARCH LICENSE' (uso não comercial) — não pode
+    voltar a ser o padrão de fábrica. O starter deve ser um tag da família qwen3 (Apache-2.0)."""
+    assert le.STARTER_MODEL.startswith("qwen3")

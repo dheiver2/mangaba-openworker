@@ -94,9 +94,18 @@ def ensure_running(host: str = DEFAULT_HOST, wait_secs: float = 20.0) -> dict[st
     # que ele sobreviva a um restart nosso, e silenciamos a saída para não encher o log do app.
     # No Windows, CREATE_NO_WINDOW evita o console piscando — mesmo cuidado que o sidecar toma.
     creationflags = 0x08000000 if platform.system() == "Windows" else 0
+    # O agente manda ~3.200 tokens fixos por turno (system prompt + 19 schemas de tools).
+    # Com o contexto padrão do Ollama (4096), o INÍCIO da conversa é truncado em silêncio
+    # — o modelo "esquece" as ferramentas. 16k dá folga com ~1–2 GB de KV cache no Q4.
+    # KEEP_ALIVE=30m evita descarregar o modelo a cada 5 min ocioso (recarga de 5–15 s
+    # na primeira mensagem depois de uma pausa). Valores do usuário no ambiente vencem.
+    env = dict(os.environ)
+    env.setdefault("OLLAMA_CONTEXT_LENGTH", "16384")
+    env.setdefault("OLLAMA_KEEP_ALIVE", "30m")
     try:
         subprocess.Popen(
             [binary, "serve"],
+            env=env,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             stdin=subprocess.DEVNULL,
@@ -222,9 +231,11 @@ def pull_model(
         return {"ok": False, "error": f"Falha ao baixar o modelo {tag} ({exc.__class__.__name__})."}
 
 
-# Modelo inicial do primeiro uso: pequeno o bastante para descer em minutos (~2 GB) e o mesmo
-# tag que a UI já rebrandiza ("Qwen 2.5 3B Instruct · Mangaba Local").
-STARTER_MODEL = "qwen2.5:3b-instruct"
+# Modelo inicial do primeiro uso: pequeno o bastante para descer em minutos (~2,5 GB),
+# suporta tool-calling e — decisivo — licença Apache-2.0. O antigo qwen2.5:3b-instruct
+# está sob "Qwen RESEARCH LICENSE" (só pesquisa): não pode ser o padrão de fábrica de
+# um produto. As variantes 7B/14B da família continuam Apache e seguem nos tiers.
+STARTER_MODEL = "qwen3:4b"
 
 
 def total_ram_gb() -> float:
@@ -275,7 +286,7 @@ _TIERS = [
     (24.0, "qwen3:32b", 20.2),  # o maior generalista que vale a pena hoje
     (12.0, "qwen3:14b", 9.3),  # melhor 14B geral; par do gemma4:e4b
     (6.0, "qwen2.5:7b-instruct", 4.7),  # entrada digna em 8 GB
-    (0.0, STARTER_MODEL, 1.9),  # máquinas mínimas ficam no starter
+    (0.0, STARTER_MODEL, 2.5),  # máquinas mínimas ficam no starter
 ]
 
 

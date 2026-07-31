@@ -351,9 +351,10 @@ DESCRIPTORS: list[ProviderDescriptor] = [
             ),
         ],
         build=_build_ollama,
-        # Reliable native tool-calling + strong coding quality (verified). Pull with
-        # `ollama pull qwen3-coder:30b`.
-        recommended_model="qwen3-coder:30b",
+        # Sem recomendação fixa: 30B/18,6 GB só cabia em máquinas de 32 GB. A escolha
+        # certa depende da RAM detectada (local_engine.recommended_model) e é aplicada
+        # no set_provider; aqui ficaria mentirosa para a maioria.
+        recommended_model=None,
     ),
 ]
 

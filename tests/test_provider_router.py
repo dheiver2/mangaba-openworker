@@ -375,7 +375,9 @@ def test_set_provider_auto_adds_recommended_when_pulled(tmp_path, monkeypatch):
         lambda name: ["qwen3-coder:30b"] if name == "ollama" else [],
     )
     res = mgr.set_provider("ollama", {"base_url": "http://localhost:11434"})
-    assert res["recommended_model"] == "qwen3-coder:30b"
+    # A recomendação fixa (30B/18,6 GB) morreu — ela só cabia em máquinas de 32 GB; a
+    # escolha agora é por RAM detectada. O que está instalado continua entrando no picker.
+    assert res["recommended_model"] is None
     assert "ollama:qwen3-coder:30b" in mgr.get_settings()["models"]
 
 

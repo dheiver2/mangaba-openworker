@@ -1559,7 +1559,13 @@ class SessionManager:
             # IS actually installed is a better default than silence.
             avail = self._suggested_models(name)
             if avail:
-                added = f"{name}:{avail[0]}"
+                # Se o modelo recomendado para a RAM DESTA máquina já está instalado,
+                # ele vence; senão, o primeiro instalado (qualquer coisa > silêncio).
+                from ..providers import local_engine
+
+                rec_local = local_engine.recommended_model()["tag"]
+                pick = rec_local if rec_local in avail else avail[0]
+                added = f"{name}:{pick}"
                 self.add_model(added)
         # First working provider wins the default: if the current default model belongs to a
         # provider with no usable config (the fresh-install gpt-5.6-sol case), switch the default to
