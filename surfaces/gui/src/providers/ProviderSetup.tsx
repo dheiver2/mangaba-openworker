@@ -570,7 +570,14 @@ export function ProviderForm({
             </button>
           ) : (
             <span data-testid={`${tp}-engine-ready`}>
-              {ps.engine?.running ? "Motor local ativo." : "Motor local instalado — clique em Detectar."}
+              {/* Motor rodando com ZERO modelos é o caminho silencioso para o "sem modelo"
+                  no chat: o provedor salva, o usuário vai conversar e não há o que usar.
+                  Melhor dizer aqui, ao lado do botão que resolve. */}
+              {!ps.engine?.running
+                ? "Motor local instalado — clique em Detectar."
+                : ps.engine?.models === 0
+                  ? "Motor local ativo, mas sem nenhum modelo baixado — escolha um abaixo para poder conversar."
+                  : "Motor local ativo."}
               {/* O maior modelo que ESTA máquina roda bem (por RAM detectada): um clique baixa. */}
               {ps.engine?.running && ps.engine?.recommended && (
                 <>

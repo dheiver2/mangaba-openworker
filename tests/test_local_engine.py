@@ -9,6 +9,7 @@ silenciosamente. Sem rede e sem spawn real — httpx e Popen são monkeypatchado
 
 from __future__ import annotations
 
+import os
 from types import SimpleNamespace
 
 from mangaba.providers import local_engine as le
@@ -291,3 +292,65 @@ def test_install_concorrente_nao_corrompe_o_download(monkeypatch):
         assert res["ok"] is False and "andamento" in res["error"]
     finally:
         le._install_lock.release()
+
+
+# -- caminhos que SÓ existem no Windows (bug relatado: "sem modelo" no chat) --------
+def test_env_do_motor_sobrevive_ao_caixa_alta_do_windows(monkeypatch):
+    """No Windows o `os.environ` do Python MAIÚSCULA as chaves: SystemRoot vira SYSTEMROOT.
+    A lista de essenciais tinha grafia mista, então o SYSTEMROOT era descartado — e sem ele
+    os sockets do Windows não inicializam: o `ollama serve` que o app subisse morreria."""
+    monkeypatch.setattr(le, "find_binary", lambda: "C:/ollama.exe")
+    # exatamente como o Windows entrega (tudo em caixa alta), mais um segredo que NÃO pode passar
+    for k in list(os.environ):
+        monkeypatch.delenv(k, raising=False)
+    for k, v in {
+        "SYSTEMROOT": r"C:\Windows",
+        "WINDIR": r"C:\Windows",
+        "PATHEXT": ".COM;.EXE",
+        "LOCALAPPDATA": r"C:\Users\u\AppData\Local",
+        "PATH": r"C:\Windows\system32",
+        "MANGABA_API_TOKEN": "segredo",
+        "ANTHROPIC_API_KEY": "sk-nao-vaze",
+    }.items():
+        monkeypatch.setenv(k, v)
+
+    n = {"i": 0}
+    monkeypatch.setattr(le, "is_serving", lambda host=le.DEFAULT_HOST, timeout=1.5: n.__setitem__("i", n["i"] + 1) or n["i"] > 1)
+    cap = {}
+    monkeypatch.setattr(le.subprocess, "Popen", lambda *a, **k: cap.update(env=k["env"]))
+    monkeypatch.setattr(le.time, "sleep", lambda _s: None)
+
+    le.ensure_running()
+    assert cap["env"]["SYSTEMROOT"] == r"C:\Windows"  # o que quebrava o spawn
+    assert cap["env"]["WINDIR"] and cap["env"]["PATHEXT"]
+    assert "MANGABA_API_TOKEN" not in cap["env"]  # e o filtro continua barrando segredo
+    assert "ANTHROPIC_API_KEY" not in cap["env"]
+
+
+def test_sonda_do_motor_usa_ipv4_literal():
+    """`localhost` no Windows resolve ::1 antes do IPv4 e o Ollama escuta em IPv4: cada
+    sonda pagava uma tentativa perdida, o bastante para estourar o timeout do gate que
+    decide se os modelos aparecem no chat."""
+    assert le.DEFAULT_HOST == "http://127.0.0.1:11434"
+
+
+def test_windows_espera_o_usuario_terminar_o_instalador(monkeypatch):
+    """Entregar o instalador e conferir na hora seguinte encontrava a máquina ainda sem
+    binário (o usuário leva minutos no UAC + assistente) e voltava a `needs_user`: o motor
+    subia depois e o modelo inicial NUNCA era baixado — chat "sem modelo" para sempre."""
+    tentativas = {"n": 0}
+
+    def binario_aparece_na_terceira():
+        tentativas["n"] += 1
+        return "C:/ollama.exe" if tentativas["n"] >= 3 else None
+
+    monkeypatch.setattr(le, "find_binary", binario_aparece_na_terceira)
+    monkeypatch.setattr(le, "is_serving", lambda host=le.DEFAULT_HOST, timeout=1.5: False)
+    monkeypatch.setattr(le.time, "sleep", lambda _s: None)
+    chamou = []
+    monkeypatch.setattr(le, "bootstrap", lambda host=le.DEFAULT_HOST: chamou.append(host) or {"ok": True})
+
+    res = le.aguardar_e_continuar(minutos=1)
+    assert res["ok"] is True
+    assert chamou, "o bootstrap tem de continuar assim que o motor aparece"
+    assert tentativas["n"] >= 3  # esperou de verdade em vez de desistir na primeira

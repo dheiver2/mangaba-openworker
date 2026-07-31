@@ -1,0 +1,2 @@
+Mangaba_0.1.17_aarch64.dmg
+Mangaba_0.1.17_x64-setup.exe

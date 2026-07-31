@@ -27,7 +27,11 @@ from typing import Any, Optional
 
 import httpx
 
-DEFAULT_HOST = "http://localhost:11434"
+# 127.0.0.1 e não "localhost": no Windows o nome costuma resolver ::1 (IPv6) primeiro e o
+# Ollama escuta em IPv4, então cada sonda pagava uma tentativa perdida antes de acertar —
+# o bastante para estourar o timeout curto do gate que decide se os modelos aparecem no
+# chat. O IP literal não passa por resolvedor nenhum.
+DEFAULT_HOST = "http://127.0.0.1:11434"
 
 # Instalação e download de modelo são operações longas disparadas por DOIS caminhos (a
 # thread de bootstrap e a UI): sem exclusão mútua, as duas frentes brigam pelo mesmo
@@ -84,7 +88,15 @@ def engine_status(host: str = DEFAULT_HOST) -> dict[str, Any]:
         state = "stopped"
     else:
         state = "absent"
-    return {"state": state, "installed": bool(binary), "running": running, "binary": binary}
+    # `models`: motor no ar SEM nenhum modelo baixado é exatamente o estado que produz o
+    # "sem modelo" no chat — sem este número a UI não sabia diferenciar de "tudo pronto".
+    return {
+        "state": state,
+        "installed": bool(binary),
+        "running": running,
+        "binary": binary,
+        "models": len(list_models(host)) if running else 0,
+    }
 
 
 def ensure_running(host: str = DEFAULT_HOST, wait_secs: float = 20.0) -> dict[str, Any]:
@@ -112,11 +124,19 @@ def ensure_running(host: str = DEFAULT_HOST, wait_secs: float = 20.0) -> dict[st
     # provedor já carregadas para um processo que sobrevive ao sidecar (start_new_session)
     # e cujo ambiente qualquer processo do mesmo usuário lê (/proc/<pid>/environ, `ps -E`).
     # O motor local só precisa de PATH/HOME e das suas próprias OLLAMA_*.
+    # Comparação sem caixa: no Windows o `os.environ` do Python MAIÚSCULA todas as chaves
+    # (SystemRoot vira SYSTEMROOT), então a lista com grafia mista deixava o SYSTEMROOT de
+    # fora — e sem ele os sockets do Windows nem inicializam: o `ollama serve` que o app
+    # tentasse subir morria no berço. WINDIR/PATHEXT/PROGRAMDATA entram pelo mesmo motivo.
+    _ESSENCIAIS = {
+        "path", "home", "userprofile", "tmpdir", "temp", "tmp",
+        "systemroot", "windir", "pathext", "systemdrive", "localappdata",
+        "appdata", "programdata", "programfiles", "comspec", "username", "lang",
+    }
     env = {
         k: v
         for k, v in os.environ.items()
-        if k.startswith("OLLAMA_")
-        or k in ("PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "SystemRoot", "LOCALAPPDATA")
+        if k.upper().startswith("OLLAMA_") or k.lower() in _ESSENCIAIS
     }
     env.setdefault("OLLAMA_CONTEXT_LENGTH", "16384")
     env.setdefault("OLLAMA_KEEP_ALIVE", "30m")
@@ -373,6 +393,25 @@ def pull_status() -> dict[str, Any]:
 
 def pull_in_progress() -> bool:
     return _pull_state["phase"] == "pulling"
+
+
+def aguardar_e_continuar(host: str = DEFAULT_HOST, minutos: float = 15.0) -> dict[str, Any]:
+    """Espera o motor aparecer (o usuário concluindo o instalador) e então completa o
+    primeiro uso.
+
+    No Windows a instalação é do usuário: entregamos o instalador oficial e ele passa pelo
+    UAC e pelo assistente — o que leva minutos. Redisparar o bootstrap no instante em que
+    entregamos o .exe (como fazíamos) o encontrava sem binário e ele voltava para
+    `needs_user`: o motor subia depois, mas o modelo inicial NUNCA era baixado e o chat
+    ficava "sem modelo" para sempre. Aqui a gente espera de verdade."""
+    st = _bootstrap_state
+    st.update(phase="needs_user", error=None)
+    limite = time.monotonic() + minutos * 60
+    while time.monotonic() < limite:
+        if find_binary() or is_serving(host):
+            return bootstrap(host)
+        time.sleep(5)
+    return {"ok": False, "timeout": True}
 
 
 def start_pull(tag: str, host: str = DEFAULT_HOST) -> dict[str, Any]:

@@ -1672,13 +1672,18 @@ class SessionManager:
         if cached and now - cached[0] < 30:
             return cached[1]
         profile = self.secrets.get("provider:ollama") or {}
-        base = (profile.get("base_url") or "http://localhost:11434").strip().rstrip("/")
+        base = (profile.get("base_url") or "http://127.0.0.1:11434").strip().rstrip("/")
         if base.endswith("/v1"):
             base = base[: -len("/v1")]
         try:
             import httpx
 
-            alive = httpx.get(base + "/api/tags", timeout=0.8).status_code == 200
+            # MESMO teto do `_ollama_models` (2 s). Com 0,8 s aqui, uma máquina onde a
+            # sonda demora um pouco mais (Windows: localhost → ::1 antes do IPv4) DETECTAVA
+            # os modelos e mesmo assim os escondia do seletor — o usuário escolhia o
+            # Mangaba Local, ia para o chat e via "sem modelo". Os dois lados falam com o
+            # mesmo servidor: não podem discordar sobre quanto tempo ele tem para responder.
+            alive = httpx.get(base + "/api/tags", timeout=2.0).status_code == 200
         except Exception:
             alive = False
         self._ollama_alive_cache = (now, alive)
@@ -1711,7 +1716,7 @@ class SessionManager:
         # URL below ever got a chance to apply. Only an actual absence (None) should bail.
         if profile is None:
             return []
-        base = (profile.get("base_url") or "http://localhost:11434").strip().rstrip("/")
+        base = (profile.get("base_url") or "http://127.0.0.1:11434").strip().rstrip("/")
         if base.endswith("/v1"):
             base = base[: -len("/v1")]
         try:

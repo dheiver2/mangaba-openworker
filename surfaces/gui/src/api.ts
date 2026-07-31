@@ -1466,6 +1466,8 @@ export type LocalEngineStatus = {
   installed: boolean;
   running: boolean;
   binary: string | null;
+  /** Quantos modelos locais existem: motor no ar com 0 é o estado "sem modelo" no chat. */
+  models?: number;
   /** First-run auto-setup (install engine + pull starter model) happening in the background. */
   bootstrap?: {
     phase: "idle" | "installing" | "starting" | "pulling" | "ready" | "needs_user" | "error";

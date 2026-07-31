@@ -1484,15 +1484,21 @@ def create_app(manager: SessionManager) -> FastAPI:
         res = await asyncio.to_thread(local_engine.install)
         if res.get("ok") and not res.get("handed_off"):
             res["serve"] = await asyncio.to_thread(local_engine.ensure_running)
-        # No Windows o bootstrap para em `needs_user` (instalar exige o UAC) e NADA o
+        # No Windows o bootstrap para em `needs_user` (instalar exige o UAC) e nada o
         # retomava: o usuário concluía a instalação e o modelo inicial nunca era baixado —
-        # o card seguia pedindo instalação com o motor já rodando. Instalar é exatamente o
-        # gesto que destrava o resto, então o primeiro uso continua daqui.
+        # o chat ficava "sem modelo" para sempre. Instalar é o gesto que destrava o resto,
+        # mas ele leva MINUTOS (UAC + assistente), então esperamos o motor aparecer em vez
+        # de checar na hora e desistir.
         import threading
 
-        threading.Thread(
-            target=manager.bootstrap_local_engine, daemon=True, name="bootstrap-pos-install"
-        ).start()
+        def _continuar() -> None:
+            from ..providers import local_engine as le
+
+            if res.get("handed_off"):  # Windows: o usuário ainda está no instalador
+                le.aguardar_e_continuar()
+            manager.bootstrap_local_engine()
+
+        threading.Thread(target=_continuar, daemon=True, name="bootstrap-pos-install").start()
         return res
 
     @app.post("/v1/providers/verify")
