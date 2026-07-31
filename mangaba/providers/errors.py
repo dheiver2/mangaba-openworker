@@ -48,17 +48,70 @@ _PARSE_DO_MOTOR = "looking for beginning of value"
 
 
 def friendly_local_engine_error(model: str, exc: Exception) -> Optional[str]:
-    """Uma frase acionável para a falha de parse do motor local, ou None."""
+    """Diagnóstico da falha do motor local, com os dados DESTA máquina.
+
+    A primeira versão desta mensagem só explicava a falha em tese, e quem a lia continuava
+    sem saber o que fazer — tinha de ir atrás da memória da máquina e do log por conta
+    própria. As duas causas conhecidas se distinguem por um número que o app já sabe: se a
+    memória não comporta o modelo mais o cache de contexto, é falta de RAM; senão, é o
+    formato de chamada de ferramenta. Medimos e dizemos qual é."""
     if _PARSE_DO_MOTOR not in str(exc):
         return None
-    return (
-        f"O motor local não conseguiu processar a resposta do {model}. Isso costuma ser "
-        "incompatibilidade entre a versão do motor e o formato de chamada de ferramenta "
-        "deste modelo. Tente: (1) escolher outro modelo local em Configurações ▸ Modelos, "
-        "(2) atualizar o motor local, ou (3) usar um provedor de nuvem. Se o problema "
-        "persistir, o log do motor (%LOCALAPPDATA%\\Ollama\\server.log no Windows, "
-        "~/.ollama/logs/server.log no macOS) mostra a causa exata."
-    )
+
+    from . import local_engine as le
+
+    ram = le.total_ram_gb()
+    contexto = le.contexto_para_a_maquina(ram or None)
+    versao = le.engine_version()
+    tag = model.split(":", 1)[-1] if model.startswith("ollama:") else model
+
+    # Cache de contexto de um modelo pequeno (~4B, Q4) mais os pesos. É uma estimativa
+    # grosseira de propósito: serve para escolher a hipótese principal, não para prever
+    # a alocação exata do motor.
+    precisa_gb = round(2.5 + contexto * 0.00015, 1)
+    livre_estimado = ram - 3.0 if ram else 0.0  # ~3 GB ficam com o sistema
+
+    linhas = [f"O motor local falhou ao responder com o {tag}.", ""]
+    detalhes = []
+    if ram:
+        detalhes.append(f"{ram:.0f} GB de RAM")
+    detalhes.append(f"contexto de {contexto} tokens")
+    if versao:
+        detalhes.append(f"motor {versao}")
+    linhas.append("Esta máquina: " + " · ".join(detalhes))
+    linhas.append("")
+
+    if ram and livre_estimado < precisa_gb:
+        linhas += [
+            f"Causa provável: MEMÓRIA. Este modelo com este contexto precisa de cerca de "
+            f"{precisa_gb} GB, e sobram por volta de {max(livre_estimado, 0):.0f} GB depois "
+            "do sistema. Quando não cabe, o motor morre no meio e devolve uma resposta "
+            "quebrada — que é este erro.",
+            "",
+            "O que resolve, em ordem:",
+            "1. Escolher um modelo menor em Configurações ▸ Modelos",
+            "2. Fechar outros programas pesados (navegador com muitas abas, por exemplo)",
+            "3. Usar um provedor de nuvem (OpenAI, Claude, Gemini…) em vez do local",
+        ]
+    else:
+        linhas += [
+            "Causa provável: FORMATO. A versão do motor e o formato de chamada de "
+            "ferramenta deste modelo não se entendem — o motor tenta ler como JSON algo "
+            "que o modelo escreveu em XML.",
+            "",
+            "O que resolve, em ordem:",
+            "1. Trocar de modelo em Configurações ▸ Modelos (o Qwen 2.5 7B e o Llama 3.1 "
+            "usam o formato que o motor lê sem problema)",
+            "2. Atualizar o motor local",
+            "3. Usar um provedor de nuvem",
+        ]
+
+    linhas += [
+        "",
+        "O log do motor mostra a causa exata: %LOCALAPPDATA%\\Ollama\\server.log "
+        "(Windows) ou ~/.ollama/logs/server.log (macOS).",
+    ]
+    return "\n".join(linhas)
 
 
 def friendly_model_error(model: str, exc: Exception) -> Optional[str]:

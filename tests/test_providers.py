@@ -484,7 +484,21 @@ def test_erro_de_parse_do_motor_local_vira_mensagem_acionavel():
         "beginning of value\", 'type': 'api_error', 'param': None, 'code': None}}"
     )
     msg = friendly_model_error("ollama:qwen3:4b", erro)
-    assert msg and "outro modelo local" in msg and "atualizar o motor local" in msg
+    assert msg and "Configurações" in msg and "log do motor" in msg
+    # a mensagem carrega os dados DESTA máquina — quem lê não precisa ir atrás deles
+    assert "RAM" in msg and "contexto de" in msg
+
+    # e distingue as duas causas pelo que a máquina comporta, em vez de listar as duas
+    from mangaba.providers import errors as mod, local_engine as le
+
+    original = le.total_ram_gb
+    try:
+        le.total_ram_gb = lambda: 4.0  # não cabe modelo + contexto
+        assert "MEMÓRIA" in mod.friendly_model_error("ollama:qwen3:4b", erro)
+        le.total_ram_gb = lambda: 32.0  # sobra memória ⇒ é o formato da chamada
+        assert "FORMATO" in mod.friendly_model_error("ollama:qwen3:4b", erro)
+    finally:
+        le.total_ram_gb = original
 
     # e não sequestra erros de outros provedores
     assert friendly_model_error("gpt-4o", RuntimeError("insufficient_quota")) is not None

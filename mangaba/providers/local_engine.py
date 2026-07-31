@@ -107,6 +107,14 @@ def autostart_em_segundo_plano(host: str = DEFAULT_HOST) -> bool:
     return True
 
 
+def engine_version(host: str = DEFAULT_HOST) -> Optional[str]:
+    """Versão do motor local, ou None se ele não responder."""
+    try:
+        return httpx.get(host.rstrip("/") + "/api/version", timeout=1.5).json().get("version")
+    except Exception:
+        return None
+
+
 def engine_status(host: str = DEFAULT_HOST) -> dict[str, Any]:
     """Estado do motor para a UI decidir o que oferecer: rodar, iniciar ou instalar."""
     binary = find_binary()
