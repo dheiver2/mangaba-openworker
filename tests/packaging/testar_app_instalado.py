@@ -157,7 +157,7 @@ def testar(sidecar: pathlib.Path, espera_s: int) -> list[str]:
             else:
                 nomes = [p.get("name") for p in provedores]
                 print(f"  ok    /v1/providers -> {len(provedores)} provedores: {', '.join(nomes[:6])}…")
-                for obrigatorio in ("openai", "anthropic", "ollama"):
+                for obrigatorio in ("openai", "anthropic", "mangaba"):
                     if obrigatorio not in nomes:
                         falhas.append(f"provedor esperado ausente: {obrigatorio}")
 

@@ -146,7 +146,7 @@ class SessionManager:
         self.workspace_trust = WorkspaceTrustStore()
         self.secrets = SecretStore()
         # No explicit provider injected → route by the model's `provider:` prefix (OpenAI default,
-        # Ollama, …). Tests inject a provider directly and bypass the router. The same router is
+        # Mangaba, …). Tests inject a provider directly and bypass the router. The same router is
         # shared by every engine and the `/v1/chat/completions` proxy.
         if self.provider is None:
             self.provider = ProviderRouter(
@@ -1394,10 +1394,10 @@ class SessionManager:
         self.secrets.put("web_search:default", profile)
         return {"ok": True, "provider": provider}
 
-    # -- model providers (OpenAI, Ollama, …) ------------------------------------
+    # -- model providers (Mangaba, OpenAI, …) ------------------------------------
     def get_providers(self) -> list[dict[str, Any]]:
         """Descriptor + per-provider status for the Settings UI. Never returns secret values;
-        non-secret field values (e.g. the Ollama base URL) ARE returned so the form can prefill.
+        non-secret field values (e.g. the gateway base URL) ARE returned so the form can prefill.
         """
         import os
 
@@ -1409,7 +1409,7 @@ class SessionManager:
                     d.env_key and os.environ.get(d.env_key)
                 )
             else:
-                configured = True  # keyless (Ollama) — usable out of the box
+                configured = True  # keyless (Mangaba) — usable out of the box
             values = {
                 f.key: profile.get(f.key)
                 for f in d.fields
@@ -1501,10 +1501,10 @@ class SessionManager:
 
     def _suggested_models(self, name: str) -> list[str]:
         """Bare model-name suggestions for the 'add model' form (datalist), per provider.
-        Ollama → live `/api/tags` (best-effort); everyone else → the curated matrix,
+        Mangaba → live `/v1/models` do gateway (best-effort); everyone else → the curated matrix,
         topped up with the compat-vendor extras the matrix doesn't vouch for."""
-        if name == "ollama":
-            return [m.split(":", 1)[-1] for m in self._ollama_models()]
+        if name == "mangaba":
+            return [m.split(":", 1)[-1] for m in self._mangaba_models()]
         from ..providers.matrix import models_for_provider
 
         return list(
@@ -1546,7 +1546,7 @@ class SessionManager:
         self._refresh_provider(name)
         # Detectar/salvar é justamente quando o usuário espera ver a lista NOVA: o cache de
         # 30 s não pode fazer o modelo recém-baixado demorar meio minuto para aparecer.
-        self._ollama_models_cache = None
+        self._mangaba_models_cache = None
         # Convenience: if the provider recommends a model and it's actually available, add it to
         # the curated list so it shows up in the composer right after configuring the provider.
         rec = d.recommended_model
@@ -1555,20 +1555,12 @@ class SessionManager:
             # OpenAI models stay bare (the router's default); others carry their prefix.
             added = rec if name == "openai" else f"{name}:{rec}"
             self.add_model(added)
-        elif name == "ollama":
-            # `recommended_model` names ONE specific pull (qwen3-coder:30b) that almost nobody
-            # already has — Ollama users bring their own models. Requiring an exact match left
-            # the composer with nothing to pick even right after a successful Detect. Whatever
-            # IS actually installed is a better default than silence.
+        elif name == "mangaba":
+            # Se o gateway não oferecer exatamente o recomendado, o primeiro que ele listar
+            # serve — qualquer modelo pronto vale mais que um seletor vazio.
             avail = self._suggested_models(name)
             if avail:
-                # Se o modelo recomendado para a RAM DESTA máquina já está instalado,
-                # ele vence; senão, o primeiro instalado (qualquer coisa > silêncio).
-                from ..providers import local_engine
-
-                rec_local = local_engine.recommended_model()["tag"]
-                pick = rec_local if rec_local in avail else avail[0]
-                added = f"{name}:{pick}"
+                added = f"{name}:{avail[0]}"
                 self.add_model(added)
         # First working provider wins the default: if the current default model belongs to a
         # provider with no usable config (the fresh-install gpt-5.6-sol case), switch the default to
@@ -1622,7 +1614,7 @@ class SessionManager:
         if d is None:
             return False
         if not d.needs_key:
-            return True  # keyless (Ollama)
+            return True  # keyless (Mangaba)
         profile = self.secrets.get(f"provider:{name}") or {}
         return bool(profile.get("api_key")) or bool(
             d.env_key and os.environ.get(d.env_key)
@@ -1659,82 +1651,55 @@ class SessionManager:
         self._save_prefs()
         return {"ok": True, "dm_session": self.dm_session()}
 
-    def _ollama_alive(self) -> bool:
-        """Best-effort local-Ollama liveness, cached 30s (get_settings runs on every GUI
-        fetch — no 2s probe inline). Keyless is not the same as PRESENT: `ollama:*` picker
-        entries render only when an Ollama actually answers, so a machine with no Ollama
-        never shows phantom local models (e.g. a stray pasted string saved as a model id,
-        caught 2026-07-21)."""
-        import time
-
-        now = time.monotonic()
-        cached = getattr(self, "_ollama_alive_cache", None)
-        if cached and now - cached[0] < 30:
-            return cached[1]
-        profile = self.secrets.get("provider:ollama") or {}
-        base = (profile.get("base_url") or "http://127.0.0.1:11434").strip().rstrip("/")
-        if base.endswith("/v1"):
-            base = base[: -len("/v1")]
-        try:
-            import httpx
-
-            # MESMO teto do `_ollama_models` (2 s). Com 0,8 s aqui, uma máquina onde a
-            # sonda demora um pouco mais (Windows: localhost → ::1 antes do IPv4) DETECTAVA
-            # os modelos e mesmo assim os escondia do seletor — o usuário escolhia o
-            # Mangaba Local, ia para o chat e via "sem modelo". Os dois lados falam com o
-            # mesmo servidor: não podem discordar sobre quanto tempo ele tem para responder.
-            alive = httpx.get(base + "/api/tags", timeout=2.0).status_code == 200
-        except Exception:
-            alive = False
-        if not alive:
-            # Motor instalado porém parado é o caso mais comum de "sem modelo" no chat: o
-            # app sobe o servidor sozinho (em segundo plano) e a próxima sonda já o vê.
-            from ..providers import local_engine
-
-            local_engine.autostart_em_segundo_plano()
-        # Cache curto quando está MORTO: um autostart acabou de ser disparado e o motor
-        # deve responder em segundos — 30 s de cache aqui manteriam o chat "sem modelo"
-        # muito depois de o servidor já estar no ar.
-        self._ollama_alive_cache = (now if alive else now - 25, alive)
-        return alive
-
-    def _ollama_models(self) -> list[str]:
-        """Live list of models pulled into the configured Ollama server (via its native
-        `/api/tags`), as `ollama:<name>` so they're directly selectable. Empty if Ollama isn't
-        configured or unreachable — best-effort, never raises.
-
-        Cached por 30 s como `_ollama_alive`: `get_settings` roda em TODO fetch da GUI e
-        chamava isto sem cache, com timeout de 2 s. Com o motor local parado (perfil salvo,
-        Ollama desligado) cada abertura de Settings/onboarding pagava esses 2 s e a interface
-        parecia travada."""
+    def _mangaba_alive(self) -> bool:
+        """O gateway está respondendo? Cacheado por 30 s — `get_settings` roda em TODO fetch
+        da GUI e uma sonda de rede a cada um deixaria a interface lenta. Sem chave não é o
+        mesmo que disponível: os modelos só aparecem no seletor enquanto o gateway responde,
+        para o app nunca oferecer o que não vai funcionar."""
         import time
 
         agora = time.monotonic()
-        cache = getattr(self, "_ollama_models_cache", None)
+        cache = getattr(self, "_mangaba_alive_cache", None)
         if cache and agora - cache[0] < 30:
-            return list(cache[1])
-        modelos = self._ollama_models_uncached()
-        self._ollama_models_cache = (agora, list(modelos))
-        return modelos
-
-    def _ollama_models_uncached(self) -> list[str]:
-        profile = self.secrets.get("provider:ollama")
-        # `{}` is a REAL saved profile (detected with no custom endpoint — the common case
-        # now that Detect always persists) but is falsy in Python, so `if not profile` treated
-        # it the same as "never configured" and returned early before the default localhost
-        # URL below ever got a chance to apply. Only an actual absence (None) should bail.
-        if profile is None:
-            return []
-        base = (profile.get("base_url") or "http://127.0.0.1:11434").strip().rstrip("/")
-        if base.endswith("/v1"):
-            base = base[: -len("/v1")]
+            return cache[1]
         try:
             import httpx
 
-            data = httpx.get(base + "/api/tags", timeout=2.0).json()
-            return [
-                f"ollama:{m['name']}" for m in data.get("models", []) if m.get("name")
-            ]
+            vivo = httpx.get(self._mangaba_base() + "/models", timeout=4.0).status_code == 200
+        except Exception:
+            vivo = False
+        self._mangaba_alive_cache = (agora, vivo)
+        return vivo
+
+    def _mangaba_base(self) -> str:
+        """Base compatível com OpenAI do gateway (perfil salvo ou o padrão oficial)."""
+        from ..providers.registry import DEFAULT_MANGABA_URL
+
+        perfil = self.secrets.get("provider:mangaba") or {}
+        base = (perfil.get("base_url") or DEFAULT_MANGABA_URL).strip().rstrip("/")
+        return base if base.endswith("/v1") else base + "/v1"
+
+    def _mangaba_models(self) -> list[str]:
+        """Modelos que o gateway oferece, como `mangaba:<id>` (direto selecionáveis).
+
+        Mesmo cache de 30 s da sonda de liveness, pelo mesmo motivo: este caminho é chamado
+        de dentro do `get_settings`."""
+        import time
+
+        agora = time.monotonic()
+        cache = getattr(self, "_mangaba_models_cache", None)
+        if cache and agora - cache[0] < 30:
+            return list(cache[1])
+        modelos = self._mangaba_models_uncached()
+        self._mangaba_models_cache = (agora, list(modelos))
+        return modelos
+
+    def _mangaba_models_uncached(self) -> list[str]:
+        try:
+            import httpx
+
+            dados = httpx.get(self._mangaba_base() + "/models", timeout=4.0).json()
+            return [f"mangaba:{m['id']}" for m in dados.get("data", []) if m.get("id")]
         except Exception:
             return []
 
@@ -1754,7 +1719,7 @@ class SessionManager:
         return list(dict.fromkeys([self.model, *models]))
 
     def add_model(self, model: str) -> dict[str, Any]:
-        """Add a model id (e.g. `gpt-4o`, `ollama:qwen2.5-coder:32b`) to the picker.
+        """Add a model id (e.g. `gpt-4o`, `mangaba:mangaba-chat`) to the picker.
         Custom ids persist in prefs; a previously removed matrix model is just unhidden
         (storing it too would shadow future matrix updates)."""
         from ..providers.matrix import MATRIX
@@ -1800,31 +1765,28 @@ class SessionManager:
         # Only surface models whose provider is actually configured — the composer picker
         # reflects exactly what's connected. The active default is always kept selectable
         # (it's hidden behind the "No model" state until a provider is connected anyway).
-        # Ollama is keyless, so "configured" is meaningless there — its models show only
-        # while a local Ollama answers (cached liveness probe).
+        # O gateway Mangaba é sem chave, então "configurado" não diz nada ali — seus modelos
+        # só aparecem enquanto ele responde (sonda de liveness com cache).
         def _selectable(m: str) -> bool:
             provider = self._model_provider(m)
-            if provider == "ollama":
-                return self._ollama_alive()
+            if provider == "mangaba":
+                return self._mangaba_alive()
             return self._provider_configured(provider)
 
         selectable = [m for m in self._curated_models() if _selectable(m)]
         if self.model not in selectable:
             selectable.insert(0, self.model)
-        from ..providers.matrix import model_labels, ollama_display_label
+        from ..providers.matrix import mangaba_display_label, model_labels
 
         labels = model_labels()
-        # Ollama ids are user-pulled, so they can't live in the static MATRIX — without this
-        # they were the one place in the app still showing a raw vendor tag ("qwen2.5:3b-
-        # instruct") instead of a Mangaba-branded name, in a UI whose whole point is looking
-        # like Mangaba end to end. Every model the local Ollama actually reports gets a label
-        # (not just `selectable`/curated ones) — the Settings ▸ Modelos checklist shows the
-        # full pulled list before the user ticks anything, and an unbranded row sitting next
-        # to branded ones would look like a labeling bug rather than a deliberate choice.
-        for name in self._suggested_models("ollama"):
-            full_id = f"ollama:{name}"
+        # Os ids do gateway não vivem na MATRIX estática (ela lista modelos de terceiros),
+        # então sem isto eles seriam o único canto da UI mostrando id cru. A lista de
+        # Configurações ▸ Modelos mostra TUDO que o gateway serve, não só o que já foi
+        # marcado no seletor: um id sem nome ao lado de linhas com nome pareceria defeito.
+        for name in self._suggested_models("mangaba"):
+            full_id = f"mangaba:{name}"
             if full_id not in labels:
-                labels[full_id] = ollama_display_label(name)
+                labels[full_id] = mangaba_display_label(name)
 
         return {
             "provider": "openai",
@@ -1891,7 +1853,7 @@ class SessionManager:
 
     # -- guarda-corpos locais ---------------------------------------------------
     def vault_mode(self) -> bool:
-        """Modo Cofre: com ele ligado, só provedores locais (Ollama) podem rodar."""
+        """Modo "Somente Mangaba": com ele ligado, só os modelos da Mangaba podem rodar."""
         return bool(self._prefs.get("vault_mode", False))
 
     def set_vault_mode(self, on: bool) -> dict[str, Any]:
@@ -1920,15 +1882,21 @@ class SessionManager:
         return {"ok": True, "daily_turn_limit": limit}
 
     def vault_block(self, model: str) -> Optional[str]:
-        """Mensagem de recusa quando o Cofre barra este modelo (None = liberado).
+        """Mensagem de recusa quando o modo "Somente Mangaba" barra este modelo.
+
+        Este modo já significou "100% local, nada sai desta máquina" — promessa que valia
+        quando os modelos rodavam aqui dentro. Com os modelos servidos pelo gateway, ela
+        deixou de ser verdade e teria virado mentira se mantivéssemos o texto: o que o modo
+        garante hoje é que NENHUM provedor de terceiro é usado, e só isso é o que ele diz.
         A checagem fica no servidor de propósito: uma UI alterada não a contorna."""
         if not self.vault_mode():
             return None
-        if self._model_provider(model) == "ollama":
+        if self._model_provider(model) == "mangaba":
             return None
         return (
-            f"Modo Cofre ligado: o modelo {model} roda na nuvem. Use um modelo do "
-            "Ollama ou desligue o Cofre em Configurações ▸ Privacidade e limites."
+            f"Modo \"Somente Mangaba\" ligado: o modelo {model} é de outro provedor. "
+            "Escolha um modelo Mangaba ou desligue o modo em Configurações ▸ "
+            "Privacidade e limites."
         )
 
     def diagnostics(self) -> dict[str, Any]:
@@ -2044,29 +2012,6 @@ class SessionManager:
         self._prefs["default_model"] = model
         self._save_prefs()
         return {"ok": True, **self.get_settings()}
-
-    def bootstrap_local_engine(self) -> dict[str, Any]:
-        """Primeiro boot sem nada configurado ⇒ o Mangaba Local vira o padrão sozinho.
-
-        Roda em thread de fundo no startup do servidor. Dois públicos:
-        - instalação zerada (default gpt-5.6-sol sem chave nenhuma): instala/sobe o motor, puxa o
-          modelo inicial e persiste o provedor — o app já abre com um modelo local pronto;
-        - usuário local existente (perfil ollama salvo): só garante o motor no ar de novo.
-        Quem já tem OUTRO provedor funcionando fica intocado — nada de puxar 2 GB por conta
-        própria na máquina de quem usa OpenAI."""
-        from ..providers import local_engine
-
-        fresh = not self._provider_configured(self._model_provider(self.model))
-        local_user = self.secrets.get("provider:ollama") is not None
-        if not fresh and not local_user:
-            return {"ok": True, "skipped": True}
-
-        res = local_engine.bootstrap()
-        if res.get("ok"):
-            # Mesmo caminho do Detectar: persiste o perfil, põe o primeiro modelo instalado
-            # no seletor e, se o padrão atual não funciona, promove o modelo local a padrão.
-            self.set_provider("ollama", {})
-        return res
 
     def set_onboarded(self, value: bool = True) -> dict[str, Any]:
         """Record that first-run setup is complete (so it isn't shown again)."""

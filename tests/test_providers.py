@@ -401,21 +401,18 @@ def test_matrix_labels_and_custom_model_fallback():
     assert caps.tools and not caps.parallel_tool_calls
 
 
-def test_ollama_display_label_brands_local_models():
-    """Ollama ids are user-pulled, so they can't live in the static MATRIX above — without a
-    generated label they were the one place in the app still showing a raw vendor tag
-    ("qwen2.5:3b-instruct") in a UI whose whole point is looking like Mangaba end to end."""
-    from mangaba.providers.matrix import ollama_display_label
+def test_mangaba_display_label_le_o_papel_do_modelo():
+    """Os modelos do gateway já vêm com nome próprio ("mangaba-code"), então o rótulo só
+    traduz o papel para leitura humana — nada de derivar marca de tag de terceiro, que era
+    o problema quando os modelos vinham de fora."""
+    from mangaba.providers.matrix import mangaba_display_label
 
-    assert ollama_display_label("qwen2.5:3b-instruct") == "Qwen 2.5 3B Instruct · Mangaba Local"
-    assert ollama_display_label("gemma4:e4b") == "Gemma 4 E4B · Mangaba Local"
-    assert ollama_display_label("llama3.3:70b") == "Llama 3.3 70B · Mangaba Local"
-    # A model built locally from Modelfile.mangaba is OUR OWN persona, not a third-party
-    # model we're running — "· Mangaba Local" would read as crediting a vendor for our own
-    # work, so the "mangaba-" prefix gets the plain "Mangaba <Name>" form instead.
-    assert ollama_display_label("mangaba-gemma4:latest") == "Mangaba Gemma 4"
-    assert ollama_display_label("mangaba-gemma4") == "Mangaba Gemma 4"
-
+    assert mangaba_display_label("mangaba-chat") == "Mangaba Chat"
+    assert mangaba_display_label("mangaba-code") == "Mangaba Código"
+    assert mangaba_display_label("mangaba-vision") == "Mangaba Visão"
+    assert mangaba_display_label("mangaba-guard") == "Mangaba Moderação"
+    # papel novo no gateway não quebra a UI: vira o próprio nome, capitalizado
+    assert mangaba_display_label("mangaba-rerank") == "Mangaba Rerank"
 
 def test_reseller_descriptors_and_matrix_stay_in_lockstep():
     """Together/Fireworks suggested models derive from the matrix, and each descriptor's
@@ -471,35 +468,3 @@ def test_complete_picks_up_reasoning_content():
     turn = provider.complete(model="deepseek-v4-pro", messages=[{"role": "user", "content": "x"}])
     assert turn.text == "Answer" and turn.reasoning == "deep thought"
 
-
-def test_erro_de_parse_do_motor_local_vira_mensagem_acionavel():
-    """O motor local (Go) devolve 500 com "invalid character '<' looking for beginning of
-    value" quando não consegue interpretar como JSON o que recebeu — tipicamente uma chamada
-    de ferramenta em XML (formato do Qwen) lida por um parser de JSON. O texto cru não diz
-    nada a quem só queria conversar; a tradução aponta as saídas reais."""
-    from mangaba.providers.errors import friendly_model_error
-
-    erro = RuntimeError(
-        "Error code: 500 - {'error': {'message': \"invalid character '<' looking for "
-        "beginning of value\", 'type': 'api_error', 'param': None, 'code': None}}"
-    )
-    msg = friendly_model_error("ollama:qwen3:4b", erro)
-    assert msg and "Configurações" in msg and "log do motor" in msg
-    # a mensagem carrega os dados DESTA máquina — quem lê não precisa ir atrás deles
-    assert "RAM" in msg and "contexto de" in msg
-
-    # e distingue as duas causas pelo que a máquina comporta, em vez de listar as duas
-    from mangaba.providers import errors as mod, local_engine as le
-
-    original = le.total_ram_gb
-    try:
-        le.total_ram_gb = lambda: 4.0  # não cabe modelo + contexto
-        assert "MEMÓRIA" in mod.friendly_model_error("ollama:qwen3:4b", erro)
-        le.total_ram_gb = lambda: 32.0  # sobra memória ⇒ é o formato da chamada
-        assert "FORMATO" in mod.friendly_model_error("ollama:qwen3:4b", erro)
-    finally:
-        le.total_ram_gb = original
-
-    # e não sequestra erros de outros provedores
-    assert friendly_model_error("gpt-4o", RuntimeError("insufficient_quota")) is not None
-    assert "motor local" not in friendly_model_error("gpt-4o", RuntimeError("insufficient_quota"))

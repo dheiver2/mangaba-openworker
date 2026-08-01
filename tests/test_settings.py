@@ -159,143 +159,99 @@ def test_scratch_base_setting_persists_and_drives_provisioning(tmp_path, monkeyp
     assert Path(scratch) == (base / "sess-xyz").resolve() and Path(scratch).is_dir()
 
 
-def test_ollama_models_gated_on_liveness(tmp_path, monkeypatch):
-    """`ollama:*` entries show only while a local Ollama answers — keyless must not mean
-    always-present (a stray ollama:<junk> pref would otherwise render forever)."""
+def test_mangaba_models_gated_on_liveness(tmp_path, monkeypatch):
+    """`mangaba:*` entries show only while a local Ollama answers — keyless must not mean
+    always-present (a stray mangaba:<junk> pref would otherwise render forever)."""
     from mangaba.server.manager import SessionManager
 
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
     manager = SessionManager(data_dir=tmp_path / "data")
-    manager.add_model("ollama:llama3.3")
+    manager.add_model("mangaba:llama3.3")
 
-    monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: False)
-    assert "ollama:llama3.3" not in manager.get_settings()["models"]
+    monkeypatch.setattr(SessionManager, "_mangaba_alive", lambda self: False)
+    assert "mangaba:llama3.3" not in manager.get_settings()["models"]
 
-    monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
-    assert "ollama:llama3.3" in manager.get_settings()["models"]
+    monkeypatch.setattr(SessionManager, "_mangaba_alive", lambda self: True)
+    assert "mangaba:llama3.3" in manager.get_settings()["models"]
 
 
-def test_ollama_saved_profile_with_no_custom_fields_still_lists_models(tmp_path, monkeypatch):
-    """`{}` is a REAL saved profile (Detect on the default localhost URL — the common case),
-    but is falsy in Python. `_ollama_models` used to treat `if not profile` as "never
-    configured" and bail before the default URL ever applied, so a user who never typed a
-    custom endpoint saw zero local models forever, even with Ollama running and reachable.
-    Only an actual `None` (never saved at all) should mean "nothing to look up"."""
+def test_lista_modelos_que_o_gateway_oferece(tmp_path, monkeypatch):
+    """A lista vem do próprio gateway (`/v1/models`), então o app nunca oferece um modelo que
+    aquela instância não serve — e um gateway apontado para outro endereço é respeitado."""
     from mangaba.server.manager import SessionManager
 
     manager = SessionManager(data_dir=tmp_path / "data")
-    manager.secrets.put("provider:ollama", {})  # exactly what set_provider("ollama", {}) saves
 
     class FakeResp:
+        status_code = 200
+
         def json(self):
-            return {"models": [{"name": "qwen2.5:3b-instruct"}]}
+            return {"data": [{"id": "mangaba-chat"}, {"id": "mangaba-code"}]}
 
-    monkeypatch.setattr(
-        "httpx.get", lambda url, timeout=None: FakeResp() if "/api/tags" in url else (_ for _ in ()).throw(AssertionError)
-    )
-    assert manager._ollama_models() == ["ollama:qwen2.5:3b-instruct"]
+    vistos = []
 
+    def fake_get(url, timeout=None):
+        vistos.append(url)
+        return FakeResp()
 
-def test_ollama_detect_persists_profile_so_local_models_surface(tmp_path, monkeypatch):
-    """Clicking Detect on a KEYLESS provider must persist a profile, or the live-model lookup
-    (which reads that profile) always comes back empty and the composer never gets local
-    models — Ollama can report `verify: ok` and `configured: true` forever without a single
-    model ever reaching the picker. `configured` is always true for Ollama (usable out of
-    the box), so the frontend's old `!info?.configured` save-gate never fired for it; this
-    checks the SERVER side of the fix, that persisting on every successful set_provider call
-    (regardless of "configured") makes the models actually show up afterwards."""
+    monkeypatch.setattr("httpx.get", fake_get)
+    assert manager._mangaba_models() == ["mangaba:mangaba-chat", "mangaba:mangaba-code"]
+    assert vistos and vistos[0].endswith("/v1/models")
+
+def test_detect_persiste_o_perfil_para_os_modelos_aparecerem(tmp_path, monkeypatch):
+    """Clicar em Detectar num provedor SEM CHAVE precisa persistir um perfil, senão a busca de
+    modelos (que lê esse perfil) volta vazia e o seletor nunca recebe nada — o provedor pode
+    reportar `configured: true` para sempre sem um único modelo chegar ao chat."""
     from mangaba.server.manager import SessionManager
 
     manager = SessionManager(data_dir=tmp_path / "data")
-    assert manager.secrets.get("provider:ollama") is None  # nothing saved yet
+    assert manager.secrets.get("provider:mangaba") is None  # nada salvo ainda
 
     class FakeResp:
+        status_code = 200
+
         def json(self):
-            return {"models": [{"name": "qwen2.5:3b-instruct"}, {"name": "gemma4:e4b"}]}
+            return {"data": [{"id": "mangaba-chat"}, {"id": "mangaba-code"}]}
 
     monkeypatch.setattr("httpx.get", lambda url, timeout=None: FakeResp())
 
-    res = manager.set_provider("ollama", {})
+    res = manager.set_provider("mangaba", {})
     assert res["ok"] is True
-    assert manager.secrets.get("provider:ollama") is not None  # now persisted
+    assert manager.secrets.get("provider:mangaba") is not None  # agora persistido
+    assert "mangaba:mangaba-chat" in manager.get_settings()["models"]
 
-    # The exact recommended_model (qwen3-coder:30b) almost never matches what a real user has
-    # pulled — falling back to whatever IS installed beats leaving the composer empty.
-    assert "ollama:qwen2.5:3b-instruct" in manager.get_settings()["models"]
-
-
-def test_settings_labels_ollama_models_even_before_theyre_curated(tmp_path, monkeypatch):
-    """The Settings ▸ Modelos checklist shows every model Ollama reports, not just the ones
-    already ticked into the composer picker — an unbranded raw tag sitting next to branded
-    rows (because only `selectable`/curated ids got a label) would look like a labeling bug,
-    not a deliberate choice. Every model Ollama reports should be labeled up front."""
+def test_settings_rotula_todo_modelo_que_o_gateway_oferece(tmp_path, monkeypatch):
+    """A lista de Configurações ▸ Modelos mostra TUDO que o gateway serve, não só o que já foi
+    marcado no seletor. Um id cru ao lado de linhas com nome pareceria defeito de rotulagem,
+    não escolha — então todo modelo recebe rótulo já na primeira exibição."""
     from mangaba.server.manager import SessionManager
 
     manager = SessionManager(data_dir=tmp_path / "data")
-    manager.secrets.put("provider:ollama", {})
+    manager.secrets.put("provider:mangaba", {})
 
     class FakeResp:
+        status_code = 200
+
         def json(self):
-            return {"models": [{"name": "qwen2.5:3b-instruct"}, {"name": "mangaba-gemma4:latest"}]}
+            return {"data": [{"id": "mangaba-chat"}, {"id": "mangaba-vision"}]}
 
     monkeypatch.setattr("httpx.get", lambda url, timeout=None: FakeResp())
-    monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
+    monkeypatch.setattr(SessionManager, "_mangaba_alive", lambda self: True)
 
     labels = manager.get_settings()["model_labels"]
-    assert labels["ollama:qwen2.5:3b-instruct"] == "Qwen 2.5 3B Instruct · Mangaba Local"
-    assert labels["ollama:mangaba-gemma4:latest"] == "Mangaba Gemma 4"
+    assert labels["mangaba:mangaba-chat"] == "Mangaba Chat"
+    assert labels["mangaba:mangaba-vision"] == "Mangaba Visão"
 
 
-def test_bootstrap_local_engine_skips_configured_non_local_users(tmp_path, monkeypatch):
-    """Quem já usa OpenAI (chave salva) nunca deve ganhar um download de 2 GB no boot."""
-    from mangaba.server.manager import SessionManager
-
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    manager = SessionManager(data_dir=tmp_path / "data")
-    manager.secrets.put("provider:openai", {"api_key": "sk-x"})
-    manager.set_default_model("gpt-4o")
-
-    monkeypatch.setattr(
-        "mangaba.providers.local_engine.bootstrap",
-        lambda *a, **k: (_ for _ in ()).throw(AssertionError("bootstrap indevido")),
-    )
-    assert manager.bootstrap_local_engine() == {"ok": True, "skipped": True}
-
-
-def test_bootstrap_local_engine_makes_local_the_default_on_fresh_install(tmp_path, monkeypatch):
-    """Instalação zerada: bootstrap ok ⇒ perfil ollama persistido, modelo local no seletor e
-    promovido a padrão — o app 'já deve funcionar logo que instala'."""
-    from mangaba.server.manager import SessionManager
-
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    manager = SessionManager(data_dir=tmp_path / "data")
-
-    monkeypatch.setattr(
-        "mangaba.providers.local_engine.bootstrap",
-        lambda *a, **k: {"ok": True, "models": ["qwen2.5:3b-instruct"]},
-    )
-
-    class FakeResp:
-        def json(self):
-            return {"models": [{"name": "qwen2.5:3b-instruct"}]}
-
-    monkeypatch.setattr("httpx.get", lambda url, timeout=None: FakeResp())
-
-    res = manager.bootstrap_local_engine()
-    assert res["ok"] is True
-    assert manager.secrets.get("provider:ollama") is not None
-    assert manager.model == "ollama:qwen2.5:3b-instruct"
-
-
-def test_get_settings_nao_paga_timeout_do_ollama_a_cada_fetch(tmp_path, monkeypatch):
-    """`get_settings` roda em TODO fetch da GUI e chamava `_ollama_models` sem cache, com
-    timeout de 2 s. Com o motor local parado (perfil salvo, Ollama desligado), abrir
-    Settings/onboarding pagava esses 2 s e a interface parecia travada."""
+def test_get_settings_nao_sonda_o_gateway_a_cada_fetch(tmp_path, monkeypatch):
+    """`get_settings` roda em TODO fetch da GUI. Sem cache, cada um viraria uma chamada de
+    rede ao gateway — e, quando ele está fora do ar, o tempo de espera se repetiria em toda
+    abertura de Configurações, deixando a interface com cara de travada."""
     from mangaba.server.manager import SessionManager
 
     manager = SessionManager(data_dir=tmp_path / "data")
-    manager.secrets.put("provider:ollama", {})
+    manager.secrets.put("provider:mangaba", {})
     chamadas = {"n": 0}
 
     class FakeResp:
@@ -307,13 +263,13 @@ def test_get_settings_nao_paga_timeout_do_ollama_a_cada_fetch(tmp_path, monkeypa
         return FakeResp()
 
     monkeypatch.setattr("httpx.get", contar)
-    monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
+    monkeypatch.setattr(SessionManager, "_mangaba_alive", lambda self: True)
 
     for _ in range(5):
         manager.get_settings()
     assert chamadas["n"] == 1, "o resultado deve ficar em cache entre fetches"
 
     # Detectar/salvar invalida o cache: o modelo recém-baixado não pode demorar 30 s p/ aparecer
-    manager.set_provider("ollama", {})
+    manager.set_provider("mangaba", {})
     manager.get_settings()
     assert chamadas["n"] > 1

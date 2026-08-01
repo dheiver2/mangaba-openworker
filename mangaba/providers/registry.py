@@ -8,7 +8,7 @@ model string and builds (and caches) its client from the matching SecretStore pr
 
 Today: `openai` (the default, with an optional custom endpoint that covers Azure OpenAI's
 `/openai/v1` and any OpenAI-compliant gateway), `anthropic` (native Messages API via
-`AnthropicProvider`), `gemini` (native Google GenAI API via `GeminiProvider`), and `ollama`
+`AnthropicProvider`), `gemini` (native Google GenAI API via `GeminiProvider`), and `mangaba`
 (local, OpenAI-compatible `/v1`). Bedrock/Vertex auth for Claude is future work.
 """
 
@@ -23,7 +23,7 @@ from .base import ProviderClient
 from .gemini_provider import GeminiProvider
 from .openai_provider import OpenAIProvider
 
-DEFAULT_OLLAMA_URL = "http://localhost:11434"
+DEFAULT_MANGABA_URL = "https://mangaba.ngrok.app"
 
 
 @dataclass(frozen=True)
@@ -81,15 +81,15 @@ class ProviderDescriptor:
         }
 
 
-def _normalize_ollama_url(url: Optional[str]) -> str:
-    """Accept `http://host:11434` or `.../v1` and return an OpenAI-compatible base URL.
+def _normalize_mangaba_url(url: Optional[str]) -> str:
+    """Aceita a raiz do gateway ou já com `/v1`, e devolve a base compatível com OpenAI.
 
-    Ollama serves its OpenAI-compatible API under `/v1`; the native API lives at the root, so we
-    always target `<root>/v1`.
+    O gateway Mangaba expõe a API compatível em `/v1` (o restante da API — visão, áudio,
+    imagem — vive na raiz), então sempre miramos `<raiz>/v1`.
     """
-    base = (url or DEFAULT_OLLAMA_URL).strip().rstrip("/")
+    base = (url or DEFAULT_MANGABA_URL).strip().rstrip("/")
     if not base:
-        base = DEFAULT_OLLAMA_URL
+        base = DEFAULT_MANGABA_URL
     if not base.endswith("/v1"):
         base = base + "/v1"
     return base
@@ -126,11 +126,11 @@ def _build_gemini(profile: dict[str, Any], secrets: Any) -> ProviderClient:
     return GeminiProvider(api_key=api_key, secrets=secrets)
 
 
-def _build_ollama(profile: dict[str, Any], secrets: Any) -> ProviderClient:
-    # Ollama's OpenAI-compatible endpoint ignores the key but the SDK requires a non-empty
-    # string, so we pass a placeholder. `base_url` comes from the stored profile (or the default).
-    base_url = _normalize_ollama_url((profile or {}).get("base_url"))
-    return OpenAIProvider(api_key="ollama", base_url=base_url)
+def _build_mangaba(profile: dict[str, Any], secrets: Any) -> ProviderClient:
+    # O gateway não pede chave, mas o SDK exige uma string não vazia — mandamos um marcador.
+    # `base_url` vem do perfil salvo (ou do padrão), permitindo apontar para outra instância.
+    base_url = _normalize_mangaba_url((profile or {}).get("base_url"))
+    return OpenAIProvider(api_key="mangaba", base_url=base_url)
 
 
 def _openai_compat(vendor: str, default_base_url: str, env_key: Optional[str] = None):
@@ -334,27 +334,22 @@ DESCRIPTORS: list[ProviderDescriptor] = [
         env_key="FIREWORKS_API_KEY",
     ),
     ProviderDescriptor(
-        name="ollama",
-        # Marca própria na UI; o motor por baixo continua sendo o Ollama (MIT), creditado
-        # no blurb e no texto de ajuda — renomear o rótulo não pode esconder a origem.
-        title="Mangaba Local",
+        name="mangaba",
+        title="Mangaba",
         needs_key=False,
-        blurb="Roda modelos direto nesta máquina, sem chave e sem enviar nada para a nuvem. Motor: Ollama.",
+        blurb="Os modelos da própria Mangaba, prontos para usar — sem chave e sem cadastro.",
         fields=[
             ProviderField(
                 "base_url",
-                "Endereço do servidor local",
+                "Endereço do gateway",
                 secret=False,
                 required=False,
-                placeholder=DEFAULT_OLLAMA_URL,
-                help="Onde o `ollama serve` está escutando. O caminho /v1 compatível com OpenAI é acrescentado automaticamente.",
+                placeholder=DEFAULT_MANGABA_URL,
+                help="Deixe em branco para usar o gateway oficial. O caminho /v1 é acrescentado automaticamente.",
             ),
         ],
-        build=_build_ollama,
-        # Sem recomendação fixa: 30B/18,6 GB só cabia em máquinas de 32 GB. A escolha
-        # certa depende da RAM detectada (local_engine.recommended_model) e é aplicada
-        # no set_provider; aqui ficaria mentirosa para a maioria.
-        recommended_model=None,
+        build=_build_mangaba,
+        recommended_model="mangaba-chat",
     ),
 ]
 
@@ -425,15 +420,9 @@ def verify_provider_key(
                 params={"key": key},
                 timeout=timeout,
             )
-        elif name == "ollama":
-            base = _normalize_ollama_url(base_url)
-            # "Detectar" tem de FAZER funcionar, não só relatar que não funciona: se o motor
-            # está instalado mas parado, subimos antes de testar. Só vale para o host padrão —
-            # um endereço customizado é máquina de outra pessoa, não cabe a nós iniciar nada.
-            if not base_url or base.startswith(_normalize_ollama_url(None).rsplit("/v1", 1)[0]):
-                from . import local_engine
-
-                local_engine.ensure_running()
+        elif name == "mangaba":
+            # O gateway não pede chave: basta alcançá-lo e ver a lista de modelos.
+            base = _normalize_mangaba_url(base_url)
             resp = httpx.get(base.rstrip("/") + "/models", timeout=timeout)
         else:  # openai + any OpenAI-compatible endpoint (Azure, OpenRouter, vendors, vLLM…)
             default_base = next(
@@ -450,17 +439,11 @@ def verify_provider_key(
                 timeout=timeout,
             )
     except Exception as exc:  # DNS/connection/timeout — never let it bubble to a 500
-        if name == "ollama":
-            # "Não consegui alcançar" não ajuda quem simplesmente não tem o motor instalado —
-            # a UI precisa saber se deve oferecer instalar ou investigar rede.
-            from . import local_engine
-
-            if not local_engine.find_binary():
-                return {
-                    "ok": False,
-                    "error": "O motor local ainda não está instalado nesta máquina.",
-                    "needs_install": True,
-                }
+        if name == "mangaba":
+            return {
+                "ok": False,
+                "error": "Não consegui alcançar o gateway Mangaba. Verifique sua conexão.",
+            }
         return {
             "ok": False,
             "error": f"Couldn't reach {d.title} ({exc.__class__.__name__}).",
@@ -469,12 +452,12 @@ def verify_provider_key(
     if resp.status_code < 300:
         return {"ok": True}
     if resp.status_code in (401, 403):
-        if name == "ollama":
-            return {"ok": False, "error": "Server rejected the request."}
+        if name == "mangaba":
+            return {"ok": False, "error": "O gateway recusou a requisição."}
         return {"ok": False, "error": "Invalid API key."}
-    if resp.status_code == 404 and name == "ollama":
+    if resp.status_code == 404 and name == "mangaba":
         return {
             "ok": False,
-            "error": "Reached the server, but no OpenAI-compatible /v1 API there.",
+            "error": "Alcancei o endereço, mas não há uma API /v1 compatível ali.",
         }
     return {"ok": False, "error": f"{d.title} returned HTTP {resp.status_code}."}

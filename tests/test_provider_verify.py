@@ -85,7 +85,7 @@ def test_verify_gemini_key_param(monkeypatch):
 def test_verify_ollama_uses_v1_models_no_key(monkeypatch):
     cap: dict = {}
     _patch_get(monkeypatch, status=200, capture=cap)
-    verify_provider_key("ollama", base_url="http://localhost:11434")
+    verify_provider_key("mangaba", base_url="http://localhost:11434")
     assert cap["url"] == "http://localhost:11434/v1/models"
     assert "headers" not in cap  # keyless
 

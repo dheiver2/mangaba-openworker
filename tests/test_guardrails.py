@@ -114,13 +114,17 @@ def test_teto_invalido_recusa_em_pt(client):
     assert not out["ok"] and "número" in out["error"]
 
 
-def test_cofre_barra_modelo_de_nuvem_e_libera_ollama(tmp_path, monkeypatch):
+def test_somente_mangaba_barra_provedor_de_terceiro(tmp_path, monkeypatch):
+    """O modo já significou "100% local, nada sai desta máquina" — promessa que valia quando
+    os modelos rodavam na própria máquina. Servidos pelo gateway, ela deixaria de ser verdade;
+    o que ele garante hoje, e só o que diz, é que nenhum provedor de terceiro é usado."""
     monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path))
     manager = SessionManager()
     manager.set_vault_mode(True)
     bloqueio = manager.vault_block("anthropic:claude-opus-4-8")
-    assert bloqueio and "Modo Cofre" in bloqueio
-    assert manager.vault_block("ollama:qwen3-coder:30b") is None
+    assert bloqueio and "Somente Mangaba" in bloqueio
+    assert "nada sai desta máquina" not in bloqueio  # não promete o que não cumpre
+    assert manager.vault_block("mangaba:mangaba-chat") is None
     manager.set_vault_mode(False)
     assert manager.vault_block("anthropic:claude-opus-4-8") is None
 

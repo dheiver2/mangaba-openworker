@@ -125,39 +125,25 @@ def model_labels() -> dict[str, str]:
     return {mid: e.label for mid, e in MATRIX.items()}
 
 
-# Local (Ollama) models are pulled by the user, so their raw ids can't live in MATRIX above —
-# there's no fixed catalog to curate. Without a label they showed the tag verbatim in every
-# picker ("qwen2.5:3b-instruct"), the one un-rebranded corner of a UI whose whole point is
-# looking like Mangaba end to end. This derives a "Mangaba Local" label from the tag instead
-# of hand-maintaining one per model someone might pull.
-_SIZE_SUFFIX = re.compile(r"(?<=\d)b$", re.IGNORECASE)
-_LETTERS_THEN_DIGITS = re.compile(r"^([a-zA-Z]{3,})(\d.*)$")
+# Os modelos do gateway já vêm com nome próprio ("mangaba-chat"), então o rótulo é só uma
+# leitura humana do sufixo — nada de derivar marca de tag de terceiro como era preciso antes.
+_PAPEIS = {
+    "chat": "Chat",
+    "code": "Código",
+    "vision": "Visão",
+    "audio": "Áudio",
+    "voice": "Voz",
+    "image": "Imagem",
+    "embed": "Embeddings",
+    "guard": "Moderação",
+}
 
 
-def _prettify_ollama_token(token: str) -> str:
-    m = _LETTERS_THEN_DIGITS.match(token)
-    if m:
-        token = f"{m.group(1)} {m.group(2)}"
-    token = _SIZE_SUFFIX.sub("B", token)  # "3b" → "3B" (a real size marker, not a word)
-    return token[:1].upper() + token[1:] if token else token
-
-
-def ollama_display_label(tag: str) -> str:
-    """`qwen2.5:3b-instruct` → "Qwen 2.5 3B Instruct · Mangaba Local"`.
-    A model built locally as `mangaba-<name>` (our own branded persona, e.g. Modelfile.mangaba
-    over gemma4) is recognized by that prefix and gets the "Mangaba <Name>" form instead —
-    it already IS ours, "· Mangaba Local" would read as crediting a vendor for our own work."""
-    name, _, variant = tag.partition(":")
-    if variant == "latest":
-        variant = ""
-    branded = name.startswith("mangaba-")
-    if branded:
-        name = name[len("mangaba-") :]
-    tokens = [t for t in re.split(r"[-_]", name) if t] + [
-        t for t in re.split(r"[-_]", variant) if t
-    ]
-    label = " ".join(_prettify_ollama_token(t) for t in tokens)
-    return f"Mangaba {label}".strip() if branded else f"{label} · Mangaba Local"
+def mangaba_display_label(tag: str) -> str:
+    """`mangaba-chat` → "Mangaba Chat". Sufixo desconhecido vira Capitalizado."""
+    nome = tag.split(":", 1)[0]
+    sufixo = nome[len("mangaba-"):] if nome.startswith("mangaba-") else nome
+    return f"Mangaba {_PAPEIS.get(sufixo, sufixo[:1].upper() + sufixo[1:])}"
 
 
 def models_for_provider(provider: str) -> list[str]:

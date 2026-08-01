@@ -49,7 +49,7 @@ test("Models: provider gallery states; vendor form previews models", async ({ pa
   await expect(page.getByTestId("set-provider-openai")).toContainText("✓ Conectado · usado há 2h");
   await expect(page.getByTestId("set-provider-anthropic")).toContainText("✓ Conectado");
   await expect(page.getByTestId("set-provider-zai")).toContainText("Não configurado");
-  await expect(page.getByTestId("set-provider-ollama")).toContainText("Não precisa de chave");
+  await expect(page.getByTestId("set-provider-mangaba")).toContainText("Não precisa de chave");
 
   // The composer-picker card lists the curated models with provider tags.
   const picker = page.getByTestId("composer-picker");

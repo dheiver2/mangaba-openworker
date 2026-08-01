@@ -1,13 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  getLocalEngine,
   getProviders,
-  installLocalEngine,
-  pullLocalModel,
   removeProvider,
   setProvider,
   verifyProvider,
-  type LocalEngineStatus,
   type ProviderInfo,
 } from "../api";
 import { openExternal } from "../tauri";
@@ -90,11 +86,6 @@ export interface ProviderSetupState {
   removeKey: () => Promise<void>;
   cancelBackTimer: () => void;
   statusFor: (p: ProviderInfo, opts?: { lastUsed?: boolean }) => ReactNode;
-  // Local engine (Mangaba Local): null until probed. Drives install-vs-detect in the form.
-  engine: LocalEngineStatus | null;
-  installing: boolean;
-  installEngine: () => Promise<void>;
-  reloadEngine: () => void;
   setVerifyError: (msg: string) => void;
   // Blur-save for non-secret fields on an already-configured provider (the Test button is
   // the KEY's save path; extras like anthropic's thinking_budget must not need a re-test —
@@ -110,15 +101,13 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
   // to a dead sidecar (same silent-catch bug fixed for model loading in Composer.tsx).
   const [providersLoaded, setProvidersLoaded] = useState(false);
   const [providersTimedOut, setProvidersTimedOut] = useState(false);
-  const [engine, setEngine] = useState<LocalEngineStatus | null>(null);
-  const [installing, setInstalling] = useState(false);
   // null = the gallery; a provider name = that provider's key form.
   const [sel, setSel] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   const [showEndpoint, setShowEndpoint] = useState(false);
   const [verify, setVerify] = useState<Verify>({ state: "idle" });
-  // Keyless providers (Ollama) report configured without proving anything runs —
+  // Keyless providers (Mangaba) report configured without proving anything runs —
   // a passing Detect this session is what marks them live.
   const [keylessOk, setKeylessOk] = useState<Set<string>>(new Set());
   // Unsaved per-provider input survives switching cards (owner complaint 2026-07-16).
@@ -156,59 +145,13 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
 
   // Enquanto o bootstrap de primeiro uso trabalha (instalar motor / baixar modelo inicial),
   // o card precisa acompanhar de perto — senão fica preso em "ausente" até reabrir.
-  // A dependência tem de listar TUDO que a condição lê: com apenas `bootstrap?.phase`, um
-  // pull iniciado pela UI (bootstrap já "ready") não re-executava o efeito — nenhum
-  // setInterval nascia e a barra de progresso ficava parada em 0%. No sentido inverso, o
-  // intervalo criado pelo bootstrap nunca era limpo quando só a fase do PULL mudava, e o
-  // ramo "done" refazia refreshProviders() a cada 2 s para sempre.
-  const bootPhase = engine?.bootstrap?.phase;
-  const pullPhase = engine?.pull?.phase;
-  useEffect(() => {
-    const ativo =
-      pullPhase === "pulling" ||
-      bootPhase === "installing" ||
-      bootPhase === "starting" ||
-      bootPhase === "pulling";
-    if (!ativo) return;
-    const t = setInterval(() => {
-      void getLocalEngine()
-        .then((e) => {
-          setEngine(e);
-          // Só recarrega a lista na TRANSIÇÃO para pronto (o efeito para logo em seguida,
-          // porque a fase muda e a condição acima deixa de valer).
-          if (e.bootstrap?.phase === "ready" || e.pull?.phase === "done") void refreshProviders();
-        })
-        .catch(() => {});
-    }, 2000);
-    return () => clearInterval(t);
-  }, [bootPhase, pullPhase]);
-
   const info = providers.find((p) => p.name === sel);
   const credentialed = !!info?.configured && !!info?.needs_key;
 
   const setVerifyError = (msg: string) => setVerify({ state: "error", msg });
 
-  const reloadEngine = () => {
-    void getLocalEngine().then(setEngine).catch(() => {});
-  };
-
-  const installEngine = async () => {
-    setInstalling(true);
-    const res = await installLocalEngine().catch(() => ({ ok: false, error: "unreachable" }));
-    setInstalling(false);
-    if (!res.ok) {
-      setVerify({ state: "error", msg: res.error || "Não consegui instalar o motor local." });
-      return;
-    }
-    setEngine(await getLocalEngine().catch(() => null));
-    await refreshProviders();
-  };
-
   const openProvider = (name: string) => {
     const p = providers.find((x) => x.name === name);
-    // Só sondamos o motor quando o usuário abre um provedor sem chave — é uma chamada que
-    // pode disparar spawn de processo, não cabe rodar no carregamento da galeria inteira.
-    if (!p?.needs_key) void getLocalEngine().then(setEngine).catch(() => {});
     if (sel) setDrafts((d) => ({ ...d, [sel]: fields }));
     const draft = drafts[name];
     const next: Record<string, string> = {};
@@ -240,7 +183,7 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
       setVerify({ state: "error", msg: res.error || "couldn't verify" });
       return false;
     }
-    // Keyless providers (Ollama) report `configured: true` from the moment they're LISTED —
+    // Keyless providers (Mangaba) report `configured: true` from the moment they're LISTED —
     // before any profile ever exists — so `!info?.configured` never fires here and a
     // successful Detect never persisted anything. Without a saved profile, the backend's
     // live-model lookup (which reads it) always came back empty, so "Detectar" showed
@@ -353,10 +296,6 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
       if (backTimer.current) window.clearTimeout(backTimer.current);
     },
     statusFor,
-    engine,
-    installing,
-    installEngine,
-    reloadEngine,
     setVerifyError,
   };
 }
@@ -532,78 +471,14 @@ export function ProviderForm({
         </p>
       )}
       {info && !info.needs_key && (
-        <p className="text-[11.5px] text-faint mt-2">
-          Não precisa de chave — os modelos rodam neste computador.{" "}
-          {ps.engine?.bootstrap &&
-          ["installing", "starting", "pulling"].includes(ps.engine.bootstrap.phase) ? (
-            // Primeiro uso: o app está preparando tudo sozinho — só mostrar o andamento.
-            <span data-testid={`${tp}-engine-bootstrapping`}>
-              {ps.engine.bootstrap.phase === "pulling"
-                ? `Baixando o modelo inicial… ${Math.round((ps.engine.bootstrap.progress || 0) * 100)}%`
-                : ps.engine.bootstrap.phase === "installing"
-                  ? `Instalando o motor local… ${Math.round((ps.engine.bootstrap.progress || 0) * 100)}%`
-                  : "Iniciando o motor local…"}
-              <span className="engine-bar"><i style={{ width: `${Math.round((ps.engine.bootstrap.progress || 0) * 100)}%` }} /></span>
-            </span>
-          ) : ps.engine?.pull?.phase === "pulling" ? (
-            <span data-testid={`${tp}-engine-pulling`}>
-              Baixando {ps.engine.pull.tag}… {Math.round((ps.engine.pull.progress || 0) * 100)}%
-              <span className="engine-bar"><i style={{ width: `${Math.round((ps.engine.pull.progress || 0) * 100)}%` }} /></span>
-            </span>
-          ) : ps.engine?.pull?.phase === "error" ? (
-            <span className="text-warnInk" data-testid={`${tp}-engine-pull-error`}>
-              Falha ao baixar {ps.engine.pull.tag}: {ps.engine.pull.error || "erro desconhecido"}
-            </span>
-          ) : ps.engine?.pull?.phase === "done" ? (
-            <span className="text-ok" data-testid={`${tp}-engine-pull-done`}>
-              ✓ {ps.engine.pull.tag} pronto — clique em Detectar para usá-lo.
-            </span>
-          ) : ps.engine?.installed === false ? (
-            // Motor ausente: instalar é o próximo passo, não "Detectar" (que só falharia).
-            <button
-              className="text-muted underline decoration-line underline-offset-2 hover:text-ink disabled:opacity-50"
-              onClick={() => void ps.installEngine()}
-              disabled={ps.installing}
-              data-testid={`${tp}-install-engine`}
-            >
-              {ps.installing ? "Instalando o motor local…" : "Instalar o motor local"}
-            </button>
-          ) : (
-            <span data-testid={`${tp}-engine-ready`}>
-              {/* Motor rodando com ZERO modelos é o caminho silencioso para o "sem modelo"
-                  no chat: o provedor salva, o usuário vai conversar e não há o que usar.
-                  Melhor dizer aqui, ao lado do botão que resolve. */}
-              {!ps.engine?.running
-                ? "Motor local instalado — clique em Detectar."
-                : ps.engine?.models === 0
-                  ? "Motor local ativo, mas sem nenhum modelo baixado — escolha um abaixo para poder conversar."
-                  : "Motor local ativo."}
-              {/* O maior modelo que ESTA máquina roda bem (por RAM detectada): um clique baixa. */}
-              {ps.engine?.running && ps.engine?.recommended && (
-                <>
-                  {" "}
-                  <button
-                    className="text-muted underline decoration-line underline-offset-2 hover:text-ink"
-                    onClick={() =>
-                      void pullLocalModel(ps.engine!.recommended!.tag)
-                        .then((r) => {
-                          // Sem isto, disco cheio/sem rede não dizia NADA na tela e o
-                          // usuário clicava de novo achando que o clique não pegou.
-                          if (!r.ok)
-                            ps.setVerifyError(r.error || "Não consegui baixar o modelo.");
-                          ps.reloadEngine();
-                        })
-                        .catch(() => ps.setVerifyError("Não consegui falar com o servidor local."))
-                    }
-                    data-testid={`${tp}-pull-recommended`}
-                  >
-                    Baixar o recomendado p/ esta máquina ({ps.engine.recommended.tag}, ~{ps.engine.recommended.download_gb} GB)
-                  </button>{" "}
-                  <span className="text-faint">RAM detectada: {Math.round(ps.engine.recommended.ram_gb)} GB.</span>
-                </>
-              )}
-            </span>
-          )}
+        <p className="text-[11.5px] text-faint mt-2" data-testid={`${tp}-sem-chave`}>
+          Não precisa de chave nem cadastro — clique em Detectar para carregar os modelos.
+          {/* Estes modelos conversam, mas não acionam ferramentas: sem este aviso o usuário
+              pediria "leia este arquivo" e receberia uma resposta inventada com cara de
+              trabalho feito (comportamento verificado no gateway em 31/07/2026). */}
+          <br />
+          Eles respondem e escrevem, mas não leem arquivos nem rodam comandos — para o agente
+          trabalhar com as suas ferramentas, conecte um provedor com chave.
         </p>
       )}
 

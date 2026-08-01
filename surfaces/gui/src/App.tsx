@@ -202,7 +202,9 @@ export function App() {
   // composer's "No model connected" chip. Default true so we don't flash the chip before settings
   // load; corrected by loadSettings.
   const [modelReady, setModelReady] = useState(true);
-  // Modo Cofre (guardrails): o topbar mostra o cadeado quando só modelos locais rodam.
+  // Modo "Somente Mangaba" (guardrails): o topbar mostra o selo quando provedores de
+  // terceiro estão bloqueados. Já se chamou Cofre e prometia "nada sai desta máquina" —
+  // texto que deixou de ser verdade quando os modelos passaram a vir do gateway.
   const [vaultMode, setVaultMode] = useState(false);
   const [secretGuardOn, setSecretGuardOn] = useState(true);
   const [surface, setSurface] = useState<
@@ -1411,10 +1413,10 @@ export function App() {
             {vaultMode && (
               <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accentSoft text-accent text-[11.5px] font-semibold shrink-0"
-                title="Modo Cofre ligado: só modelos locais (Ollama) rodam — nada sai desta máquina"
+                title="Somente Mangaba: provedores de terceiro estão bloqueados — só os modelos da Mangaba rodam"
                 data-testid="vault-badge"
               >
-                🔒 Cofre
+                🔒 Só Mangaba
               </span>
             )}
             {hasHistory && !running && (

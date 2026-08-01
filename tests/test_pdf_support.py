@@ -46,7 +46,7 @@ def test_compat_vendors_lack_pdf_capability():
         "zai:glm-5.2",
         "kimi:kimi-k2.6",
         "together:zai-org/GLM-5.2",
-        "ollama:qwen3",
+        "mangaba:qwen3",
     ):
         assert not capabilities_for(model).pdf, model
 

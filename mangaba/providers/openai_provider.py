@@ -80,7 +80,7 @@ def _param_fix_retry(kwargs: dict[str, Any], exc: Exception) -> dict[str, Any]:
     """Kwargs for the one retry an unsupported-parameter error earns, or re-raise.
 
     Reasoning-routed OpenAI models reject `max_tokens` outright (they want
-    `max_completion_tokens`) — but compat servers (Ollama's /v1) know ONLY
+    `max_completion_tokens`) — but compat servers (gateways com /v1) know ONLY
     `max_tokens`, so the swap must happen on rejection, never up front. Same
     contract as the reasoning_effort retry: fix exactly what the server named.
     """
@@ -111,7 +111,7 @@ class OpenAIProvider(ProviderClient):
         # inject a `client` directly, bypassing all of this.
         #
         # `base_url` points the same OpenAI SDK at any OpenAI-compatible endpoint — used by the
-        # provider router for Ollama (`http://localhost:11434/v1`, with a placeholder key) and,
+        # provider router for the Mangaba gateway (its `/v1`, with a placeholder key) and,
         # later, other OpenAI-shaped backends. When None, behavior is identical to stock OpenAI.
         self._client = client
         self._api_key = api_key
@@ -283,7 +283,7 @@ def _parse_tool_calls(raw_tool_calls: Any) -> list[ToolCall]:
     return calls
 
 
-# Some OpenAI-compatible backends — notably Ollama for several local models (qwen, etc.) —
+# Some OpenAI-compatible backends — notably self-hosted gateways —
 # fail to populate the structured `tool_calls` field and instead emit the call as TEXT, in
 # wildly varied shapes: a `<tool_call>{…}</tool_call>` block, a bare `{"name","arguments"}` object
 # (often mixed in with prose), or a `toolname {args}` / `toolname [args]` shorthand. Our agent

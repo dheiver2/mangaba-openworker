@@ -22,11 +22,18 @@ def capabilities_for(model: str) -> ModelCapabilities:
     provider = model.split(":", 1)[0].lower() if ":" in model else ""
     name = model.split(":", 1)[-1].lower()  # strip a provider prefix if present
 
-    # Ollama (local) models vary widely and many fake/mishandle parallel tool calls — assume
-    # tools work (we only point at tool-capable models) but stay conservative otherwise.
-    if provider == "ollama":
+    # Gateway Mangaba: o endpoint aceita o parâmetro `tools` sem reclamar, mas NUNCA devolve
+    # tool_calls — nem com `tool_choice: "required"`, que deveria obrigar (verificado em
+    # 31/07/2026 contra mangaba.ngrok.app). Pior: em vez de falhar, o modelo INVENTA o
+    # resultado (pedimos uma listagem de arquivos e ele escreveu uma saída de `ls` plausível
+    # que nunca executou). Declarar tools=False é o que impede o motor de oferecer ferramentas
+    # e, com isso, o que impede a fabricação passar por trabalho feito.
+    if provider == "mangaba":
         return ModelCapabilities(
-            tools=True, vision=False, parallel_tool_calls=False, streaming=True
+            tools=False,
+            vision=name.endswith("vision"),
+            parallel_tool_calls=False,
+            streaming=True,
         )
 
     # Claude / Gemini (both native): tools + vision + parallel tool calls + streaming. The

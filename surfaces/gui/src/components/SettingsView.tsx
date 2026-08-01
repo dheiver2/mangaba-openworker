@@ -602,7 +602,7 @@ function PasscodeCard() {
   );
 }
 
-// Guarda-corpos locais (mangaba/guardrails.py): Cofre, protetor de segredos,
+// Guarda-corpos locais (mangaba/guardrails.py): "Somente Mangaba", protetor de segredos,
 // freio de gastos e o auto-bloqueio (este último vive na GUI — LoginGate).
 export const AUTOLOCK_KEY = "mangaba:autolock-min";
 
@@ -646,10 +646,10 @@ function GuardrailsCard() {
           onChange={(e) => { setVault(e.target.checked); void setVaultMode(e.target.checked); }}
         />
         <span>
-          <span className="block text-[13px] text-ink">Modo Cofre — 100% local</span>
+          <span className="block text-[13px] text-ink">Somente Mangaba</span>
           <span className="block text-[12px] text-muted">
-            Bloqueia todo provedor de nuvem: só modelos do Ollama rodam. A checagem é no
-            servidor, então nada sai desta máquina nem por engano.
+            Bloqueia todo provedor de terceiro: só os modelos da Mangaba rodam. A checagem
+            é no servidor, então nenhum outro provedor entra na conversa nem por engano.
           </span>
         </span>
       </label>
@@ -749,7 +749,7 @@ function DiagnosticsCard() {
         {linha("Latência local", latency !== null ? `${latency} ms` : "—")}
         {linha("Modelo padrão", `${d.model}${d.model_ready ? "" : " (provedor não configurado)"}`)}
         {linha("Sessões", String(d.sessions))}
-        {linha("Cofre / Protetor", `${d.vault_mode ? "ligado" : "desligado"} / ${d.secret_guard ? "ligado" : "desligado"}`)}
+        {linha("Só Mangaba / Protetor", `${d.vault_mode ? "ligado" : "desligado"} / ${d.secret_guard ? "ligado" : "desligado"}`)}
         {linha("Dados", d.state_dir)}
       </div>
     </div>

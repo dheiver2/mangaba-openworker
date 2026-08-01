@@ -25,7 +25,7 @@ test("provider gallery: cards wear their state; Next arms off stored credentials
   await expect(page.getByTestId("ob-provider-openai")).toContainText("✓ Conectado");
   await expect(page.getByTestId("ob-provider-anthropic")).toContainText("✓ Conectado");
   await expect(page.getByTestId("ob-provider-zai")).toContainText("Não configurado");
-  await expect(page.getByTestId("ob-provider-ollama")).toContainText("Não precisa de chave");
+  await expect(page.getByTestId("ob-provider-mangaba")).toContainText("Não precisa de chave");
   // Recognition-first order: anthropic before openai before the OpenAI-compat tail.
   const names = await page
     .getByTestId("ob-provider-gallery")

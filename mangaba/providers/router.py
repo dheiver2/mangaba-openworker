@@ -2,11 +2,11 @@
 string to a per-provider client, built lazily from its SecretStore profile and cached.
 
 This is the single provider the `SessionManager` hands to every engine, so `complete()/stream()`
-(which already receive the full model string per-call) route themselves: `ollama:llama3.3` →
-the Ollama client (Ollama's OpenAI-compatible `/v1`), bare `gpt-5.5` → the default (OpenAI). The
+(which already receive the full model string per-call) route themselves: `mangaba:mangaba-chat` →
+the Mangaba gateway client (its OpenAI-compatible `/v1`), bare `gpt-5.5` → the default (OpenAI). The
 prefix is stripped before delegating, since the underlying SDKs want the bare model name.
 
-Config changes (a new key, a new Ollama URL) call `invalidate()` to drop cached clients, so
+Config changes (a new key, a new gateway URL) call `invalidate()` to drop cached clients, so
 existing engines pick up the change without a rebuild.
 """
 

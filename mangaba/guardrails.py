@@ -6,7 +6,7 @@ NA MÁQUINA, antes de qualquer coisa sair dela:
 - ``redact_secrets``  — remove chaves de API, tokens e chaves privadas da
   mensagem do usuário antes de ela chegar ao modelo. Colar um ``.env`` numa
   conversa não pode virar vazamento para um provedor de nuvem.
-- Modo Cofre         — com o cofre ligado, só provedores locais (Ollama) podem
+- Somente Mangaba    — ligado, só os modelos da própria Mangaba podem
   rodar; a checagem fica no servidor, então nem uma UI alterada contorna.
 - Freio de gastos    — teto diário de turnos iniciados pelo usuário; quando o
   modelo é pago por token, um laço descontrolado tem custo real.

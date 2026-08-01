@@ -176,14 +176,6 @@ def create_app(manager: SessionManager) -> FastAPI:
             import traceback
 
             traceback.print_exc()
-        # Mangaba Local pronto de fábrica: em instalação zerada (ou usuário local que voltou),
-        # instala/sobe o motor e garante um modelo — em thread, para o boot não esperar um
-        # download. Erros ficam no estado do bootstrap (rota local-engine), nunca derrubam o app.
-        import threading
-
-        threading.Thread(
-            target=manager.bootstrap_local_engine, daemon=True, name="local-engine-bootstrap"
-        ).start()
         yield
         await manager.aclose()  # stop gateway + close MCP connections on shutdown
 
@@ -1428,7 +1420,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             return {"ok": False, "error": "provedor obrigatório"}
         return manager.set_web_search(provider, (body or {}).get("api_key"))
 
-    # -- model providers (OpenAI, Ollama, …) ------------------------------------
+    # -- model providers (Mangaba, OpenAI, …) ------------------------------------
     @app.get("/v1/providers")
     def providers_get() -> list[dict[str, Any]]:
         return manager.get_providers()
@@ -1443,63 +1435,6 @@ def create_app(manager: SessionManager) -> FastAPI:
     @app.delete("/v1/providers/{name}")
     def providers_remove(name: str) -> dict[str, Any]:
         return manager.remove_provider(name)
-
-    # -- local engine (Mangaba Local / Ollama) -----------------------------------
-    @app.get("/v1/providers/local-engine")
-    async def local_engine_status() -> dict[str, Any]:
-        from ..providers import local_engine
-
-        status = await asyncio.to_thread(local_engine.engine_status)
-        # O primeiro boot pode estar instalando o motor ou baixando o modelo inicial em
-        # segundo plano — a UI usa isto para mostrar "preparando… X%" em vez de "ausente".
-        status["bootstrap"] = local_engine.bootstrap_status()
-        # O maior modelo que ESTA máquina roda bem (por RAM) + o download em andamento,
-        # se houver — o card usa para oferecer "Baixar recomendado" com progresso.
-        status["recommended"] = await asyncio.to_thread(local_engine.recommended_model)
-        status["pull"] = local_engine.pull_status()
-        return status
-
-    @app.post("/v1/providers/local-engine/pull")
-    async def local_engine_pull(body: dict) -> dict[str, Any]:
-        from ..providers import local_engine
-
-        tag = ((body or {}).get("tag") or "").strip()
-        if not tag:
-            return {"ok": False, "error": "informe o tag do modelo"}
-        # Antes de qualquer efeito colateral (subir o motor): tag de registry arbitrário
-        # não passa. `start_pull` revalida — este é só o corte barato na porta.
-        if not local_engine.tag_permitido(tag):
-            return {"ok": False, "error": f"Tag de modelo não permitido: {tag}"}
-        # Garante o motor de pé antes de pedir o download a ele.
-        run = await asyncio.to_thread(local_engine.ensure_running)
-        if not run.get("ok"):
-            return run
-        return local_engine.start_pull(tag)
-
-    @app.post("/v1/providers/local-engine/install")
-    async def local_engine_install() -> dict[str, Any]:
-        # Download de ~180 MB (macOS): fora do event loop, senão trava a UI inteira.
-        from ..providers import local_engine
-
-        res = await asyncio.to_thread(local_engine.install)
-        if res.get("ok") and not res.get("handed_off"):
-            res["serve"] = await asyncio.to_thread(local_engine.ensure_running)
-        # No Windows o bootstrap para em `needs_user` (instalar exige o UAC) e nada o
-        # retomava: o usuário concluía a instalação e o modelo inicial nunca era baixado —
-        # o chat ficava "sem modelo" para sempre. Instalar é o gesto que destrava o resto,
-        # mas ele leva MINUTOS (UAC + assistente), então esperamos o motor aparecer em vez
-        # de checar na hora e desistir.
-        import threading
-
-        def _continuar() -> None:
-            from ..providers import local_engine as le
-
-            if res.get("handed_off"):  # Windows: o usuário ainda está no instalador
-                le.aguardar_e_continuar()
-            manager.bootstrap_local_engine()
-
-        threading.Thread(target=_continuar, daemon=True, name="bootstrap-pos-install").start()
-        return res
 
     @app.post("/v1/providers/verify")
     async def providers_verify(body: dict) -> dict[str, Any]:

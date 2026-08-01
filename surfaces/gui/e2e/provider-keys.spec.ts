@@ -53,14 +53,14 @@ test("a configured provider's form opens with the saved state, no plaintext key"
   await expect(page.getByTestId("set-field-api_key")).toHaveAttribute("placeholder", "••••••••");
 });
 
-test("non-secret fields blur-save on a configured provider (ollama endpoint)", async ({
+test("non-secret fields blur-save on a configured provider (mangaba endpoint)", async ({
   page,
 }) => {
   // Owner-hit 2026-07-23 (as the thinking-budget field, since folded into a default):
   // the Test button was the form's only save path — typing into a non-secret field and
   // leaving Settings silently discarded it. Blur now saves.
   await openModels(page);
-  await page.getByTestId("set-provider-ollama").click();
+  await page.getByTestId("set-provider-mangaba").click();
   const endpoint = page.getByTestId("set-field-base_url");
   await endpoint.fill("http://127.0.0.1:9999");
   await endpoint.blur();
@@ -68,6 +68,6 @@ test("non-secret fields blur-save on a configured provider (ollama endpoint)", a
 
   // Leave and come back: the value survived (served from the provider's stored values).
   await page.getByTestId("set-back").click();
-  await page.getByTestId("set-provider-ollama").click();
+  await page.getByTestId("set-provider-mangaba").click();
   await expect(page.getByTestId("set-field-base_url")).toHaveValue("http://127.0.0.1:9999");
 });

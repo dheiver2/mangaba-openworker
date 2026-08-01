@@ -14,7 +14,7 @@ from mangaba.providers import (
     StreamChunk,
     capabilities_for,
 )
-from mangaba.providers.registry import _normalize_ollama_url, build_provider_client
+from mangaba.providers.registry import _normalize_mangaba_url, build_provider_client
 from mangaba.providers.openai_provider import _salvage_tool_calls_from_text
 
 
@@ -28,9 +28,9 @@ def test_base_url_passed_to_sdk(monkeypatch):
 
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     OpenAIProvider(
-        api_key="ollama", base_url="http://localhost:11434/v1"
+        api_key="mangaba", base_url="http://localhost:11434/v1"
     )._ensure_client()
-    assert captured == {"api_key": "ollama", "base_url": "http://localhost:11434/v1"}
+    assert captured == {"api_key": "mangaba", "base_url": "http://localhost:11434/v1"}
 
 
 def test_base_url_omitted_when_none(monkeypatch):
@@ -46,13 +46,13 @@ def test_base_url_omitted_when_none(monkeypatch):
 
 
 # -- ollama URL normalization ---------------------------------------------------
-def test_normalize_ollama_url():
-    assert _normalize_ollama_url(None) == "http://localhost:11434/v1"
-    assert (
-        _normalize_ollama_url("http://localhost:11434") == "http://localhost:11434/v1"
-    )
-    assert _normalize_ollama_url("http://h:1/v1/") == "http://h:1/v1"
-    assert _normalize_ollama_url("  ") == "http://localhost:11434/v1"
+def test_normalize_mangaba_url():
+    """Vazio cai no gateway oficial; endereço próprio é respeitado; `/v1` entra uma vez só."""
+    oficial = "https://mangaba.ngrok.app/v1"
+    assert _normalize_mangaba_url(None) == oficial
+    assert _normalize_mangaba_url("  ") == oficial
+    assert _normalize_mangaba_url("https://mangaba.ngrok.app") == oficial
+    assert _normalize_mangaba_url("http://h:1/v1/") == "http://h:1/v1"
 
 
 def test_build_ollama_client_uses_base_url(monkeypatch):
@@ -64,11 +64,11 @@ def test_build_ollama_client_uses_base_url(monkeypatch):
 
     monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
     client = build_provider_client(
-        "ollama", {"base_url": "http://box:11434"}, secrets=None
+        "mangaba", {"base_url": "http://box:11434"}, secrets=None
     )
     client._ensure_client()  # type: ignore[attr-defined]
     assert captured["base_url"] == "http://box:11434/v1"
-    assert captured["api_key"] == "ollama"  # placeholder, Ollama ignores it
+    assert captured["api_key"] == "mangaba"  # placeholder, Ollama ignores it
 
 
 # -- router routing -------------------------------------------------------------
@@ -106,9 +106,9 @@ def test_router_routes_and_strips_prefix(monkeypatch):
     state = _patch_build(monkeypatch)
     router = ProviderRouter(secrets=None)
 
-    turn = router.complete(model="ollama:llama3.3", messages=[])
-    assert turn.text == "ollama"
-    assert state["latest"]["ollama"].models == [
+    turn = router.complete(model="mangaba:llama3.3", messages=[])
+    assert turn.text == "mangaba"
+    assert state["latest"]["mangaba"].models == [
         "llama3.3"
     ]  # prefix stripped before delegating
 
@@ -120,13 +120,13 @@ def test_router_caches_and_invalidates(monkeypatch):
     state = _patch_build(monkeypatch)
     router = ProviderRouter(secrets=None)
 
-    first = router._client_for("ollama:a")
-    second = router._client_for("ollama:b")
+    first = router._client_for("mangaba:a")
+    second = router._client_for("mangaba:b")
     assert first is second  # same provider → cached client reused (build called once)
     assert len(state["created"]) == 1
 
-    router.invalidate("ollama")
-    third = router._client_for("ollama:c")
+    router.invalidate("mangaba")
+    third = router._client_for("mangaba:c")
     assert third is not first  # rebuilt after invalidation
     assert len(state["created"]) == 2
 
@@ -134,7 +134,7 @@ def test_router_caches_and_invalidates(monkeypatch):
 def test_router_bare_only_strips_known_provider():
     r = ProviderRouter(secrets=None)
     assert (
-        r._bare("ollama:qwen2.5-coder:32b") == "qwen2.5-coder:32b"
+        r._bare("mangaba:qwen2.5-coder:32b") == "qwen2.5-coder:32b"
     )  # strip provider, keep tag
     assert r._bare("gpt-5.5") == "gpt-5.5"
     # a colon that isn't a provider (version tag) must NOT be split — else OpenAI gets "32b"
@@ -144,19 +144,26 @@ def test_router_bare_only_strips_known_provider():
 
 def test_router_capabilities_prefix_aware():
     router = ProviderRouter(secrets=None)
-    assert router.capabilities("ollama:qwen2.5-coder").tools is True
-    assert router.capabilities("ollama:qwen2.5-coder").parallel_tool_calls is False
+    assert router.capabilities("mangaba:mangaba-chat").tools is False
+    assert router.capabilities("mangaba:mangaba-chat").streaming is True
 
 
 # -- capabilities ---------------------------------------------------------------
-def test_capabilities_ollama():
-    caps = capabilities_for("ollama:qwen2.5-coder")
-    assert caps.tools is True
-    assert caps.parallel_tool_calls is False
-    assert caps.vision is False
+def test_capabilities_mangaba_declara_que_nao_chama_ferramenta():
+    """O gateway ACEITA o parâmetro `tools` sem reclamar, mas nunca devolve tool_calls — nem
+    com `tool_choice: "required"` (verificado em 31/07/2026). Em vez de falhar, o modelo
+    INVENTA o resultado: pedimos uma listagem de arquivos e ele escreveu uma saída de `ls`
+    plausível que nunca executou. Declarar tools=False é o que impede o motor de mandar as
+    ferramentas — e, com isso, o que impede a fabricação passar por trabalho feito."""
+    caps = capabilities_for("mangaba:mangaba-chat")
+    assert caps.tools is False
+    assert caps.streaming is True
+    # o modelo de visão é o único do gateway que enxerga imagem
+    assert capabilities_for("mangaba:mangaba-vision").vision is True
+    assert capabilities_for("mangaba:mangaba-chat").vision is False
 
 
-# -- tool-call salvage (Ollama emits tool calls as text) ------------------------
+# -- tool-call salvage (modelos que emitem chamadas como texto) ------------------------
 def test_salvage_bare_json_object():
     calls = _salvage_tool_calls_from_text(
         '{"name": "get_weather", "arguments": {"city": "Paris"}}'
@@ -278,13 +285,13 @@ def test_complete_salvages_only_when_tools_requested():
 
     # tools requested + no structured calls → salvage, clear text
     p = OpenAIProvider(client=_FakeOAClient(content=blob))
-    turn = p.complete(model="ollama:x", messages=[], tools=tools)
+    turn = p.complete(model="mangaba:x", messages=[], tools=tools)
     assert turn.has_tool_calls and turn.tool_calls[0].name == "get_weather"
     assert turn.text is None
 
     # no tools requested → identical content stays plain text (gate holds)
     p2 = OpenAIProvider(client=_FakeOAClient(content=blob))
-    turn2 = p2.complete(model="ollama:x", messages=[])
+    turn2 = p2.complete(model="mangaba:x", messages=[])
     assert not turn2.has_tool_calls
     assert turn2.text == blob
 
@@ -297,12 +304,12 @@ def test_manager_provider_config(tmp_path, monkeypatch):
     mgr = SessionManager(data_dir=tmp_path)
     assert isinstance(mgr.provider, ProviderRouter)
 
-    res = mgr.set_provider("ollama", {"base_url": "http://localhost:9999"})
+    res = mgr.set_provider("mangaba", {"base_url": "http://localhost:9999"})
     assert res["ok"] is True
 
     provs = {p["name"]: p for p in mgr.get_providers()}
-    assert provs["ollama"]["configured"] is True  # keyless → usable
-    assert provs["ollama"]["values"]["base_url"] == "http://localhost:9999"
+    assert provs["mangaba"]["configured"] is True  # keyless → usable
+    assert provs["mangaba"]["values"]["base_url"] == "http://localhost:9999"
     assert provs["openai"]["needs_key"] is True
     # never leak secret values
     assert "api_key" not in provs["openai"].get("values", {})
@@ -322,11 +329,11 @@ def test_manager_curated_models(tmp_path, monkeypatch):
             monkeypatch.delenv(d.env_key, raising=False)
     from mangaba.server.manager import SessionManager
 
-    # `ollama:*` selectability is an HTTP probe of a local server; pin it so this test
+    # `mangaba:*` selectability is an HTTP probe of a local server; pin it so this test
     # covers picker mechanics only (the probe itself is covered by
-    # test_settings.py::test_ollama_models_gated_on_liveness). Unpinned, the ollama
+    # test_settings.py::test_mangaba_models_gated_on_liveness). Unpinned, the ollama
     # assertions below pass only where Ollama happens to run — green on a dev box, red in CI.
-    monkeypatch.setattr(SessionManager, "_ollama_alive", lambda self: True)
+    monkeypatch.setattr(SessionManager, "_mangaba_alive", lambda self: True)
 
     mgr = SessionManager(data_dir=tmp_path)
     # no provider keys → nothing but the always-selectable default
@@ -338,11 +345,11 @@ def test_manager_curated_models(tmp_path, monkeypatch):
     assert "anthropic:claude-opus-4-8" in models
     assert "gpt-4o" not in models  # no OpenAI seed anywhere
 
-    added = mgr.add_model("ollama:qwen2.5-coder:32b")  # keyless provider → selectable
-    assert added["ok"] and "ollama:qwen2.5-coder:32b" in added["models"]
+    added = mgr.add_model("mangaba:qwen2.5-coder:32b")  # keyless provider → selectable
+    assert added["ok"] and "mangaba:qwen2.5-coder:32b" in added["models"]
 
     n = len(mgr.get_settings()["models"])
-    mgr.add_model("ollama:qwen2.5-coder:32b")  # idempotent
+    mgr.add_model("mangaba:qwen2.5-coder:32b")  # idempotent
     assert len(mgr.get_settings()["models"]) == n
 
     # removing a matrix model hides it persistently; re-adding unhides it
@@ -354,8 +361,8 @@ def test_manager_curated_models(tmp_path, monkeypatch):
     assert "anthropic:claude-haiku-4-5" in mgr.get_settings()["models"]
 
     # removing a custom id drops it
-    mgr.remove_model("ollama:qwen2.5-coder:32b")
-    assert "ollama:qwen2.5-coder:32b" not in mgr.get_settings()["models"]
+    mgr.remove_model("mangaba:qwen2.5-coder:32b")
+    assert "mangaba:qwen2.5-coder:32b" not in mgr.get_settings()["models"]
 
     # the active default stays selectable even if removed from the curated list
     mgr.remove_model(mgr.model)
@@ -369,16 +376,14 @@ def test_set_provider_auto_adds_recommended_when_pulled(tmp_path, monkeypatch):
     from mangaba.server.manager import SessionManager
 
     mgr = SessionManager(data_dir=tmp_path)
-    monkeypatch.setattr(  # pretend the recommended model is pulled
+    monkeypatch.setattr(  # o gateway oferece o recomendado
         mgr,
         "_suggested_models",
-        lambda name: ["qwen3-coder:30b"] if name == "ollama" else [],
+        lambda name: ["mangaba-chat", "mangaba-code"] if name == "mangaba" else [],
     )
-    res = mgr.set_provider("ollama", {"base_url": "http://localhost:11434"})
-    # A recomendação fixa (30B/18,6 GB) morreu — ela só cabia em máquinas de 32 GB; a
-    # escolha agora é por RAM detectada. O que está instalado continua entrando no picker.
-    assert res["recommended_model"] is None
-    assert "ollama:qwen3-coder:30b" in mgr.get_settings()["models"]
+    res = mgr.set_provider("mangaba", {})
+    assert res["recommended_model"] == "mangaba-chat"
+    assert "mangaba:mangaba-chat" in mgr.get_settings()["models"]
 
 
 def test_set_provider_skips_recommended_when_not_pulled(tmp_path, monkeypatch):
@@ -387,8 +392,8 @@ def test_set_provider_skips_recommended_when_not_pulled(tmp_path, monkeypatch):
 
     mgr = SessionManager(data_dir=tmp_path)
     monkeypatch.setattr(mgr, "_suggested_models", lambda name: [])  # nothing pulled
-    mgr.set_provider("ollama", {"base_url": "http://localhost:11434"})
-    assert "ollama:qwen3-coder:30b" not in mgr.get_settings()["models"]
+    mgr.set_provider("mangaba", {"base_url": "http://localhost:11434"})
+    assert "mangaba:qwen3-coder:30b" not in mgr.get_settings()["models"]
 
 
 def test_provider_builders(monkeypatch):
@@ -506,10 +511,10 @@ def test_provider_suggested_models(tmp_path, monkeypatch):
     mgr = SessionManager(data_dir=tmp_path)
     provs = {p["name"]: p for p in mgr.get_providers()}
     assert "gpt-5.5" in provs["openai"]["suggested_models"]
-    # ollama suggestions are bare names (no `ollama:` prefix); empty when unconfigured
-    sugg = provs["ollama"]["suggested_models"]
+    # ollama suggestions are bare names (no `mangaba:` prefix); empty when unconfigured
+    sugg = provs["mangaba"]["suggested_models"]
     assert isinstance(sugg, list)
-    assert all(not m.startswith("ollama:") for m in sugg)
+    assert all(not m.startswith("mangaba:") for m in sugg)
 
 
 # -- last-used tracking (router on_use hook + manager persistence) ----------------
@@ -565,3 +570,40 @@ def test_manager_key_hygiene_stamps(tmp_path, monkeypatch):
     mgr2 = SessionManager(data_dir=tmp_path)
     provs2 = {p["name"]: p for p in mgr2.get_providers()}
     assert provs2["deepseek"]["last_used_at"] == first
+
+
+def test_motor_nao_oferece_ferramentas_a_quem_nao_sabe_usar(monkeypatch):
+    """O gateway aceita `tools` e responde INVENTANDO o resultado (pedimos uma listagem de
+    arquivos e ele escreveu uma saída de `ls` que nunca rodou). Como o agente manda 19
+    ferramentas em todo turno, sem esta guarda toda conversa com um modelo Mangaba viraria
+    fabricação com cara de trabalho feito. O motor precisa CALAR as ferramentas quando o
+    provedor declara que não as executa."""
+    import tempfile
+
+    from mangaba.agent import build_engine
+    from mangaba.agents import code_agent
+
+    eng = build_engine(agent=code_agent(), workspace=tempfile.mkdtemp(), model="mangaba:mangaba-chat")
+    assert eng.registry.schemas(), "o agente tem ferramentas registradas"
+
+    enviado = {}
+
+    class ProvedorFalso:
+        def capabilities(self, model):
+            from mangaba.providers.capabilities import capabilities_for
+
+            return capabilities_for(model)
+
+        def stream(self, *a, **k):
+            enviado["tools"] = k.get("tools")
+            return iter(())
+
+    eng.provider = ProvedorFalso()
+    import asyncio
+
+    async def rodar():
+        async for _ in eng._astream():
+            pass
+
+    asyncio.run(rodar())
+    assert enviado["tools"] is None, "ferramentas não podem ir para um modelo que não as chama"

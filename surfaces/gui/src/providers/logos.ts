@@ -8,9 +8,7 @@
 import anthropic from "./logos/anthropic.svg";
 import openai from "./logos/openai.svg";
 import gemini from "./logos/gemini.svg";
-// "Mangaba Local" é o rebranding do provedor Ollama — a marca do card também vira própria,
-// não a manga (mango, Ollama's own mark) de terceiro. O motor por baixo continua sendo
-// Ollama (MIT), já creditado no blurb do provedor (registry.py) e no texto de ajuda da UI.
+// O provedor Mangaba usa a marca própria — são os nossos modelos, servidos pelo nosso gateway.
 import mangabaLocal from "./logos/mangaba.png";
 import fireworks from "./logos/fireworks.svg";
 import together from "./logos/together.svg";
@@ -28,7 +26,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   openai,
   gemini,
   meta,
-  ollama: mangabaLocal,
+  mangaba: mangabaLocal,
   fireworks,
   together,
   zai,
@@ -44,7 +42,7 @@ export const PROVIDER_ORDER = [
   // "Mangaba Local" primeiro: é a única opção que um usuário recém-instalado consegue usar
   // sem criar conta em lugar nenhum nem cadastrar cartão. Enterrá-la em 5º, atrás de quatro
   // provedores pagos, fazia o onboarding começar por uma parede de cadastro.
-  "ollama",
+  "mangaba",
   "anthropic",
   "openai",
   "gemini",

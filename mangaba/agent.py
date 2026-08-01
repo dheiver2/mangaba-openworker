@@ -208,7 +208,7 @@ def build_engine(
     # ask_user: the universal human-in-the-loop Q&A primitive (every agent; engine-intercepted).
     if question_asker is not None:
         registry.register(ask_user_tool())
-    # Route by the model's `provider:` prefix (OpenAI default, Ollama, …). The manager normally
+    # Route by the model's `provider:` prefix (OpenAI default, Mangaba, …). The manager normally
     # passes its shared router; this fallback covers the TUI / direct build_engine() callers.
     # Resolved here (not at engine construction) because the explorer subagent captures it.
     provider = provider or ProviderRouter(secrets, default_provider="openai")
