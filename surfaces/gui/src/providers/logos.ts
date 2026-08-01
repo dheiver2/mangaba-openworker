@@ -39,9 +39,9 @@ export const PROVIDER_LOGOS: Record<string, string> = {
 };
 
 export const PROVIDER_ORDER = [
-  // "Mangaba Local" primeiro: é a única opção que um usuário recém-instalado consegue usar
-  // sem criar conta em lugar nenhum nem cadastrar cartão. Enterrá-la em 5º, atrás de quatro
-  // provedores pagos, fazia o onboarding começar por uma parede de cadastro.
+  // Mangaba primeiro: é a única opção que um usuário recém-instalado consegue usar sem criar
+  // conta em lugar nenhum nem cadastrar cartão. Enterrá-la em 5º, atrás de quatro provedores
+  // pagos, fazia o onboarding começar por uma parede de cadastro.
   "mangaba",
   "anthropic",
   "openai",
