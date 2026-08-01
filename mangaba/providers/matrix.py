@@ -34,6 +34,17 @@ _AGENTIC_VISION = ModelCapabilities(
 )
 
 
+# Os modelos do gateway Mangaba: o endpoint aceita `tools` mas nunca devolve tool_calls —
+# verificado em 31/07/2026, inclusive com `tool_choice: "required"`. Declarar tools=False é o
+# que impede o motor de oferecer ferramentas a quem, em vez de recusá-las, inventa o resultado.
+_MANGABA = ModelCapabilities(
+    tools=False, vision=False, pdf=False, parallel_tool_calls=False, streaming=True
+)
+_MANGABA_VISAO = ModelCapabilities(
+    tools=False, vision=True, pdf=False, parallel_tool_calls=False, streaming=True
+)
+
+
 @dataclass(frozen=True)
 class ModelEntry:
     label: str  # UI display name, e.g. "GLM-5.2 · via Together"
@@ -41,6 +52,13 @@ class ModelEntry:
 
 
 MATRIX: dict[str, ModelEntry] = {
+    # -- Mangaba (gateway próprio, sem chave) -----------------------------------
+    # Ficam na matriz, e não numa consulta ao vivo, para o seletor não depender de rede a
+    # cada montagem. `get_settings` ainda os esconde quando o gateway não responde
+    # (sonda de liveness), então nunca oferecemos o que não vai funcionar.
+    "mangaba:mangaba-chat": ModelEntry("Mangaba Chat", _MANGABA),
+    "mangaba:mangaba-code": ModelEntry("Mangaba Código", _MANGABA),
+    "mangaba:mangaba-vision": ModelEntry("Mangaba Visão", _MANGABA_VISAO),
     # -- first-party ------------------------------------------------------------
     # GPT-5.6 (2026-07-09): number = generation, Sol/Terra/Luna = capability tiers.
     # Bare "gpt-5.6" aliases to Sol server-side; we list the explicit tier ids only.

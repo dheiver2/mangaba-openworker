@@ -9,7 +9,7 @@ from mangaba.config import load_config
 
 def test_defaults_when_no_files(tmp_path):
     cfg = load_config(global_path=tmp_path / "nope.toml")
-    assert cfg.model == "gpt-5.6-sol"
+    assert cfg.model == "mangaba:mangaba-chat"
     assert cfg.mode == "interactive"
     assert cfg.max_iterations == 150
     assert cfg.allowed_commands == []

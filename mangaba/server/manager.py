@@ -110,7 +110,7 @@ class SessionManager:
         *,
         workspace: Optional[str | Path] = None,  # default/seed workspace (e.g. --cwd)
         data_dir: Optional[str | Path] = None,
-        model: str = "gpt-5.6-sol",
+        model: str = "mangaba:mangaba-chat",
         mode: Mode = Mode.INTERACTIVE,
         provider: Optional[ProviderClient] = None,
     ) -> None:
@@ -1562,10 +1562,19 @@ class SessionManager:
             if avail:
                 added = f"{name}:{avail[0]}"
                 self.add_model(added)
-        # First working provider wins the default: if the current default model belongs to a
-        # provider with no usable config (the fresh-install gpt-5.6-sol case), switch the default to
-        # this provider's model. A default that already works is never stolen.
-        if added and not self._provider_configured(self._model_provider(self.model)):
+        # O primeiro provedor que funciona assume o padrão — e um padrão que já funciona não
+        # é roubado. Uma exceção deliberada: o padrão de fábrica é o modelo da casa, que
+        # conversa mas NÃO executa ferramentas. Quem cadastra uma chave foi atrás disso e
+        # ganha um modelo que faz o agente trabalhar de verdade; manter o de fábrica ali
+        # seria entregar menos do que a pessoa acabou de habilitar.
+        from ..providers.capabilities import capabilities_for
+
+        atual_serve = self._provider_configured(self._model_provider(self.model))
+        atual_usa_ferramentas = capabilities_for(self.model).tools
+        novo_usa_ferramentas = bool(added) and capabilities_for(added).tools
+        if added and (
+            not atual_serve or (not atual_usa_ferramentas and novo_usa_ferramentas)
+        ):
             self.set_default_model(added)
         return {"ok": True, "provider": name, "recommended_model": rec}
 
@@ -1715,6 +1724,10 @@ class SessionManager:
         user = self._prefs.get("models")
         user = user if isinstance(user, list) else []
         hidden = set(self._prefs.get("hidden_models") or [])
+        # Os modelos da casa vivem na MATRIX (não numa consulta ao vivo): sem chave para
+        # cadastrar nem instalação para fazer, exigir um "Detectar" antes de aparecerem só
+        # criaria burocracia entre abrir o app e conversar — e uma consulta de rede aqui
+        # tornaria o seletor dependente do gateway a cada montagem.
         models = [m for m in [*MATRIX, *user] if m not in hidden]
         return list(dict.fromkeys([self.model, *models]))
 

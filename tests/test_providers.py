@@ -394,7 +394,11 @@ def test_matrix_labels_and_custom_model_fallback():
     assert labels["zai:glm-5.2"] == "GLM-5.2 · Z AI"
     # Deliberately small: agent-capable current models only (owner call, 2026-07-04).
     assert len(MATRIX) < 40
-    assert all(e.caps.tools for e in MATRIX.values())
+    # Todo modelo de TERCEIRO na matriz é agêntico (é o critério para entrar). Os da casa
+    # não: o gateway não executa ferramentas, e fingir que sim faria o motor oferecê-las a
+    # quem responde inventando o resultado.
+    assert all(e.caps.tools for k, e in MATRIX.items() if not k.startswith("mangaba:"))
+    assert not any(e.caps.tools for k, e in MATRIX.items() if k.startswith("mangaba:"))
     # A custom (unlisted) reseller model falls back to the conservative default — usable,
     # but at the user's own risk (no parallel tool calls assumed).
     caps = capabilities_for("together:some-org/Brand-New-Model")

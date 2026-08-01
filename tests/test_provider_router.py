@@ -318,9 +318,9 @@ def test_manager_provider_config(tmp_path, monkeypatch):
 
 
 def test_manager_curated_models(tmp_path, monkeypatch):
-    """No seed list: the picker is the curated matrix filtered to key-holding providers,
-    plus user-added custom ids. A fresh install shows only the (not-yet-usable) default.
-    """
+    """O seletor é a matriz curada, filtrada aos provedores com chave, mais os ids que o
+    usuário adicionou. Instalação nova mostra os modelos da casa (sem chave, prontos) e
+    nada de terceiro."""
     monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
     from mangaba.providers.registry import provider_descriptors
 
@@ -329,15 +329,17 @@ def test_manager_curated_models(tmp_path, monkeypatch):
             monkeypatch.delenv(d.env_key, raising=False)
     from mangaba.server.manager import SessionManager
 
-    # `mangaba:*` selectability is an HTTP probe of a local server; pin it so this test
-    # covers picker mechanics only (the probe itself is covered by
-    # test_settings.py::test_mangaba_models_gated_on_liveness). Unpinned, the ollama
-    # assertions below pass only where Ollama happens to run — green on a dev box, red in CI.
+    # A selecionabilidade dos `mangaba:*` é uma sonda HTTP ao gateway; fixamos aqui para o
+    # teste cobrir só a mecânica do seletor (a sonda tem teste próprio em
+    # test_settings.py::test_mangaba_models_gated_on_liveness). Sem fixar, estas asserções
+    # passariam apenas quando o gateway estivesse no ar.
     monkeypatch.setattr(SessionManager, "_mangaba_alive", lambda self: True)
 
     mgr = SessionManager(data_dir=tmp_path)
-    # no provider keys → nothing but the always-selectable default
-    assert mgr.get_settings()["models"] == [mgr.model]
+    # sem chave nenhuma: só os modelos da casa, que não precisam de chave
+    modelos = mgr.get_settings()["models"]
+    assert mgr.model in modelos
+    assert all(m.startswith("mangaba:") for m in modelos), modelos
 
     # a provider key unlocks exactly that provider's matrix models
     mgr.set_provider("anthropic", {"api_key": "sk-ant-test"})
@@ -465,11 +467,10 @@ def test_first_configured_provider_wins_default(tmp_path, monkeypatch):
     from mangaba.server.manager import SessionManager
 
     mgr = SessionManager(data_dir=tmp_path)
-    assert (
-        mgr.model == "gpt-5.6-sol"
-    )  # fresh install: built-in default, openai unconfigured
+    # Instalação nova já sai conversando: o modelo da casa não pede chave nem cadastro.
+    assert mgr.model == "mangaba:mangaba-chat"
 
-    # the first provider that gets a key takes over the default
+    # ...e quem cadastra uma chave assume o padrão, porque escolheu fazer isso
     mgr.set_provider("anthropic", {"api_key": "sk-ant-x"})
     assert mgr.model == "anthropic:claude-fable-5"
 

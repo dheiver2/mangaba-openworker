@@ -26,7 +26,9 @@ DEFAULT_ALLOWED_COMMANDS: list[str] = []
 
 @dataclass
 class Config:
-    model: str = "gpt-5.6-sol"
+    # Padrão de fábrica é o modelo da casa: sem chave, sem cadastro, funciona ao abrir.
+    # Qualquer provedor com chave assume o padrão assim que for configurado (set_provider).
+    model: str = "mangaba:mangaba-chat"
     mode: str = "interactive"
     max_iterations: int = 150
     allowed_commands: list[str] = field(
