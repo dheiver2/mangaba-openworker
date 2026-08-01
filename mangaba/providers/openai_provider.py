@@ -144,12 +144,12 @@ class OpenAIProvider(ProviderClient):
         tools: Optional[list[dict[str, Any]]] = None,
         **settings: Any,
     ) -> AssistantTurn:
-        kwargs: dict[str, Any] = {
-            "model": model,
-            "messages": _strip_foreign_sidecars(messages),
-            **settings,
-        }
-        if tools:
+        nativo = self.capabilities(model).tools
+        msgs = _strip_foreign_sidecars(messages)
+        if tools and not nativo:
+            msgs = _mensagens_com_protocolo(msgs, tools)
+        kwargs: dict[str, Any] = {"model": model, "messages": msgs, **settings}
+        if tools and nativo:
             kwargs["tools"] = tools
         _pin_reasoning_effort(kwargs)
 
@@ -187,13 +187,17 @@ class OpenAIProvider(ProviderClient):
         tools: Optional[list[dict[str, Any]]] = None,
         **settings: Any,
     ):
+        nativo = self.capabilities(model).tools
+        msgs = _strip_foreign_sidecars(messages)
+        if tools and not nativo:
+            msgs = _mensagens_com_protocolo(msgs, tools)
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": _strip_foreign_sidecars(messages),
+            "messages": msgs,
             "stream": True,
             **settings,
         }
-        if tools:
+        if tools and nativo:
             kwargs["tools"] = tools
         _pin_reasoning_effort(kwargs)
         client = self._ensure_client()
@@ -333,6 +337,65 @@ def _maybe_salvage_tool_calls(
     if salvaged:
         return None, salvaged
     return text, tool_calls
+
+
+# ---- ferramentas por PROMPT (para APIs sem function calling nativo) ----------------
+# Alguns endpoints compatíveis com OpenAI aceitam o parâmetro `tools` e simplesmente o
+# ignoram — o gateway Mangaba é assim (verificado em 31/07/2026, inclusive com
+# `tool_choice: "required"`). Pior que ignorar: o modelo, sem saber que existem
+# ferramentas, INVENTA o resultado — pedimos uma listagem de arquivos e ele escreveu uma
+# saída de `ls` que nunca rodou.
+#
+# A saída é ensinar o protocolo no prompt e ler a resposta de volta: o modelo escreve um
+# bloco <tool_call>, que `_salvage_tool_calls_from_text` (já usada para modelos que emitem
+# chamadas como texto) converte em chamadas de verdade. Assim o agente lê arquivos, roda
+# comandos e usa conectores mesmo com um modelo sem suporte nativo.
+#
+# O exemplo com VALORES REAIS não é decoração: sem ele, o modelo copiava o esquema
+# (`{"path": {"type": "string"}}`) em vez do caminho do arquivo.
+_PROTOCOLO_FERRAMENTAS = """Você pode usar ferramentas para agir no computador do usuário.
+
+Para chamar uma, responda SOMENTE com o bloco abaixo, sem nenhum texto em volta,
+preenchendo os argumentos com VALORES REAIS (nunca com tipos ou exemplos):
+
+<tool_call>{{"name": "nome_da_ferramenta", "arguments": {{"chave": "valor real"}}}}</tool_call>
+
+Exemplo — para ler o arquivo relatorio.md:
+<tool_call>{{"name": "read_file", "arguments": {{"path": "relatorio.md"}}}}</tool_call>
+
+Chame UMA ferramenta por vez e espere o resultado antes da próxima.
+
+Ferramentas disponíveis:
+{ferramentas}
+
+Se a pergunta não exigir ferramenta, responda normalmente em texto."""
+
+
+def _assinatura_da_ferramenta(t: dict[str, Any]) -> str:
+    fn = t.get("function") or {}
+    props = ((fn.get("parameters") or {}).get("properties") or {}).items()
+    obrig = set((fn.get("parameters") or {}).get("required") or [])
+    args = ", ".join(
+        f'"{k}": <{v.get("type", "string")}{"" if k in obrig else ", opcional"}>'
+        for k, v in props
+    )
+    desc = (fn.get("description") or "").strip().splitlines()
+    return f'- {fn.get("name")}({args}) — {desc[0] if desc else ""}'
+
+
+def _mensagens_com_protocolo(
+    messages: list[dict[str, Any]], tools: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Prefixa o protocolo de ferramentas à mensagem de sistema (ou cria uma)."""
+    bloco = _PROTOCOLO_FERRAMENTAS.format(
+        ferramentas="\n".join(_assinatura_da_ferramenta(t) for t in tools)
+    )
+    saida = list(messages)
+    for i, m in enumerate(saida):
+        if m.get("role") == "system":
+            saida[i] = {**m, "content": f'{bloco}\n\n{m.get("content") or ""}'.strip()}
+            return saida
+    return [{"role": "system", "content": bloco}, *saida]
 
 
 def _tool_index(

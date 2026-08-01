@@ -390,15 +390,10 @@ class TurnEngine:
         thread + queue, so text deltas surface live without blocking the event loop."""
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
-        # Modelo que não sabe chamar ferramenta não pode RECEBER ferramentas: o gateway
-        # Mangaba, por exemplo, aceita o parâmetro e responde inventando o resultado (uma
-        # saída de `ls` que nunca rodou). Sem a lista, ele responde como o que é — um chat.
+        # As ferramentas vão SEMPRE. Quem não tem function calling nativo (gateway Mangaba)
+        # as recebe descritas no prompt e responde com um bloco <tool_call>, convertido de
+        # volta em chamadas reais — ver `_mensagens_com_protocolo` no provedor OpenAI.
         tools = self.registry.schemas() or None
-        try:
-            if not getattr(self.provider.capabilities(self.model), "tools", True):
-                tools = None
-        except Exception:
-            pass  # provedor sem tabela de capacidades: mantém o comportamento de sempre
         model, messages, settings = (
             self.model,
             self._outbound_messages(),

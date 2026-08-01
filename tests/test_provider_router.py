@@ -573,38 +573,90 @@ def test_manager_key_hygiene_stamps(tmp_path, monkeypatch):
     assert provs2["deepseek"]["last_used_at"] == first
 
 
-def test_motor_nao_oferece_ferramentas_a_quem_nao_sabe_usar(monkeypatch):
-    """O gateway aceita `tools` e responde INVENTANDO o resultado (pedimos uma listagem de
-    arquivos e ele escreveu uma saída de `ls` que nunca rodou). Como o agente manda 19
-    ferramentas em todo turno, sem esta guarda toda conversa com um modelo Mangaba viraria
-    fabricação com cara de trabalho feito. O motor precisa CALAR as ferramentas quando o
-    provedor declara que não as executa."""
-    import tempfile
+def test_ferramentas_viram_protocolo_no_prompt_para_api_sem_suporte_nativo():
+    """Endpoints que aceitam `tools` e o ignoram (gateway Mangaba) deixavam o modelo INVENTAR
+    o resultado — pedimos uma listagem de arquivos e ele escreveu uma saída de `ls` que nunca
+    rodou. Em vez de calar as ferramentas (que tiraria do agente ler arquivo, rodar comando e
+    usar conector), ensinamos o protocolo no prompt: o parâmetro nativo não vai, mas a
+    descrição das ferramentas vai, e a resposta é convertida de volta em chamadas reais."""
+    from mangaba.providers.openai_provider import (
+        OpenAIProvider,
+        _mensagens_com_protocolo,
+        _salvage_tool_calls_from_text,
+    )
 
-    from mangaba.agent import build_engine
-    from mangaba.agents import code_agent
+    ferramentas = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "Lê um arquivo do disco",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+            },
+        }
+    ]
 
-    eng = build_engine(agent=code_agent(), workspace=tempfile.mkdtemp(), model="mangaba:mangaba-chat")
-    assert eng.registry.schemas(), "o agente tem ferramentas registradas"
+    capturado = {}
 
-    enviado = {}
+    class ClienteFalso:
+        class chat:  # noqa: N801 - espelha a forma do SDK
+            class completions:
+                @staticmethod
+                def create(**kwargs):
+                    capturado.update(kwargs)
+                    raise RuntimeError("parar aqui: só queremos inspecionar a requisição")
 
-    class ProvedorFalso:
-        def capabilities(self, model):
-            from mangaba.providers.capabilities import capabilities_for
+    prov = OpenAIProvider(client=ClienteFalso(), api_key="x")
+    try:
+        prov.complete(
+            model="mangaba:mangaba-chat",
+            messages=[{"role": "user", "content": "leia o README.md"}],
+            tools=ferramentas,
+        )
+    except Exception:
+        pass
 
-            return capabilities_for(model)
+    # o parâmetro nativo NÃO vai (a API o ignoraria)...
+    assert "tools" not in capturado
+    # ...mas o protocolo e a assinatura da ferramenta vão, no sistema
+    sistema = capturado["messages"][0]
+    assert sistema["role"] == "system"
+    assert "<tool_call>" in sistema["content"]
+    assert "read_file(" in sistema["content"]
 
-        def stream(self, *a, **k):
-            enviado["tools"] = k.get("tools")
-            return iter(())
+    # e a resposta do modelo volta a ser uma chamada de verdade
+    calls = _salvage_tool_calls_from_text(
+        '<tool_call>{"name": "read_file", "arguments": {"path": "README.md"}}</tool_call>',
+        ferramentas,
+    )
+    assert [(c.name, c.arguments) for c in calls] == [("read_file", {"path": "README.md"})]
 
-    eng.provider = ProvedorFalso()
-    import asyncio
+    # já um modelo COM suporte nativo continua recebendo o parâmetro, sem protocolo no prompt
+    capturado.clear()
+    try:
+        prov.complete(
+            model="anthropic:claude-fable-5",
+            messages=[{"role": "user", "content": "oi"}],
+            tools=ferramentas,
+        )
+    except Exception:
+        pass
+    assert capturado.get("tools") == ferramentas
+    assert not any("<tool_call>" in (m.get("content") or "") for m in capturado["messages"])
 
-    async def rodar():
-        async for _ in eng._astream():
-            pass
 
-    asyncio.run(rodar())
-    assert enviado["tools"] is None, "ferramentas não podem ir para um modelo que não as chama"
+def test_protocolo_preserva_a_mensagem_de_sistema_existente():
+    """O prompt do agente é a mensagem de sistema — o protocolo se soma a ele, nunca o
+    substitui, senão o agente perderia suas instruções."""
+    from mangaba.providers.openai_provider import _mensagens_com_protocolo
+
+    msgs = _mensagens_com_protocolo(
+        [{"role": "system", "content": "VOCE E O MANGABA"}, {"role": "user", "content": "oi"}],
+        [{"type": "function", "function": {"name": "f", "parameters": {}}}],
+    )
+    assert len(msgs) == 2
+    assert "VOCE E O MANGABA" in msgs[0]["content"] and "<tool_call>" in msgs[0]["content"]
