@@ -184,6 +184,13 @@ def build_engine(
                     routing_targets=routing_targets,
                 )
             )
+    # Capacidades servidas pelo gateway Mangaba (geração de imagem). Ficam disponíveis para
+    # QUALQUER modelo agêntico: os modelos do gateway não chamam ferramentas, mas Claude e
+    # OpenAI chamam — então o usuário ganha a capacidade sem cadastrar mais nenhuma chave.
+    from .tools.mangaba_gateway import gateway_tools
+
+    registry.register_all(gateway_tools(secrets, str(workspace) if workspace else None))
+
     # Knowledge surfaces with a multi-root workspace can ask the user mid-task for another folder.
     if agent.family == "knowledge" and root_list:
         registry.register(request_directory_tool())
