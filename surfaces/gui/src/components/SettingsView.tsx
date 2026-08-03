@@ -1,14 +1,11 @@
 import { useEffect, useState } from "react";
 import {
-  changePasscode,
-  getAuthStatus,
   getDiagnostics,
   setDailyTurnLimit,
   setSecretGuard,
   type Diagnostics,
   getSettings,
   getTrustedWorkspaces,
-  logoutPasscode,
   setOnboarded,
   setPdfSettings,
   setScratchBase,
@@ -435,7 +432,6 @@ function AppearanceSection() {
 
       <FilesCard />
 
-      <PasscodeCard />
 
       <GuardrailsCard />
 
@@ -480,138 +476,11 @@ function AppearanceSection() {
   );
 }
 
-// Senha local (mangaba/passcode.py): trocar exige a atual, e "Sair" fecha a sessão
-// desta máquina — o LoginGate reaparece na hora.
-function PasscodeCard() {
-  const [configured, setConfigured] = useState<boolean | null>(null);
-  const [open, setOpen] = useState(false);
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [msg, setMsg] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    getAuthStatus()
-      .then((s) => setConfigured(s.configured))
-      .catch(() => setConfigured(null));
-  }, []);
-
-  const reset = () => {
-    setOpen(false);
-    setCurrent("");
-    setNext("");
-    setConfirm("");
-  };
-
-  const save = async () => {
-    if (next !== confirm) {
-      setMsg({ tone: "err", text: "as duas senhas novas não são iguais" });
-      return;
-    }
-    setBusy(true);
-    setMsg(null);
-    try {
-      const out = await changePasscode(current, next);
-      if (out.ok) {
-        reset();
-        setMsg({ tone: "ok", text: "Senha trocada. As outras sessões foram encerradas." });
-      } else {
-        setMsg({ tone: "err", text: out.error || "não foi possível trocar a senha" });
-      }
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (configured === null) return null;
-  return (
-    <div className={CARD + " p-4 mb-4"} data-testid="passcode-card">
-      <div className={FIELD_LABEL}>Senha de acesso</div>
-      <div className={FIELD_HELP}>
-        {configured
-          ? "Pedida ao abrir o Mangaba nesta máquina. Guardada como hash, apenas aqui."
-          : "Nenhuma senha definida — o Mangaba abre direto. Reinicie o app para criá-la."}
-      </div>
-
-      {configured && !open && (
-        <div className="flex items-center gap-2 mt-3">
-          <button className={BTN_BORDERED} onClick={() => setOpen(true)}>
-            Trocar senha
-          </button>
-          <button
-            className={BTN_BORDERED}
-            onClick={() => void logoutPasscode()}
-            data-testid="passcode-logout"
-          >
-            Sair
-          </button>
-        </div>
-      )}
-
-      {configured && open && (
-        <div className="mt-3 space-y-2 max-w-[320px]">
-          <input
-            className={INPUT}
-            type="password"
-            placeholder="senha atual"
-            value={current}
-            onChange={(e) => setCurrent(e.target.value)}
-          />
-          <input
-            className={INPUT}
-            type="password"
-            placeholder="nova senha (mín. 6 caracteres)"
-            value={next}
-            onChange={(e) => setNext(e.target.value)}
-          />
-          <input
-            className={INPUT}
-            type="password"
-            placeholder="confirme a nova senha"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && void save()}
-          />
-          <div className="flex items-center gap-2">
-            <button
-              className={BTN_ACCENT}
-              disabled={busy || !current || !next || !confirm}
-              onClick={() => void save()}
-            >
-              {busy ? "Salvando…" : "Salvar"}
-            </button>
-            <button className="text-[12.5px] text-faint hover:text-muted" onClick={reset}>
-              cancelar
-            </button>
-          </div>
-        </div>
-      )}
-
-      {msg && (
-        <div
-          className={
-            "text-[12.5px] mt-2.5 " + (msg.tone === "ok" ? "text-muted" : "text-danger")
-          }
-        >
-          {msg.text}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Guarda-corpos locais (mangaba/guardrails.py): protetor de segredos, freio de gastos
-// e o auto-bloqueio (este último vive na GUI — LoginGate).
-export const AUTOLOCK_KEY = "mangaba:autolock-min";
-
+// Guarda-corpos locais (mangaba/guardrails.py): protetor de segredos e freio de gastos.
 function GuardrailsCard() {
   const [guard, setGuard] = useState<boolean | null>(null);
   const [limit, setLimit] = useState(0);
   const [used, setUsed] = useState(0);
-  const [lockMin, setLockMin] = useState<number>(() => {
-    try { return parseInt(localStorage.getItem(AUTOLOCK_KEY) || "0", 10) || 0; } catch { return 0; }
-  });
 
   useEffect(() => {
     getSettings()
@@ -622,12 +491,6 @@ function GuardrailsCard() {
       })
       .catch(() => setGuard(true));
   }, []);
-
-  const saveLock = (n: number) => {
-    const v = Math.max(0, Math.min(n || 0, 480));
-    setLockMin(v);
-    try { localStorage.setItem(AUTOLOCK_KEY, String(v)); } catch { /* melhor esforço */ }
-  };
 
   if (guard === null) return null;
   return (
@@ -673,23 +536,6 @@ function GuardrailsCard() {
         />
       </div>
 
-      <div className="flex items-center gap-3 py-2">
-        <span className="min-w-0 flex-1">
-          <span className="block text-[13px] text-ink">Bloqueio automático</span>
-          <span className="block text-[12px] text-muted">
-            Minutos parado até pedir a senha de novo (0 = nunca).
-          </span>
-        </span>
-        <input
-          type="number"
-          min={0}
-          max={480}
-          value={lockMin}
-          data-testid="autolock-min"
-          className="w-20 px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
-          onChange={(e) => saveLock(parseInt(e.target.value, 10))}
-        />
-      </div>
     </div>
   );
 }

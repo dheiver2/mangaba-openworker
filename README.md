@@ -45,8 +45,8 @@ integrações que **você** escolher.
 | **macOS** (Apple Silicon) | [`.dmg`](https://github.com/dheiver2/mangaba-openworker/releases/latest) | `brew tap dheiver2/mangaba && brew install --cask mangaba` |
 | **Windows** (x64) | [`.exe`](https://github.com/dheiver2/mangaba-openworker/releases/latest) | `winget install DheiverSantos.Mangaba` *(em aprovação)* |
 
-Abra o app, **crie a senha de acesso** e peça algo de verdade — com a sua chave de API ou
-com o Mangaba Local (veja abaixo).
+Abra o app e peça algo de verdade — com a sua chave de API ou com o Mangaba Local
+(veja abaixo).
 
 > **Instaladores ainda não assinados.** No macOS: Ajustes do Sistema ▸ Privacidade e
 > Segurança ▸ "Abrir Mesmo Assim" na primeira execução. No Windows: SmartScreen ▸ "Mais
@@ -69,7 +69,7 @@ Um container só — o servidor Python serve a própria interface:
 docker compose up -d
 ```
 
-Abra http://127.0.0.1:8765, crie a senha e pronto. A porta é publicada apenas em
+Abra http://127.0.0.1:8765 e pronto. A porta é publicada apenas em
 `127.0.0.1`. Os dados persistem no volume `mangaba-dados` e a pasta `~/Mangaba` fica
 visível ao agente.
 
@@ -141,18 +141,10 @@ identificador de modelo funciona por sua conta e risco.
 
 ## Segurança e acesso
 
-O app abre atrás de uma **senha local**. O token do sidecar prova que a chamada saiu desta
-máquina; a senha prova que é a **pessoa** certa nela.
-
-- Guardada como hash PBKDF2-HMAC-SHA256 (salt de 16 bytes, 480 mil iterações) em
-  `<state-dir>/passcode.json`, permissão `0600`. A senha em claro nunca é gravada nem
-  registrada em log.
-- Sessões vivem **só em memória** e duram 12 h: reiniciar o servidor exige a senha de novo.
-- Cinco tentativas erradas bloqueiam por 60 segundos.
-- Trocar a senha (Configurações ▸ Senha de acesso) exige a atual e derruba as outras sessões.
-
-**Esqueceu a senha?** Apague `~/.config/mangaba/passcode.json` — o app pede uma nova na
-próxima abertura. Não há recuperação: só o hash existe, e ele nunca sai da sua máquina.
+O app abre direto — sem tela de login. A proteção é o **token do sidecar**: gerado por
+execução, ele prova que cada chamada à API saiu desta máquina, e a porta só é publicada
+em `127.0.0.1`. Quem tem acesso físico ao computador destravado tem acesso ao app, como a
+qualquer outro app do desktop.
 
 ## Privacidade
 
@@ -196,8 +188,7 @@ Para o app desktop completo em vez da interface no navegador, troque o passo 3 p
 
 O servidor standalone cria um token por execução em `<state-dir>/sidecar-8765.token`; o Vite
 lê esse arquivo ao iniciar. Para chamadas diretas à API, mande o valor no cabeçalho
-`X-Mangaba-Token` — e, se já houver senha, a sessão em `X-Mangaba-Session`. O app desktop usa
-um token em memória e nunca o grava em disco.
+`X-Mangaba-Token`. O app desktop usa um token em memória e nunca o grava em disco.
 
 ### Testes
 
@@ -235,7 +226,7 @@ montar um manifesto que quebraria os clientes.
 
 | Diretório | O que tem dentro |
 |---|---|
-| `mangaba/` | Backend Python — motor do agente, provedores de modelo, conectores, cliente MCP, memória, automações, senha local |
+| `mangaba/` | Backend Python — motor do agente, provedores de modelo, conectores, cliente MCP, memória, automações |
 | `surfaces/gui/` | App desktop — interface React + shell Tauri que supervisiona o servidor |
 | `surfaces/landing/` | Landing page estática (PT-BR, responsiva, tema claro/escuro) |
 | `packaging/` | Builds de instalador, manifesto de atualização, testes de empacotamento, bootstrap de desenvolvimento |

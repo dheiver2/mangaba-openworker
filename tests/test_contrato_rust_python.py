@@ -116,17 +116,17 @@ def test_valores_injetados_sao_os_que_a_gui_le(chave, rust):
 
 
 def test_cabecalhos_de_autenticacao_batem():
-    """Dois cabeçalhos, dois papéis: o token prova mesma máquina, a sessão prova
-    que é a pessoa certa nela. Renomear um sem o outro tranca o app."""
+    """O token do sidecar prova que a chamada saiu desta máquina. Renomear o cabeçalho
+    só de um lado tranca o app (a senha local/X-Mangaba-Session saiu em ago/2026)."""
     ts = API_TS.read_text(encoding="utf-8")
     servidor = (RAIZ / "mangaba" / "server" / "app.py").read_text(encoding="utf-8")
 
-    for cabecalho in ("X-Mangaba-Token", "X-Mangaba-Session"):
-        assert cabecalho in ts, f"a GUI parou de enviar {cabecalho}"
-        # O FastAPI/Starlette normaliza para minúsculas na leitura.
-        assert cabecalho.lower() in servidor.lower(), (
-            f"o servidor nao le mais {cabecalho} — toda requisicao da GUI vira 401"
-        )
+    cabecalho = "X-Mangaba-Token"
+    assert cabecalho in ts, f"a GUI parou de enviar {cabecalho}"
+    # O FastAPI/Starlette normaliza para minúsculas na leitura.
+    assert cabecalho.lower() in servidor.lower(), (
+        f"o servidor nao le mais {cabecalho} — toda requisicao da GUI vira 401"
+    )
 
 
 # --------------------------------------------------------------------------

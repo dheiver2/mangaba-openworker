@@ -1,7 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./App";
-import { LoginGate } from "./components/LoginGate";
 import { initTheme } from "./theme";
 import { platformOS } from "./tauri";
 import "./tailwind.css";
@@ -20,10 +19,6 @@ window.addEventListener("drop", (e) => e.preventDefault());
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    {/* Nada do App monta antes de destravar, então nenhuma chamada autenticada sai
-        antes da senha (ver components/LoginGate.tsx). */}
-    <LoginGate>
-      <App />
-    </LoginGate>
+    <App />
   </React.StrictMode>,
 );
