@@ -113,6 +113,12 @@ export function Composer(props: Props) {
   const slashMatches = (slashSkills ?? []).filter((s) =>
     s.name.toLowerCase().includes(slashQuery ?? ""),
   );
+  // Ao digitar mais uma letra, a lista filtrada encolhe; sem reancorar o índice ele
+  // aponta para fora do array e o Enter (que lê slashMatches[slashIndex]) vira no-op
+  // silencioso, sem linha destacada. Prende o índice ao intervalo válido.
+  useEffect(() => {
+    setSlashIndex((i) => Math.min(i, Math.max(slashMatches.length - 1, 0)));
+  }, [slashMatches.length]);
   useEffect(() => {
     // Fetch on each popup open (fresh menu); drop when closed.
     if (slashQuery === null) {

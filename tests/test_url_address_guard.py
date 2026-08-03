@@ -176,3 +176,12 @@ def test_browser_open_url_is_guarded_and_never_launches(monkeypatch):
     out = open_url("http://169.254.169.254/latest/meta-data/")
     assert "link-local" in out["error"]
     assert out.get("ok") is None
+
+
+def test_check_url_porta_invalida_devolve_motivo_sem_levantar():
+    """Contrato: check_url SEMPRE devolve um motivo, nunca levanta (browser_open_url
+    o chama fora de try/except). Uma porta fora de 0–65535 levantava ValueError."""
+    from mangaba.web.guard import check_url
+
+    reason = check_url("http://exemplo.com:99999/")
+    assert reason is not None and "invalid port" in reason

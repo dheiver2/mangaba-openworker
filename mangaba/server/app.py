@@ -1470,6 +1470,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             threshold_pct=b.get("compaction_threshold_pct"),
             cap_tokens=b.get("compaction_cap_tokens"),
             model=b.get("compaction_model"),
+            enabled=b.get("compaction_enabled"),
         )
 
     # -- motor local (Mangaba Local: llama.cpp embutido) -------------------------

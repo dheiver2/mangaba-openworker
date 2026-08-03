@@ -228,6 +228,11 @@ def test_set_compaction_settings_validates_and_round_trips(tmp_path):
     payload = mgr.compaction_settings_payload()
     assert payload["compaction_threshold_pct"] == 0.5
     assert payload["compaction_model"] == "gpt-4o-mini"
+    # o toggle liga/desliga a auto-compactação (o engine checa `enabled is False`)
+    assert mgr.compaction_settings()["enabled"] is True  # ligada por padrão
+    assert mgr.set_compaction_settings(enabled=False)["enabled"] is False
+    assert mgr.compaction_settings_payload()["compaction_enabled"] is False
+    assert mgr.set_compaction_settings(enabled=True)["enabled"] is True
 
 
 def test_compaction_state_survives_save_and_rebuild(tmp_path):

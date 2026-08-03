@@ -108,3 +108,50 @@ def test_build_local_aponta_para_o_llama_server():
 
     client = build_provider_client("local", {}, secrets=None)
     assert client._base_url == local_engine.DEFAULT_HOST + "/v1"
+
+
+def test_kill_stale_process_mata_pid_orfao(tmp_path, monkeypatch):
+    """Quit do desktop = SIGKILL, que pula o stop(); quem sobe depois lê o PID
+    persistido e mata o llama-server órfão antes de tentar subir o seu."""
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path))
+    local_engine._write_pidfile(4242)
+    mortos = []
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(local_engine.os, "kill", lambda pid, sig: mortos.append((pid, sig)))
+    local_engine._kill_stale_process()
+    assert mortos == [(4242, 9)]
+    assert not local_engine._pidfile().exists()  # limpo depois de matar
+
+
+def test_kill_stale_process_sem_pidfile_e_noop(tmp_path, monkeypatch):
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path))
+    local_engine._pidfile().unlink(missing_ok=True)
+    local_engine._kill_stale_process()  # não levanta
+
+
+def test_download_usa_os_replace_para_sobrescrever(tmp_path, monkeypatch):
+    """No Windows Path.rename falha se o destino existe; os.replace sobrescreve.
+    Garante que um .part re-baixado substitui um arquivo remanescente."""
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path))
+    dest = tmp_path / "bin" / "engine.zip"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(b"antigo")
+
+    class FakeResp:
+        headers = {"content-length": "3"}
+
+        def raise_for_status(self):
+            pass
+
+        def iter_bytes(self, chunk_size=0):
+            yield b"nov"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(local_engine.httpx, "stream", lambda *a, **k: FakeResp())
+    local_engine._download("http://x/y.zip", dest, {"progress": 0.0})
+    assert dest.read_bytes() == b"nov"  # sobrescreveu, não levantou FileExistsError

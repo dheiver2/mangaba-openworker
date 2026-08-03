@@ -63,6 +63,14 @@ def check_url(url: str) -> Optional[str]:
     if not host:
         return "url has no host"
 
+    # `parts.port` levanta ValueError se a porta estiver fora de 0–65535 ou não for
+    # numérica — e este guard promete SEMPRE devolver um motivo, nunca levantar
+    # (browser_open_url o chama fora de try/except). Resolvemos aqui.
+    try:
+        port = parts.port
+    except ValueError:
+        return "url has an invalid port"
+
     # A literal address needs no lookup.
     try:
         literal = ipaddress.ip_address(host)
@@ -73,7 +81,7 @@ def check_url(url: str) -> Optional[str]:
         return f"refusing to fetch {host}: {reason}" if reason else None
 
     try:
-        infos = socket.getaddrinfo(host, parts.port or (443 if parts.scheme == "https" else 80),
+        infos = socket.getaddrinfo(host, port or (443 if parts.scheme == "https" else 80),
                                    proto=socket.IPPROTO_TCP)
     except OSError as exc:
         return f"could not resolve {host}: {exc}"

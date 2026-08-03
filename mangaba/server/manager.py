@@ -1949,6 +1949,9 @@ class SessionManager:
         from ..compaction import DEFAULT_CAP_TOKENS, DEFAULT_THRESHOLD_PCT
 
         return {
+            # Ligada por padrão; desligar é a exceção consciente. O engine lê `enabled`
+            # a cada checagem, então o toggle vale para sessões já em curso.
+            "enabled": self._prefs.get("compaction_enabled", True) is not False,
             "threshold_pct": float(
                 self._prefs.get("compaction_threshold_pct") or DEFAULT_THRESHOLD_PCT
             ),
@@ -1963,6 +1966,7 @@ class SessionManager:
         """The same knobs under REST-facing names (prefixed to keep /v1/settings flat)."""
         settings = self.compaction_settings()
         return {
+            "compaction_enabled": settings["enabled"],
             "compaction_threshold_pct": settings["threshold_pct"],
             "compaction_cap_tokens": settings["cap_tokens"],
             "compaction_model": settings["model"],
@@ -1973,6 +1977,7 @@ class SessionManager:
         threshold_pct: Any = None,
         cap_tokens: Any = None,
         model: Any = None,
+        enabled: Any = None,
     ) -> dict[str, Any]:
         """Persist the auto-compaction overrides (OPE-27). Threshold is a percentage of
         the model's context window (10–95); the cap is an absolute token ceiling; model
@@ -1998,6 +2003,8 @@ class SessionManager:
                 return {"ok": False, "error": "compaction_cap_tokens precisa ser um número"}
         if model is not None:
             self._prefs["compaction_model"] = str(model)
+        if enabled is not None:
+            self._prefs["compaction_enabled"] = bool(enabled)
         self._save_prefs()
         return {"ok": True, **self.compaction_settings()}
 

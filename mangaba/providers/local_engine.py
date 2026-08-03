@@ -252,7 +252,7 @@ def _download(url: str, dest: Path, state: dict[str, Any]) -> None:
                 done += len(chunk)
                 if total:
                     state["progress"] = done / total
-    part.rename(dest)
+    os.replace(part, dest)  # não Path.rename: no Windows ele falha se dest já existe
 
 
 def pull(tag: str) -> dict[str, Any]:
@@ -309,6 +309,7 @@ def ensure_running(tag: Optional[str] = None, wait_s: float = 120.0) -> bool:
         if not binary:
             return False
         stop()
+        _kill_stale_process()  # órfão de um Quit anterior ainda pode segurar a porta
         path = model_path(tag)
         assert path is not None
         cmd = [
@@ -324,28 +325,70 @@ def ensure_running(tag: Optional[str] = None, wait_s: float = 120.0) -> bool:
         kwargs: dict[str, Any] = {}
         if platform.system() == "Windows":
             kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
-        log = open(_state_dir() / "engine.log", "ab")
-        _proc = subprocess.Popen(cmd, stdout=log, stderr=log, env=env, **kwargs)
+        # `with` fecha a cópia do handle no pai; o filho mantém a sua — sem handle órfão
+        # acumulando a cada reinício (no Windows, um handle aberto trava o append).
+        with open(_state_dir() / "engine.log", "ab") as log:
+            _proc = subprocess.Popen(cmd, stdout=log, stderr=log, env=env, **kwargs)
         _active_tag = tag
+        # PID em disco: o cleanup do app roda por SIGKILL (Quit do desktop), que pula o
+        # nosso stop(). Quem subir depois lê o PID e mata o órfão que ficou na porta.
+        _write_pidfile(_proc.pid)
+        proc = _proc  # referência local — stop() em outra thread não a zera sob os pés
     inicio = time.monotonic()
     while time.monotonic() - inicio < wait_s:
         if is_serving():
             return True
-        if _proc.poll() is not None:
+        if proc.poll() is not None:
             return False  # morreu no load — o engine.log conta o porquê
         time.sleep(0.5)
     return False
 
 
+def _pidfile() -> Path:
+    return _state_dir() / "engine.pid"
+
+
+def _write_pidfile(pid: int) -> None:
+    try:
+        _pidfile().write_text(str(pid))
+    except OSError:
+        pass
+
+
+def _kill_stale_process() -> None:
+    """Mata um llama-server órfão de uma execução anterior (Quit do desktop = SIGKILL,
+    que pula o nosso stop()). Sem isto, a porta 8778 fica presa e o GGUF na RAM."""
+    pf = _pidfile()
+    try:
+        pid = int(pf.read_text().strip())
+    except (OSError, ValueError):
+        return
+    try:
+        if platform.system() == "Windows":
+            subprocess.run(
+                ["taskkill", "/F", "/PID", str(pid)],
+                capture_output=True,
+                creationflags=0x08000000,
+            )
+        else:
+            os.kill(pid, 9)
+    except (OSError, ProcessLookupError):
+        pass
+    finally:
+        pf.unlink(missing_ok=True)
+
+
 def stop() -> None:
     global _proc
-    if _proc and _proc.poll() is None:
-        _proc.terminate()
-        try:
-            _proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            _proc.kill()
+    proc = _proc
     _proc = None
+    if proc and proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    _pidfile().unlink(missing_ok=True)
 
 
 def autostart_em_segundo_plano() -> bool:

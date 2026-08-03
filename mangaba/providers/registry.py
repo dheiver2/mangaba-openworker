@@ -390,16 +390,28 @@ def verify_provider_key(
     key = (api_key or "").strip()
     if name == "local":
         # Sem chave: "verificar" é subir o motor (se der) e ver se ele responde.
-        from .local_engine import DEFAULT_HOST, engine_status, ensure_running
+        from .local_engine import engine_status
 
         st = engine_status()
         if not st["installed"]:
             return {"ok": False, "error": "O motor local ainda não foi instalado."}
         if not st["models"]:
             return {"ok": False, "error": "Nenhum modelo local baixado ainda."}
-        if st["running"] or ensure_running():
+        if st["running"]:
             return {"ok": True}
-        return {"ok": False, "error": "O motor local não subiu — veja o engine.log."}
+        # Motor instalado com modelo, mas parado: dispara a subida em segundo plano e
+        # devolve já. Esperar o load (dezenas de segundos, `ensure_running` síncrono)
+        # aqui seguraria uma thread do pool do uvicorn — o motor sobe e o próximo
+        # fetch de settings o vê pronto.
+        import threading
+
+        from .local_engine import ensure_running as _run
+
+        threading.Thread(target=_run, daemon=True).start()
+        return {
+            "ok": True,
+            "note": "O motor local está iniciando — o modelo ficará pronto em instantes.",
+        }
     try:
         if name == "anthropic":
             resp = httpx.get(
