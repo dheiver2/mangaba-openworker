@@ -307,7 +307,14 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     if (!p.needs_key)
       return (
         <span className="block text-[11.5px] text-faint truncate">
-          {keylessOk.has(p.name) ? <span className="text-ok font-medium">✓ Rodando</span> : "Não precisa de chave"}
+          {keylessOk.has(p.name) ? (
+            <span className="text-ok font-medium">✓ Rodando</span>
+          ) : p.configured ? (
+            // Modelo local no disco: conectado de fato, sem exigir um Detectar ritual.
+            <span className="text-ok font-medium">✓ Conectado</span>
+          ) : (
+            "Não precisa de chave"
+          )}
         </span>
       );
     return <span className="block text-[11.5px] text-faint truncate">Não configurado</span>;

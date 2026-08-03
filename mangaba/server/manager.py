@@ -1461,7 +1461,11 @@ class SessionManager:
                     d.env_key and os.environ.get(d.env_key)
                 )
             else:
-                configured = True  # keyless — usable out of the box
+                # Sem chave, "configurado" = pronto de verdade: há modelo local no disco.
+                # É o que faz o card mostrar ✓ sem exigir um Detectar ritual.
+                from ..providers import local_engine
+
+                configured = bool(local_engine.downloaded_tags())
             values = {
                 f.key: profile.get(f.key)
                 for f in d.fields
