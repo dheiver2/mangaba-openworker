@@ -23,6 +23,12 @@ DEFAULT_INBOX = "default"
 # to Mangaba (2026-07-22); the legacy [ocw:…] spelling stays parseable so replies to
 # messages sent before the rename still resolve.
 _ID_TOKEN = re.compile(r"\[o(?:c)?w:([0-9a-f]{6,})\]")
+_ALLOW_WORDS = re.compile(
+    r"\b(?:approve|approved|allow|allowed|yes|aprovo|aprovar|aprovado|permitir|sim|pode)\b"
+)
+_DENY_WORDS = re.compile(
+    r"\b(?:deny|denied|reject|rejected|no|nego|negar|negado|rejeitar|recusar|não|nao)\b"
+)
 
 
 @dataclass
@@ -130,9 +136,11 @@ def resolve_from_reply(
         return None
     item_id = m.group(1)
     lowered = reply.lower()
-    if any(w in lowered for w in ("approve", "allow", "yes", "👍", "✅")):
+    # Palavras inteiras apenas — o casamento por substring resolvia "disallow" como
+    # allow e "note"/"nota" como deny (fix do upstream #161, com os termos em PT).
+    if _ALLOW_WORDS.search(lowered) or "👍" in reply or "✅" in reply:
         resolution = "allow"
-    elif any(w in lowered for w in ("deny", "reject", "no", "👎", "❌")):
+    elif _DENY_WORDS.search(lowered) or "👎" in reply or "❌" in reply:
         resolution = "deny"
     else:
         resolution = _ID_TOKEN.sub("", reply).strip()  # free-text answer to a question

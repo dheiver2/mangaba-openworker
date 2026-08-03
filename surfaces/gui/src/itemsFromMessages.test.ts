@@ -83,6 +83,20 @@ describe("itemsFromMessages model switch", () => {
   });
 });
 
+describe("itemsFromMessages compaction", () => {
+  it("reexibe o marcador `compacted` persistido como aviso info (o divisor)", () => {
+    const items = itemsFromMessages([
+      { role: "user", content: "oi" },
+      { role: "notice", kind: "compacted", text: "Contexto compactado — os turnos mais antigos foram resumidos" },
+    ] as any);
+    expect(items[1]).toEqual({
+      kind: "notice",
+      tone: "info",
+      text: "Contexto compactado — os turnos mais antigos foram resumidos",
+    });
+  });
+});
+
 describe("itemsFromMessages reasoning", () => {
   it("attaches the reasoning sidecar to assistant items; thinking-only messages still render", () => {
     const items = itemsFromMessages([

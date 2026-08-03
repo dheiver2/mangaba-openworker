@@ -33,6 +33,9 @@ export function itemsFromMessages(messages: ConversationMessage[]): Item[] {
         continue;
       }
       const user = userItemFromContent(m.content);
+      // Force-run (`/skill …`): `_display` holds the user's literal line; `content` carries
+      // the model-facing framing. Render what the user typed — one truthful bubble.
+      if (typeof m._display === "string" && m._display) user.text = m._display;
       // `ts` (unix seconds) is the server's canonical-message stamp; older sessions have none.
       if (typeof m.ts === "number") user.ts = m.ts;
       if (user.text || user.attachments?.length) items.push(user);
@@ -72,7 +75,10 @@ export function itemsFromMessages(messages: ConversationMessage[]): Item[] {
           ? { kind: "notice", tone: "warn", text: "Interrompido." }
           : m.kind === "model_switch"
             ? { kind: "notice", tone: "info", text: m.text || "Modelo alterado" }
-            : { kind: "notice", tone: "warn", text: "Erro: " + (m.text || "desconhecido"), retriable: true },
+            : m.kind === "compacted"
+              ? // O divisor sutil de "compactado aqui" (OPE-27) — a transcrição em si fica intacta.
+                { kind: "notice", tone: "info", text: m.text || "Contexto compactado" }
+              : { kind: "notice", tone: "warn", text: "Erro: " + (m.text || "desconhecido"), retriable: true },
       );
     }
     // system messages are omitted; tool-result messages are folded into the tool row above

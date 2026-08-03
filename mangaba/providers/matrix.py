@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Optional
 
 from .base import ModelCapabilities
 
@@ -38,6 +39,9 @@ _AGENTIC_VISION = ModelCapabilities(
 class ModelEntry:
     label: str  # UI display name, e.g. "GLM-5.2 · via Together"
     caps: ModelCapabilities = _AGENTIC
+    # Janela de contexto máxima em tokens (lado do prompt). None = não verificada
+    # contra a spec do fornecedor ainda.
+    context_window: Optional[int] = None
 
 
 MATRIX: dict[str, ModelEntry] = {
@@ -45,32 +49,38 @@ MATRIX: dict[str, ModelEntry] = {
     # GPT-5.6 (2026-07-09): number = generation, Sol/Terra/Luna = capability tiers.
     # Bare "gpt-5.6" aliases to Sol server-side; we list the explicit tier ids only.
     # Rolling out — accounts without access get a friendly error (providers/errors.py).
-    "gpt-5.6-sol": ModelEntry("GPT-5.6 Sol · OpenAI", _AGENTIC_VISION),
-    "gpt-5.6-terra": ModelEntry("GPT-5.6 Terra · OpenAI", _AGENTIC_VISION),
-    "gpt-5.6-luna": ModelEntry("GPT-5.6 Luna · OpenAI", _AGENTIC_VISION),
-    "gpt-5.5": ModelEntry("GPT-5.5 · OpenAI", _AGENTIC_VISION),
+    "gpt-5.6-sol": ModelEntry("GPT-5.6 Sol · OpenAI", _AGENTIC_VISION, 400_000),
+    "gpt-5.6-terra": ModelEntry("GPT-5.6 Terra · OpenAI", _AGENTIC_VISION, 400_000),
+    "gpt-5.6-luna": ModelEntry("GPT-5.6 Luna · OpenAI", _AGENTIC_VISION, 400_000),
+    "gpt-5.5": ModelEntry("GPT-5.5 · OpenAI", _AGENTIC_VISION, 400_000),
     # Fable 5 (2026-06-09) is GA; its Mythos 5 sibling is approved-orgs-only, so it
     # stays out of a picker meant for the public.
     "anthropic:claude-fable-5": ModelEntry(
-        "Claude Fable 5 · Anthropic", _AGENTIC_VISION
+        "Claude Fable 5 · Anthropic", _AGENTIC_VISION, 1_000_000
     ),
     "anthropic:claude-opus-4-8": ModelEntry(
-        "Claude Opus 4.8 · Anthropic", _AGENTIC_VISION
+        "Claude Opus 4.8 · Anthropic", _AGENTIC_VISION, 200_000
     ),
     "anthropic:claude-sonnet-4-6": ModelEntry(
-        "Claude Sonnet 4.6 · Anthropic", _AGENTIC_VISION
+        "Claude Sonnet 4.6 · Anthropic", _AGENTIC_VISION, 200_000
     ),
     "anthropic:claude-haiku-4-5": ModelEntry(
-        "Claude Haiku 4.5 · Anthropic", _AGENTIC_VISION
+        "Claude Haiku 4.5 · Anthropic", _AGENTIC_VISION, 200_000
     ),
     # Gemini 3 (thought signatures required in tool loops — carried via the `_gemini`
     # message sidecar, see gemini_provider.py; ids from the vendor catalog 2026-07-22).
     "gemini:gemini-3.1-pro-preview": ModelEntry(
-        "Gemini 3.1 Pro · Google", _AGENTIC_VISION
+        "Gemini 3.1 Pro · Google", _AGENTIC_VISION, 1_048_576
     ),
-    "gemini:gemini-3.6-flash": ModelEntry("Gemini 3.6 Flash · Google", _AGENTIC_VISION),
-    "gemini:gemini-2.5-pro": ModelEntry("Gemini 2.5 Pro · Google", _AGENTIC_VISION),
-    "gemini:gemini-2.5-flash": ModelEntry("Gemini 2.5 Flash · Google", _AGENTIC_VISION),
+    "gemini:gemini-3.6-flash": ModelEntry(
+        "Gemini 3.6 Flash · Google", _AGENTIC_VISION, 1_048_576
+    ),
+    "gemini:gemini-2.5-pro": ModelEntry(
+        "Gemini 2.5 Pro · Google", _AGENTIC_VISION, 1_048_576
+    ),
+    "gemini:gemini-2.5-flash": ModelEntry(
+        "Gemini 2.5 Flash · Google", _AGENTIC_VISION, 1_048_576
+    ),
     # -- direct OpenAI-compatible vendors ----------------------------------------
     # Muse Spark (Meta Model API, public preview 2026-07-09): multimodal + tools via
     # their OpenAI-compat surface. Vision yes; PDFs unverified over compat — falls
@@ -81,43 +91,68 @@ MATRIX: dict[str, ModelEntry] = {
             tools=True, vision=True, parallel_tool_calls=True, streaming=True
         ),
     ),
-    "zai:glm-5.2": ModelEntry("GLM-5.2 · Z AI"),
-    "deepseek:deepseek-v4-flash": ModelEntry("DeepSeek V4 Flash · DeepSeek"),
-    "deepseek:deepseek-v4-pro": ModelEntry("DeepSeek V4 Pro · DeepSeek"),
-    "kimi:kimi-k2.6": ModelEntry("Kimi K2.6 · Moonshot"),
+    "zai:glm-5.2": ModelEntry("GLM-5.2 · Z AI", _AGENTIC, 128_000),
+    "deepseek:deepseek-v4-flash": ModelEntry(
+        "DeepSeek V4 Flash · DeepSeek", _AGENTIC, 128_000
+    ),
+    "deepseek:deepseek-v4-pro": ModelEntry(
+        "DeepSeek V4 Pro · DeepSeek", _AGENTIC, 128_000
+    ),
+    "kimi:kimi-k2.6": ModelEntry("Kimi K2.6 · Moonshot", _AGENTIC, 256_000),
     "minimax:MiniMax-M2.5": ModelEntry("MiniMax M2.5 · MiniMax"),
-    "qwen:qwen3-max": ModelEntry("Qwen3 Max · Alibaba"),
-    "xai:grok-4.3": ModelEntry("Grok 4.3 · xAI"),
-    "mistral:mistral-large-latest": ModelEntry("Mistral Large · Mistral"),
+    "qwen:qwen3-max": ModelEntry("Qwen3 Max · Alibaba", _AGENTIC, 256_000),
+    "xai:grok-4.3": ModelEntry("Grok 4.3 · xAI", _AGENTIC, 256_000),
+    "mistral:mistral-large-latest": ModelEntry(
+        "Mistral Large · Mistral", _AGENTIC, 128_000
+    ),
     # -- resellers (their model namespaces, verbatim) -----------------------------
     "together:thinkingmachines/Inkling": ModelEntry("Inkling · via Together"),
-    "together:zai-org/GLM-5.2": ModelEntry("GLM-5.2 · via Together"),
-    # Kimi K3 (2026-07-16) is not on Together yet — weights land ~07-27; revisit then.
-    "together:moonshotai/Kimi-K2.7-Code": ModelEntry("Kimi K2.7 Code · via Together"),
-    "together:moonshotai/Kimi-K2.6": ModelEntry("Kimi K2.6 · via Together"),
+    "together:zai-org/GLM-5.2": ModelEntry("GLM-5.2 · via Together", _AGENTIC, 128_000),
+    # Kimi K3 on Together (landed late July 2026): 1M window, native vision; PDFs
+    # unverified over the compat surface (falls back via pdf_support.py, like Muse Spark).
+    "together:moonshotai/Kimi-K3": ModelEntry(
+        "Kimi K3 · via Together",
+        ModelCapabilities(
+            tools=True, vision=True, parallel_tool_calls=True, streaming=True
+        ),
+        1_000_000,
+    ),
+    "together:moonshotai/Kimi-K2.7-Code": ModelEntry(
+        "Kimi K2.7 Code · via Together", _AGENTIC, 256_000
+    ),
+    "together:moonshotai/Kimi-K2.6": ModelEntry(
+        "Kimi K2.6 · via Together", _AGENTIC, 256_000
+    ),
     "together:deepseek-ai/DeepSeek-V4-Pro": ModelEntry(
-        "DeepSeek V4 Pro · via Together"
+        "DeepSeek V4 Pro · via Together", _AGENTIC, 128_000
     ),
     "together:meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8": ModelEntry(
-        "Llama 4 Maverick · via Together"
+        "Llama 4 Maverick · via Together", _AGENTIC, 1_000_000
     ),
     "fireworks:accounts/fireworks/models/glm-5p2": ModelEntry(
-        "GLM-5.2 · via Fireworks"
+        "GLM-5.2 · via Fireworks", _AGENTIC, 128_000
     ),
     "fireworks:accounts/fireworks/models/kimi-k2p6": ModelEntry(
-        "Kimi K2.6 · via Fireworks"
+        "Kimi K2.6 · via Fireworks", _AGENTIC, 256_000
     ),
     "fireworks:accounts/fireworks/models/deepseek-v4-pro": ModelEntry(
-        "DeepSeek V4 Pro · via Fireworks"
+        "DeepSeek V4 Pro · via Fireworks", _AGENTIC, 128_000
     ),
     "fireworks:accounts/fireworks/models/llama4-maverick-instruct-basic": ModelEntry(
-        "Llama 4 Maverick · via Fireworks"
+        "Llama 4 Maverick · via Fireworks", _AGENTIC, 1_000_000
     ),
 }
 
 
 def entry_for(model: str) -> ModelEntry | None:
     return MATRIX.get(model)
+
+
+def model_context_windows() -> dict[str, int]:
+    """Mapa id-completo → janela de contexto (só entradas verificadas)."""
+    return {
+        mid: e.context_window for mid, e in MATRIX.items() if e.context_window
+    }
 
 
 def model_labels() -> dict[str, str]:

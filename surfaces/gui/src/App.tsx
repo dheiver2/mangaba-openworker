@@ -159,6 +159,14 @@ export function App() {
   const [mode, setMode] = useState("interactive");
   const [connected, setConnected] = useState(false);
   const [running, setRunning] = useState(false);
+  // Indicador transitório "Compactando contexto…" (OPE-27): ligado pelo evento
+  // `compacting`, desligado pelo que o motor emitir em seguida — a chamada do
+  // resumidor seria, sem isso, uma pausa silenciosa de vários segundos no turno.
+  const [compacting, setCompacting] = useState(false);
+  // Configuração: mostrar a barra de preenchimento da janela de contexto no composer.
+  // DESLIGADA por padrão (pedido do dono), então um backend antigo sem o campo também
+  // mostra o total da sessão. (O chip de uso em si ainda não foi portado — OPE-42.)
+  const [contextBar, setContextBar] = useState(false);
   const [items, setItems] = useState<Item[]>([]);
   const [streaming, setStreamingState] = useState("");
   // Ref mirror of `streaming`: the WS handler closure is built once per socket and can't read
@@ -191,10 +199,12 @@ export function App() {
   const [scheduledOpenId, setScheduledOpenId] = useState<string | null>(null);
   const [gateCreate, setGateCreate] = useState(false);
   // Which Settings section the full-page Settings surface opens on (§ Settings-as-page).
-  const [settingsTab, setSettingsTab] = useState<"appearance" | "models" | "voice" | "personas">(
-    "appearance",
-  );
-  const openSettings = (tab: "appearance" | "models" | "voice" | "personas" = "appearance") => {
+  const [settingsTab, setSettingsTab] = useState<
+    "appearance" | "models" | "skills" | "voice" | "personas"
+  >("appearance");
+  const openSettings = (
+    tab: "appearance" | "models" | "skills" | "voice" | "personas" = "appearance",
+  ) => {
     setSettingsTab(tab);
     setSurface("settings");
   };
@@ -501,6 +511,7 @@ export function App() {
       .then((s) => {
         setModels(s.models || []);
         setModelLabels(s.model_labels || {});
+        setContextBar(s.context_bar === true);
         setModelReady(s.model_ready);
         setSecretGuardOn(s.secret_guard !== false);
         if (s.surfaces) setSurfaces(s.surfaces);
@@ -576,6 +587,10 @@ export function App() {
           },
         ]);
       };
+      // Qualquer evento do motor depois de `compacting` significa que o resumidor
+      // terminou (compactado / no-op silencioso / prompt de falha) — o transitório
+      // nunca pode sobreviver a ele.
+      if (ev.type !== "compacting") setCompacting(false);
       switch (ev.type) {
         case "ready":
           setConnected(true);
@@ -602,11 +617,14 @@ export function App() {
                 : [...p, { kind: "connector", source: src }];
             });
           } else if (typeof d.input === "string" && d.input) {
+            // `display` (force-run) is the user's literal "/name …" line; the framed
+            // `input` is model-facing. Surface/dedupe on what the user actually sees.
+            const shown = (typeof d.display === "string" && d.display) || (d.input as string);
             setItems((p) => {
               const last = p[p.length - 1];
-              return last && last.kind === "user" && last.text === d.input
+              return last && last.kind === "user" && last.text === shown
                 ? p
-                : [...p, { kind: "user", text: d.input as string, ts: Date.now() / 1000 }];
+                : [...p, { kind: "user", text: shown, ts: Date.now() / 1000 }];
             });
           }
           break;
@@ -707,6 +725,14 @@ export function App() {
           // persisted marker into the live transcript (replay renders it from history).
           if (d.model) setModel(d.model);
           setItems((p) => [...p, { kind: "notice", tone: "info", text: d.text || "Modelo alterado" }]);
+          break;
+        case "compacting":
+          setCompacting(true);
+          break;
+        case "compacted":
+          // Marcador da auto-compactação (OPE-27): só afeta o outbound — a transcrição
+          // fica intacta; este divisor apenas mostra onde a memória do modelo foi resumida.
+          setItems((p) => [...p, { kind: "notice", tone: "info", text: d.text || "Contexto compactado" }]);
           break;
         case "interrupted":
           flushPartialStream();
@@ -841,13 +867,16 @@ export function App() {
     return () => clearInterval(t);
   }, [surface, sessionId, browserRefreshKey, markUnattended]);
 
-  const send = (rawText: string, attachments?: Attachment[]) => {
+  const send = (rawText: string, attachments?: Attachment[], skill?: string) => {
     // Espelho do protetor de segredos (secretGuard.ts): o servidor redige de novo —
     // isto aqui só garante que o eco local mostra o MESMO texto que foi de fato.
     const text = secretGuardOn ? redactSecrets(rawText).texto : rawText;
-    setItems((p) => [...p, { kind: "user", text, attachments, ts: Date.now() / 1000 }]);
+    // Force-run shows exactly what the user typed: "/name rest". Must match the server's
+    // `display` sidecar formula so the turn_start dedupe recognizes the local echo.
+    const shown = skill ? `/${skill}${text ? ` ${text}` : ""}` : text;
+    setItems((p) => [...p, { kind: "user", text: shown, attachments, ts: Date.now() / 1000 }]);
     // The visible model rides along with the message (single source of truth per turn).
-    sessionRef.current?.userMessage(text, attachments, model);
+    sessionRef.current?.userMessage(text, attachments, model, skill);
     followLatest(); // sending always re-engages stream-following, wherever the user had scrolled
   };
   // Resolving a LIVE prompt also resolves its parked Inbox mirror server-side, but the polled
@@ -1328,6 +1357,17 @@ export function App() {
           key={settingsTab}
           initialTab={settingsTab}
           onOpenPersona={(id) => openPersona(id, "settings")}
+          onCreateSkill={(description) => {
+            // The Skills doorway (SKILLS-SPEC §5.2): creation is a conversation. Fresh
+            // session, description in the composer — the user reads and hits send. With
+            // no description, the prefill invites them to finish the sentence there.
+            startNewSession();
+            prefillComposer(
+              description
+                ? `Crie uma nova skill para mim: ${description}`
+                : "Crie uma nova skill para mim: (descreva o que a skill deve fazer)",
+            );
+          }}
         />
       ) : surface === "audit" ? (
         <AuditView />
@@ -1528,7 +1568,11 @@ export function App() {
                       <ThinkingBlock text={reasoningStream} live />
                     </div>
                   )}
+                  {/* A compactação roda entre turnos do provedor (nada é transmitido durante),
+                      então o transitório assume o slot de espera com um rótulo específico. */}
+                  {running && compacting && <WaitingForAgent label="Compactando contexto…" />}
                   {running &&
+                    !compacting &&
                     !reasoningStream &&
                     (!streaming || streamMode(streaming, items, running) === "hold") &&
                     !lastItemIsAssistant(items) && <WaitingForAgent />}
@@ -1580,11 +1624,13 @@ export function App() {
               onInterrupt={interrupt}
               onModeChange={changeMode}
               onModelChange={changeModel}
+              sessionId={sessionId}
               workspace={needsWorkspace(agent) ? workspace || "" : undefined}
               unattended={unattended}
               onUnattendedChange={agent !== "chat" ? toggleUnattended : undefined}
               prefill={composerPrefill}
               resetKey={sessionId}
+              contextBar={contextBar}
               placeholder={
                 agent === "code"
                   ? "Peça ao programador para criar, corrigir ou explicar…  (solte ou cole arquivos)"
@@ -1697,12 +1743,12 @@ function lastItemIsAssistant(items: Item[]): boolean {
   return false;
 }
 
-function WaitingForAgent() {
+function WaitingForAgent({ label }: { label?: string }) {
   return (
     <div className="waiting-transcript">
       <div className="waiting-row" aria-live="polite">
         <span className="waiting-spinner" />
-        <span>Aguardando o agente...</span>
+        <span>{label || "Aguardando o agente..."}</span>
       </div>
     </div>
   );

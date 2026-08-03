@@ -193,6 +193,8 @@ export interface ArtifactContent {
   content?: string;
   data_url?: string;
   truncated?: boolean;
+  // kind === "folder": a directory listing (models sometimes link a whole package dir).
+  entries?: { name: string; dir: boolean; size: number }[];
 }
 
 export async function getArtifacts(sessionId: string): Promise<ArtifactInfo[]> {
@@ -690,6 +692,9 @@ export interface ModelSettings {
   nav_layout?: "flat" | "grouped";
   // Sidebar: sessions shown per group before "Show more" (default 5, 1–50).
   sessions_peek?: number;
+  // Composer: mostra a barra de preenchimento da janela de contexto (padrão FALSE; ausente
+  // → o chip mostra o total da sessão). O popover de uso mantém os dois números.
+  context_bar?: boolean;
   // Curated-matrix display names ({full id → "GLM-5.2 · via Together"}); custom models absent.
   model_labels?: Record<string, string>;
   // Token savings (PDF attachments): fallback for models without native PDF support,
@@ -697,6 +702,12 @@ export interface ModelSettings {
   pdf_fallback?: "text" | "images";
   pdf_max_pages?: number; // default 20, 1–100
   pdf_max_mb?: number; // default 10, 1–10
+  // Auto-compactação de históricos longos (OPE-27): gatilho = min(limiar% × janela de
+  // contexto, teto de tokens); model fixa o resumidor ("" → o modelo da própria sessão).
+  // Opcionais para conviver com um backend mais antigo.
+  compaction_threshold_pct?: number; // padrão 0.8, 0.10–0.95
+  compaction_cap_tokens?: number; // padrão 250000
+  compaction_model?: string;
   // Guarda-corpos locais (mangaba/guardrails.py) — opcionais para conviver com
   // um backend mais antigo.
   secret_guard?: boolean;
@@ -806,6 +817,24 @@ export async function setPdfSettings(
   return res.json();
 }
 
+export interface CompactionSettings {
+  compaction_threshold_pct: number;
+  compaction_cap_tokens: number;
+  compaction_model: string;
+}
+
+/** Persiste os overrides da auto-compactação (limiar %, teto de tokens, modelo resumidor). */
+export async function setCompactionSettings(
+  patch: Partial<CompactionSettings>,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/settings/compaction`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  return res.json();
+}
+
 /** Local page/size probe for a PDF data URL — the composer's attach-time threshold check. */
 export async function inspectPdf(
   dataUrl: string,
@@ -814,6 +843,18 @@ export async function inspectPdf(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ data_url: dataUrl }),
+  });
+  return res.json();
+}
+
+/** Persiste se o composer mostra a barra de preenchimento da janela de contexto. */
+export async function setContextBar(
+  shown: boolean,
+): Promise<{ ok: boolean; context_bar?: boolean; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/settings/context-bar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ context_bar: shown }),
   });
   return res.json();
 }
@@ -1131,6 +1172,141 @@ export async function setSessionConnection(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ connector, enabled, ...(clear ? { clear: true } : {}) }),
   });
+  return res.json();
+}
+
+// -- Skills (SKILLS-SPEC §4) ----------------------------------------------------
+// Scope = folder location: "global" (every session) or "project" (one workspace).
+// The session endpoints resolve the effective menu (Settings disables + session mutes).
+
+export interface SkillRow {
+  name: string;
+  description: string;
+  instructions: string;
+  scope: "global" | "project";
+  source: string; // "local" | "uploaded"
+  enabled: boolean;
+  path: string;
+  files?: number; // bundled resources beyond SKILL.md (§6 — rich skills are visible)
+}
+
+export interface SessionSkillRow {
+  name: string;
+  description: string;
+  scope: "global" | "project";
+  enabled: boolean; // false = muted for this session only
+}
+
+export interface SkillUploadPreview {
+  ok: boolean;
+  error?: string;
+  token?: string;
+  name?: string;
+  description?: string;
+  instructions?: string;
+  files?: string[];
+}
+
+const skillUrl = (path = "") => `${httpBase()}/v1/skills${path}`;
+const jsonPost = (body: unknown, method = "POST") => ({
+  method,
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export async function listSkills(workspace?: string): Promise<SkillRow[]> {
+  const qs = workspace ? `?workspace=${encodeURIComponent(workspace)}` : "";
+  const res = await fetch(skillUrl(qs));
+  return (await res.json()).skills ?? [];
+}
+
+export async function createSkill(body: {
+  name: string;
+  description: string;
+  instructions: string;
+  scope?: "global" | "project";
+  workspace?: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(skillUrl(), jsonPost(body));
+  return res.json();
+}
+
+export async function updateSkill(
+  name: string,
+  patch: { description?: string; instructions?: string; enabled?: boolean; workspace?: string },
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(skillUrl(`/${encodeURIComponent(name)}`), jsonPost(patch, "PATCH"));
+  return res.json();
+}
+
+export async function revealSkill(name: string): Promise<{ ok: boolean; error?: string }> {
+  // §6 "Show folder": the backend opens the skill's folder in the OS file manager.
+  const res = await fetch(skillUrl(`/${encodeURIComponent(name)}/reveal`), jsonPost({}));
+  return res.json();
+}
+
+export async function deleteSkill(
+  name: string,
+  workspace?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const qs = workspace ? `?workspace=${encodeURIComponent(workspace)}` : "";
+  const res = await fetch(skillUrl(`/${encodeURIComponent(name)}${qs}`), { method: "DELETE" });
+  return res.json();
+}
+
+export async function moveSkill(
+  name: string,
+  scope: "global" | "project",
+  workspace?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(skillUrl(`/${encodeURIComponent(name)}/move`), jsonPost({ scope, workspace }));
+  return res.json();
+}
+
+export async function stageSkillUpload(
+  dataB64: string,
+  filename = "",
+): Promise<SkillUploadPreview> {
+  const res = await fetch(skillUrl("/upload"), jsonPost({ data_b64: dataB64, filename }));
+  return res.json();
+}
+
+export async function confirmSkillUpload(
+  token: string,
+  scope: "global" | "project" = "global",
+  workspace?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(skillUrl("/upload/confirm"), jsonPost({ token, scope, workspace }));
+  return res.json();
+}
+
+
+export async function sessionSkills(
+  sessionId: string,
+  workspace?: string,
+): Promise<SessionSkillRow[]> {
+  const qs = workspace ? `?workspace=${encodeURIComponent(workspace)}` : "";
+  const res = await fetch(
+    `${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/skills${qs}`,
+  );
+  return (await res.json()).skills ?? [];
+}
+
+export async function setSessionSkill(
+  sessionId: string,
+  skill: string,
+  enabled: boolean,
+  opts: { clear?: boolean; workspace?: string } = {},
+): Promise<{ skills?: SessionSkillRow[]; ok?: boolean; error?: string }> {
+  const res = await fetch(
+    `${httpBase()}/v1/sessions/${encodeURIComponent(sessionId)}/skills`,
+    jsonPost({
+      skill,
+      enabled,
+      ...(opts.clear ? { clear: true } : {}),
+      ...(opts.workspace ? { workspace: opts.workspace } : {}),
+    }),
+  );
   return res.json();
 }
 
@@ -1886,12 +2062,15 @@ export class Session {
    * exactly what the user sees — immune to set_model races across reconnects (a new cowork
    * session always reconnects once to adopt its scratch dir, which could drop a queued
    * set_model and leave the engine on a stale/resumed model; found 2026-07-04). */
-  userMessage(text: string, attachments?: unknown[], model?: string) {
+  userMessage(text: string, attachments?: unknown[], model?: string, skill?: string) {
     this.send({
       type: "user_message",
       text,
       ...(model ? { model } : {}),
       ...(attachments?.length ? { attachments } : {}),
+      // Force-run (SKILLS-SPEC §4.1): the composer's /skill pick rides as its own field;
+      // the server validates it against the session's effective menu and frames the turn.
+      ...(skill ? { skill } : {}),
     });
   }
 

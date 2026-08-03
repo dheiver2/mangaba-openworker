@@ -6,11 +6,14 @@ import {
   type Diagnostics,
   getSettings,
   getTrustedWorkspaces,
+  setCompactionSettings,
+  setContextBar,
   setOnboarded,
   setPdfSettings,
   setScratchBase,
   setSessionsPeek,
   setWorkspaceTrusted,
+  type CompactionSettings,
   type ModelSettings,
   type PdfSettings,
   type WorkspaceCommandTrust,
@@ -43,6 +46,7 @@ import { PanelHead } from "./IntegrationsView";
 import { ModelsTab } from "./ManageTabs";
 import { GalleryModal } from "./GalleryModal";
 import { PersonasTab } from "./PersonasTab";
+import { SkillsTab } from "./SkillsTab";
 import { showPersonas } from "../flags";
 
 // Settings, restructured (Option 2) into a full-page surface that mirrors IntegrationsView's shell:
@@ -52,7 +56,7 @@ import { showPersonas } from "../flags";
 // Models + Personas host the existing tab components inside the page shell (field re-skin to follow).
 // "appearance" is the General tab's stable key — callers deep-link with it, so the
 // rename (UX-021) changed only the label. "files" folded into General as a card.
-type SetTab = "appearance" | "models" | "voice" | "personas";
+type SetTab = "appearance" | "models" | "skills" | "voice" | "personas";
 
 const CARD = "rounded-xl2 border border-line bg-panel";
 const FIELD_LABEL = "text-[12.5px] font-medium text-ink";
@@ -63,9 +67,10 @@ const BTN_ACCENT = "text-[12.5px] px-3 py-2 rounded-lg bg-accent text-white shri
 const BTN_BORDERED =
   "text-[12.5px] px-3 py-2 rounded-lg border border-line bg-paper hover:border-lineStrong shrink-0";
 
-const SET_TABS: { key: SetTab; label: string; icon: "sliders" | "code" | "mic" | "sparkle" }[] = [
+const SET_TABS: { key: SetTab; label: string; icon: "sliders" | "code" | "mic" | "sparkle" | "book" }[] = [
   { key: "appearance", label: "Geral", icon: "sliders" },
   { key: "models", label: "Modelos", icon: "code" },
+  { key: "skills", label: "Skills", icon: "book" },
   { key: "voice", label: "Entrada de voz", icon: "mic" },
   { key: "personas", label: "Personas", icon: "sparkle" },
 ];
@@ -73,9 +78,13 @@ const SET_TABS: { key: SetTab; label: string; icon: "sliders" | "code" | "mic" |
 export function SettingsView({
   initialTab,
   onOpenPersona,
+  onCreateSkill,
 }: {
   initialTab?: SetTab;
   onOpenPersona?: (id: string) => void;
+  // Skills doorway (SKILLS-SPEC §5.2): start a new conversation with the description
+  // prefilled — the worker builds the skill and proposes it via save_skill.
+  onCreateSkill?: (description: string) => void;
 }) {
   // Personas is flag-gated (hidden for launch) — filter the tab AND coerce a stale
   // deep-link to it (openSettings("personas") callers) so the page never opens on a
@@ -123,8 +132,11 @@ export function SettingsView({
                   not under General. */}
               <div className="mt-6">
                 <TokenSavingsCard />
+                <CompactionCard />
               </div>
             </section>
+          ) : tab === "skills" ? (
+            <SkillsTab onCreateSkill={onCreateSkill} />
           ) : tab === "voice" ? (
             <VoiceInputSection />
           ) : (
@@ -430,6 +442,8 @@ function AppearanceSection() {
 
       <SidebarCard />
 
+      <ContextBarCard />
+
       <FilesCard />
 
 
@@ -700,9 +714,9 @@ function UpdateInline() {
 // -- Sidebar density -------------------------------------------------------------
 // -- Token savings (PDF attachments; owner ask, 2026-07-17) ---------------------
 // Attachments replay with EVERY turn, so a big PDF quietly multiplies token spend.
-// Auto-compaction of long histories is a planned follow-up (punchlist §7) — until
-// then this card is the user's dial: attach thresholds + the fallback for models
-// without native PDF support.
+// This card is the attachment dial: attach thresholds + the fallback for models
+// without native PDF support. (Long-history spend is handled by auto-compaction —
+// the CompactionCard below, OPE-27.)
 function TokenSavingsCard() {
   const [pdf, setPdf] = useState<PdfSettings | null>(null);
 
@@ -784,6 +798,164 @@ function TokenSavingsCard() {
         PDFs acima destes limites não são anexados — em vez disso, você verá um aviso no
         compositor.
       </div>
+    </div>
+  );
+}
+
+// -- Compactação de contexto (OPE-27) -------------------------------------------
+// Sessões longas são resumidas automaticamente quando se aproximam do limite de
+// contexto do modelo, para o trabalho continuar em vez de bater num erro cru do
+// provedor. Dois overrides (gatilho % + teto de tokens) e o modelo resumidor — só.
+function CompactionCard() {
+  const [cfg, setCfg] = useState<CompactionSettings | null>(null);
+  const [models, setModels] = useState<string[]>([]);
+  const [labels, setLabels] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => {
+        setCfg({
+          compaction_threshold_pct: s.compaction_threshold_pct ?? 0.8,
+          compaction_cap_tokens: s.compaction_cap_tokens ?? 250_000,
+          compaction_model: s.compaction_model ?? "",
+        });
+        setModels(s.models || []);
+        setLabels(s.model_labels || {});
+      })
+      .catch(() =>
+        setCfg({
+          compaction_threshold_pct: 0.8,
+          compaction_cap_tokens: 250_000,
+          compaction_model: "",
+        }),
+      );
+  }, []);
+
+  const save = async (patch: Partial<CompactionSettings>) => {
+    setCfg((p) => (p ? { ...p, ...patch } : p));
+    await setCompactionSettings(patch);
+  };
+
+  if (!cfg) return null;
+  const modelLabel = (id: string) => labels[id]?.split(" · ")[0] || id;
+  return (
+    <div className={CARD + " p-4 mb-4"} data-testid="compaction-card">
+      <div className={FIELD_LABEL}>Compactação de contexto</div>
+      <div className={FIELD_HELP}>
+        Sessões longas são compactadas automaticamente: os turnos mais antigos são
+        resumidos para o assistente continuar trabalhando em vez de ficar sem contexto.
+        Sua transcrição visível nunca muda — um pequeno marcador mostra onde a
+        compactação aconteceu.
+      </div>
+
+      <div className="mt-3 flex items-center gap-5 flex-wrap">
+        <label className="flex items-center gap-2.5">
+          <span className="text-[13px] text-ink">Compactar em</span>
+          <input
+            type="number"
+            min={10}
+            max={95}
+            value={Math.round(cfg.compaction_threshold_pct * 100)}
+            data-testid="compaction-threshold"
+            className="w-16 px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+            onChange={(e) =>
+              save({
+                compaction_threshold_pct:
+                  Math.max(10, Math.min(Number(e.target.value) || 80, 95)) / 100,
+              })
+            }
+          />
+          <span className="text-[12.5px] text-muted">% da janela de contexto</span>
+        </label>
+        <label className="flex items-center gap-2.5">
+          <span className="text-[13px] text-ink">ou em</span>
+          <input
+            type="number"
+            min={10_000}
+            max={2_000_000}
+            step={10_000}
+            value={cfg.compaction_cap_tokens}
+            data-testid="compaction-cap"
+            className="w-28 px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+            onChange={(e) =>
+              save({
+                compaction_cap_tokens: Math.max(
+                  10_000,
+                  Math.min(Number(e.target.value) || 250_000, 2_000_000),
+                ),
+              })
+            }
+          />
+          <span className="text-[12.5px] text-muted">tokens, o que for menor</span>
+        </label>
+      </div>
+      <div className={FIELD_HELP}>
+        O teto faz modelos de contexto muito grande compactarem cedo — qualidade e
+        velocidade degradam bem antes do limite nominal.
+      </div>
+
+      <div className="mt-3 flex items-center gap-2.5">
+        <span className="text-[13px] text-ink">Modelo resumidor</span>
+        <select
+          value={cfg.compaction_model}
+          data-testid="compaction-model"
+          className="px-2 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent"
+          onChange={(e) => save({ compaction_model: e.target.value })}
+        >
+          <option value="">Modelo da própria sessão (padrão)</option>
+          {models.map((m) => (
+            <option key={m} value={m}>
+              {modelLabel(m)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className={FIELD_HELP}>
+        O resumo é escrito por este modelo. O padrão acompanha o modelo que a sessão
+        estiver usando.
+      </div>
+    </div>
+  );
+}
+
+// -- Composer: barra da janela de contexto (pedido do dono, 2026-07-30) ---------
+// A barra do chip é a ocupação da janela de contexto; o total da sessão (sem teto)
+// fica no popover. Tem gente que prefere não ver medidor nenhum, daí o toggle.
+function ContextBarCard() {
+  const [shown, setShown] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    getSettings()
+      .then((s) => setShown(s.context_bar === true))
+      .catch(() => setShown(false));
+  }, []);
+
+  const save = async (next: boolean) => {
+    setShown(next);
+    await setContextBar(next);
+  };
+
+  if (shown === null) return null;
+  return (
+    <div className={CARD + " p-4 mb-4"} data-testid="context-bar-card">
+      <div className={FIELD_LABEL}>Composer</div>
+      <label className="flex items-start gap-3 py-2">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          data-testid="context-bar-toggle"
+          checked={shown}
+          onChange={(e) => save(e.target.checked)}
+        />
+        <span>
+          <span className="block text-[13px] text-ink">Mostrar a barra da janela de contexto</span>
+          <span className="block text-[12px] text-muted">
+            Um medidor pequeno mostrando o quanto da janela de contexto do modelo já foi
+            usado. Desligue para ver o total de tokens desta sessão no lugar; de qualquer
+            forma, o detalhamento completo fica a um clique.
+          </span>
+        </span>
+      </label>
     </div>
   );
 }

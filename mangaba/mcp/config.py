@@ -81,13 +81,15 @@ def _parse(name: str, raw: dict[str, Any], secrets: SecretStore) -> MCPServerDef
 def load_mcp_servers(
     workspace: Optional[str | Path] = None, *, secrets: Optional[SecretStore] = None
 ) -> list[MCPServerDef]:
-    """Merge global + workspace `mcpServers` (workspace wins) into parsed server defs."""
+    """Merge global + workspace `mcpServers` into parsed server defs — **global wins on
+    name clash**, so even a trusted repo cannot silently redefine a global server by
+    reusing its name."""
     secrets = secrets or SecretStore()
     merged: dict[str, dict[str, Any]] = {}
     for path in _config_paths(workspace):
         for name, raw in (_read(path).get("mcpServers") or {}).items():
             if isinstance(raw, dict):
-                merged[name] = raw
+                merged.setdefault(name, raw)  # global first → global wins on clash
     return [_parse(name, raw, secrets) for name, raw in merged.items()]
 
 
