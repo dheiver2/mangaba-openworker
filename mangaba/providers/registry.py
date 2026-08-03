@@ -8,8 +8,8 @@ model string and builds (and caches) its client from the matching SecretStore pr
 
 Today: `openai` (the default, with an optional custom endpoint that covers Azure OpenAI's
 `/openai/v1` and any OpenAI-compliant gateway), `anthropic` (native Messages API via
-`AnthropicProvider`), `gemini` (native Google GenAI API via `GeminiProvider`), and `mangaba`
-(local, OpenAI-compatible `/v1`). Bedrock/Vertex auth for Claude is future work.
+`AnthropicProvider`), and `gemini` (native Google GenAI API via `GeminiProvider`).
+Bedrock/Vertex auth for Claude is future work.
 """
 
 from __future__ import annotations
@@ -22,8 +22,6 @@ from .anthropic_provider import AnthropicProvider
 from .base import ProviderClient
 from .gemini_provider import GeminiProvider
 from .openai_provider import OpenAIProvider
-
-DEFAULT_MANGABA_URL = "https://mangaba.ngrok.app"
 
 
 @dataclass(frozen=True)
@@ -81,20 +79,6 @@ class ProviderDescriptor:
         }
 
 
-def _normalize_mangaba_url(url: Optional[str]) -> str:
-    """Aceita a raiz do gateway ou já com `/v1`, e devolve a base compatível com OpenAI.
-
-    O gateway Mangaba expõe a API compatível em `/v1` (o restante da API — visão, áudio,
-    imagem — vive na raiz), então sempre miramos `<raiz>/v1`.
-    """
-    base = (url or DEFAULT_MANGABA_URL).strip().rstrip("/")
-    if not base:
-        base = DEFAULT_MANGABA_URL
-    if not base.endswith("/v1"):
-        base = base + "/v1"
-    return base
-
-
 def _build_openai(profile: dict[str, Any], secrets: Any) -> ProviderClient:
     # Key resolution stays in OpenAIProvider/resolve_api_key (explicit → env → SecretStore),
     # so we just hand it the SecretStore. An optional custom endpoint (Azure OpenAI /openai/v1,
@@ -126,11 +110,6 @@ def _build_gemini(profile: dict[str, Any], secrets: Any) -> ProviderClient:
     return GeminiProvider(api_key=api_key, secrets=secrets)
 
 
-def _build_mangaba(profile: dict[str, Any], secrets: Any) -> ProviderClient:
-    # O gateway não pede chave, mas o SDK exige uma string não vazia — mandamos um marcador.
-    # `base_url` vem do perfil salvo (ou do padrão), permitindo apontar para outra instância.
-    base_url = _normalize_mangaba_url((profile or {}).get("base_url"))
-    return OpenAIProvider(api_key="mangaba", base_url=base_url)
 
 
 def _openai_compat(vendor: str, default_base_url: str, env_key: Optional[str] = None):
@@ -333,24 +312,6 @@ DESCRIPTORS: list[ProviderDescriptor] = [
         recommended_model="accounts/fireworks/models/glm-5p2",
         env_key="FIREWORKS_API_KEY",
     ),
-    ProviderDescriptor(
-        name="mangaba",
-        title="Mangaba",
-        needs_key=False,
-        blurb="Os modelos da própria Mangaba, prontos para usar — sem chave e sem cadastro.",
-        fields=[
-            ProviderField(
-                "base_url",
-                "Endereço do gateway",
-                secret=False,
-                required=False,
-                placeholder=DEFAULT_MANGABA_URL,
-                help="Deixe em branco para usar o gateway oficial. O caminho /v1 é acrescentado automaticamente.",
-            ),
-        ],
-        build=_build_mangaba,
-        recommended_model="mangaba-chat",
-    ),
 ]
 
 _BY_NAME = {d.name: d for d in DESCRIPTORS}
@@ -420,10 +381,6 @@ def verify_provider_key(
                 params={"key": key},
                 timeout=timeout,
             )
-        elif name == "mangaba":
-            # O gateway não pede chave: basta alcançá-lo e ver a lista de modelos.
-            base = _normalize_mangaba_url(base_url)
-            resp = httpx.get(base.rstrip("/") + "/models", timeout=timeout)
         else:  # openai + any OpenAI-compatible endpoint (Azure, OpenRouter, vendors, vLLM…)
             default_base = next(
                 (f.default for f in d.fields if f.key == "base_url" and f.default), ""
@@ -439,11 +396,6 @@ def verify_provider_key(
                 timeout=timeout,
             )
     except Exception as exc:  # DNS/connection/timeout — never let it bubble to a 500
-        if name == "mangaba":
-            return {
-                "ok": False,
-                "error": "Não consegui alcançar o gateway Mangaba. Verifique sua conexão.",
-            }
         return {
             "ok": False,
             "error": f"Couldn't reach {d.title} ({exc.__class__.__name__}).",
@@ -452,12 +404,5 @@ def verify_provider_key(
     if resp.status_code < 300:
         return {"ok": True}
     if resp.status_code in (401, 403):
-        if name == "mangaba":
-            return {"ok": False, "error": "O gateway recusou a requisição."}
         return {"ok": False, "error": "Invalid API key."}
-    if resp.status_code == 404 and name == "mangaba":
-        return {
-            "ok": False,
-            "error": "Alcancei o endereço, mas não há uma API /v1 compatível ali.",
-        }
     return {"ok": False, "error": f"{d.title} returned HTTP {resp.status_code}."}

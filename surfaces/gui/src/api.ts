@@ -805,7 +805,6 @@ export interface ModelSettings {
   pdf_max_mb?: number; // default 10, 1–10
   // Guarda-corpos locais (mangaba/guardrails.py) — opcionais para conviver com
   // um backend mais antigo.
-  vault_mode?: boolean;
   secret_guard?: boolean;
   daily_turn_limit?: number;
   turns_used_today?: number;
@@ -822,7 +821,6 @@ const postSetting = async (rota: string, value: unknown): Promise<any> => {
   return res.json();
 };
 
-export const setVaultMode = (on: boolean) => postSetting("vault-mode", on);
 export const setSecretGuard = (on: boolean) => postSetting("secret-guard", on);
 export const setDailyTurnLimit = (n: number) => postSetting("daily-turn-limit", n);
 
@@ -834,7 +832,6 @@ export interface Diagnostics {
   state_dir: string;
   model: string;
   model_ready: boolean;
-  vault_mode: boolean;
   secret_guard: boolean;
   sessions: number;
   turn_budget: { limit: number; used_today: number };

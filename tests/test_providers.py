@@ -394,29 +394,13 @@ def test_matrix_labels_and_custom_model_fallback():
     assert labels["zai:glm-5.2"] == "GLM-5.2 · Z AI"
     # Deliberately small: agent-capable current models only (owner call, 2026-07-04).
     assert len(MATRIX) < 40
-    # Todo modelo de TERCEIRO na matriz é agêntico (é o critério para entrar). Os da casa
-    # não: o gateway não executa ferramentas, e fingir que sim faria o motor oferecê-las a
-    # quem responde inventando o resultado.
-    assert all(e.caps.tools for k, e in MATRIX.items() if not k.startswith("mangaba:"))
-    assert not any(e.caps.tools for k, e in MATRIX.items() if k.startswith("mangaba:"))
+    # Todo modelo na matriz é agêntico (é o critério para entrar).
+    assert all(e.caps.tools for e in MATRIX.values())
     # A custom (unlisted) reseller model falls back to the conservative default — usable,
     # but at the user's own risk (no parallel tool calls assumed).
     caps = capabilities_for("together:some-org/Brand-New-Model")
     assert caps.tools and not caps.parallel_tool_calls
 
-
-def test_mangaba_display_label_le_o_papel_do_modelo():
-    """Os modelos do gateway já vêm com nome próprio ("mangaba-code"), então o rótulo só
-    traduz o papel para leitura humana — nada de derivar marca de tag de terceiro, que era
-    o problema quando os modelos vinham de fora."""
-    from mangaba.providers.matrix import mangaba_display_label
-
-    assert mangaba_display_label("mangaba-chat") == "Mangaba Chat"
-    assert mangaba_display_label("mangaba-code") == "Mangaba Código"
-    assert mangaba_display_label("mangaba-vision") == "Mangaba Visão"
-    assert mangaba_display_label("mangaba-guard") == "Mangaba Moderação"
-    # papel novo no gateway não quebra a UI: vira o próprio nome, capitalizado
-    assert mangaba_display_label("mangaba-rerank") == "Mangaba Rerank"
 
 def test_reseller_descriptors_and_matrix_stay_in_lockstep():
     """Together/Fireworks suggested models derive from the matrix, and each descriptor's

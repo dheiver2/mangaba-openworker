@@ -1502,11 +1502,6 @@ def create_app(manager: SessionManager) -> FastAPI:
             max_mb=b.get("pdf_max_mb"),
         )
 
-    @app.post("/v1/settings/vault-mode")
-    def settings_set_vault_mode(body: dict) -> dict[str, Any]:
-        # Modo Cofre: só provedores locais. A imposição fica no turno (vault_block).
-        return manager.set_vault_mode(bool((body or {}).get("value")))
-
     @app.post("/v1/settings/secret-guard")
     def settings_set_secret_guard(body: dict) -> dict[str, Any]:
         return manager.set_secret_guard(bool((body or {}).get("value")))
@@ -1981,8 +1976,6 @@ def create_app(manager: SessionManager) -> FastAPI:
                     model = message.get("model")
                     if model is not None and not isinstance(model, str):
                         await reject_input("Invalid model: expected a string.")
-                    elif model and manager.vault_block(model):
-                        await reject_input(manager.vault_block(model))
                     else:
                         await _apply_model(model)
                 elif kind == "user_message":
@@ -2071,12 +2064,8 @@ def create_app(manager: SessionManager) -> FastAPI:
                     await _apply_model(model)
                     if text or attachments:
                         # Guarda-corpos locais (mangaba/guardrails.py), na ordem:
-                        # Cofre (nada de nuvem), protetor de segredos (redige a
-                        # mensagem ANTES de virar histórico/prompt), freio de gastos.
-                        blocked = manager.vault_block(engine.model)
-                        if blocked:
-                            await reject_input(blocked)
-                            continue
+                        # protetor de segredos (redige a mensagem ANTES de virar
+                        # histórico/prompt), depois o freio de gastos.
                         if manager.secret_guard():
                             from ..guardrails import redact_secrets
 

@@ -122,9 +122,8 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
             {/* Persistent header — stays put while the region below swaps (§39). */}
             <h1 className="text-[19px] font-semibold">Bem-vindo ao Mangaba<span className="beta-tag">BETA</span></h1>
             <p className="text-[13px] text-muted mt-0.5 mb-4">
-              Escolha um provedor de modelo para começar. Com o <strong>Mangaba Local</strong> os
-              modelos rodam aqui mesmo, sem chave e sem custo; nos demais você usa a sua própria
-              chave — e, em qualquer caso, chave e dados ficam neste {deviceLabel()}.
+              Escolha um provedor de modelo e cole a sua própria chave para começar —
+              chave e dados ficam neste {deviceLabel()}.
             </p>
 
             {!ps.sel ? (

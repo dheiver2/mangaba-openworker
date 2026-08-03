@@ -5,7 +5,6 @@ import {
   getDiagnostics,
   setDailyTurnLimit,
   setSecretGuard,
-  setVaultMode,
   type Diagnostics,
   getSettings,
   getTrustedWorkspaces,
@@ -602,13 +601,12 @@ function PasscodeCard() {
   );
 }
 
-// Guarda-corpos locais (mangaba/guardrails.py): "Somente Mangaba", protetor de segredos,
-// freio de gastos e o auto-bloqueio (este último vive na GUI — LoginGate).
+// Guarda-corpos locais (mangaba/guardrails.py): protetor de segredos, freio de gastos
+// e o auto-bloqueio (este último vive na GUI — LoginGate).
 export const AUTOLOCK_KEY = "mangaba:autolock-min";
 
 function GuardrailsCard() {
-  const [vault, setVault] = useState<boolean | null>(null);
-  const [guard, setGuard] = useState(true);
+  const [guard, setGuard] = useState<boolean | null>(null);
   const [limit, setLimit] = useState(0);
   const [used, setUsed] = useState(0);
   const [lockMin, setLockMin] = useState<number>(() => {
@@ -618,12 +616,11 @@ function GuardrailsCard() {
   useEffect(() => {
     getSettings()
       .then((s) => {
-        setVault(!!s.vault_mode);
         setGuard(s.secret_guard !== false);
         setLimit(s.daily_turn_limit || 0);
         setUsed(s.turns_used_today || 0);
       })
-      .catch(() => setVault(false));
+      .catch(() => setGuard(true));
   }, []);
 
   const saveLock = (n: number) => {
@@ -632,29 +629,12 @@ function GuardrailsCard() {
     try { localStorage.setItem(AUTOLOCK_KEY, String(v)); } catch { /* melhor esforço */ }
   };
 
-  if (vault === null) return null;
+  if (guard === null) return null;
   return (
     <div className={CARD + " p-4 mb-4"} data-testid="guardrails-card">
       <div className={FIELD_LABEL}>Privacidade e limites</div>
 
       <label className="flex items-start gap-3 py-2 mt-1">
-        <input
-          type="checkbox"
-          className="mt-0.5"
-          checked={vault}
-          data-testid="vault-toggle"
-          onChange={(e) => { setVault(e.target.checked); void setVaultMode(e.target.checked); }}
-        />
-        <span>
-          <span className="block text-[13px] text-ink">Somente Mangaba</span>
-          <span className="block text-[12px] text-muted">
-            Bloqueia todo provedor de terceiro: só os modelos da Mangaba rodam. A checagem
-            é no servidor, então nenhum outro provedor entra na conversa nem por engano.
-          </span>
-        </span>
-      </label>
-
-      <label className="flex items-start gap-3 py-2">
         <input
           type="checkbox"
           className="mt-0.5"
@@ -749,7 +729,7 @@ function DiagnosticsCard() {
         {linha("Latência local", latency !== null ? `${latency} ms` : "—")}
         {linha("Modelo padrão", `${d.model}${d.model_ready ? "" : " (provedor não configurado)"}`)}
         {linha("Sessões", String(d.sessions))}
-        {linha("Só Mangaba / Protetor", `${d.vault_mode ? "ligado" : "desligado"} / ${d.secret_guard ? "ligado" : "desligado"}`)}
+        {linha("Protetor de segredos", d.secret_guard ? "ligado" : "desligado")}
         {linha("Dados", d.state_dir)}
       </div>
     </div>

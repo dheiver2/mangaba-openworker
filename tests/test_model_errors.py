@@ -24,10 +24,8 @@ def test_new_flagships_in_matrix_with_labels():
 
 
 def test_flagships_are_the_defaults():
-    # O padrão de fábrica é o modelo da casa — sem chave, funciona ao abrir. O carro-chefe
-    # de cada provedor continua sendo o que ele recomenda quando o usuário o configura.
-    assert Config().model == "mangaba:mangaba-chat"
-    assert get_descriptor("mangaba").recommended_model == "mangaba-chat"
+    # O carro-chefe de cada provedor é o que ele recomenda quando o usuário o configura.
+    assert Config().model == "gpt-5.6-sol"
     assert get_descriptor("openai").recommended_model == "gpt-5.6-sol"
     assert get_descriptor("anthropic").recommended_model == "claude-fable-5"
 

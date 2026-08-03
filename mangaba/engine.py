@@ -390,9 +390,9 @@ class TurnEngine:
         thread + queue, so text deltas surface live without blocking the event loop."""
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue = asyncio.Queue()
-        # As ferramentas vão SEMPRE. Quem não tem function calling nativo (gateway Mangaba)
-        # as recebe descritas no prompt e responde com um bloco <tool_call>, convertido de
-        # volta em chamadas reais — ver `_mensagens_com_protocolo` no provedor OpenAI.
+        # As ferramentas vão SEMPRE. Quem não tem function calling nativo as recebe
+        # descritas no prompt e responde com um bloco <tool_call>, convertido de volta
+        # em chamadas reais — ver `_mensagens_com_protocolo` no provedor OpenAI.
         tools = self.registry.schemas() or None
         model, messages, settings = (
             self.model,

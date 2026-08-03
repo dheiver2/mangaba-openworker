@@ -8,8 +8,6 @@
 import anthropic from "./logos/anthropic.svg";
 import openai from "./logos/openai.svg";
 import gemini from "./logos/gemini.svg";
-// O provedor Mangaba usa a marca própria — são os nossos modelos, servidos pelo nosso gateway.
-import mangabaLocal from "./logos/mangaba.png";
 import fireworks from "./logos/fireworks.svg";
 import together from "./logos/together.svg";
 import zai from "./logos/zai.svg";
@@ -26,7 +24,6 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   openai,
   gemini,
   meta,
-  mangaba: mangabaLocal,
   fireworks,
   together,
   zai,
@@ -39,10 +36,6 @@ export const PROVIDER_LOGOS: Record<string, string> = {
 };
 
 export const PROVIDER_ORDER = [
-  // Mangaba primeiro: é a única opção que um usuário recém-instalado consegue usar sem criar
-  // conta em lugar nenhum nem cadastrar cartão. Enterrá-la em 5º, atrás de quatro provedores
-  // pagos, fazia o onboarding começar por uma parede de cadastro.
-  "mangaba",
   "anthropic",
   "openai",
   "gemini",

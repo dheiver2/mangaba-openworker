@@ -1040,13 +1040,15 @@ def test_google_one_click_paused_but_manual_alive(tmp_path):
 
 
 def test_set_provider_persists_extra_fields(tmp_path):
-    """Non-secret descriptor extras (ollama's endpoint) round-trip: saved into the
+    """Non-secret descriptor extras (a custom endpoint) round-trip: saved into the
     profile, echoed by get_providers for form prefill, cleared by an empty save."""
     manager = SessionManager(workspace=tmp_path, provider=ScriptedProvider([]))
-    assert manager.set_provider("mangaba", {"base_url": "http://127.0.0.1:9999"})["ok"]
+    assert manager.set_provider(
+        "openai", {"api_key": "sk-x", "base_url": "http://127.0.0.1:9999"}
+    )["ok"]
     providers = {p["name"]: p for p in manager.get_providers()}
-    assert providers["mangaba"]["values"]["base_url"] == "http://127.0.0.1:9999"
+    assert providers["openai"]["values"]["base_url"] == "http://127.0.0.1:9999"
 
-    manager.set_provider("mangaba", {"base_url": ""})
+    manager.set_provider("openai", {"base_url": ""})
     providers = {p["name"]: p for p in manager.get_providers()}
-    assert "base_url" not in providers["mangaba"]["values"]
+    assert "base_url" not in providers["openai"]["values"]

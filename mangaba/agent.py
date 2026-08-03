@@ -184,13 +184,6 @@ def build_engine(
                     routing_targets=routing_targets,
                 )
             )
-    # Capacidades servidas pelo gateway Mangaba (geração de imagem). Ficam disponíveis para
-    # QUALQUER modelo agêntico: os modelos do gateway não chamam ferramentas, mas Claude e
-    # OpenAI chamam — então o usuário ganha a capacidade sem cadastrar mais nenhuma chave.
-    from .tools.mangaba_gateway import gateway_tools
-
-    registry.register_all(gateway_tools(secrets, str(workspace) if workspace else None))
-
     # Knowledge surfaces with a multi-root workspace can ask the user mid-task for another folder.
     if agent.family == "knowledge" and root_list:
         registry.register(request_directory_tool())
@@ -215,7 +208,7 @@ def build_engine(
     # ask_user: the universal human-in-the-loop Q&A primitive (every agent; engine-intercepted).
     if question_asker is not None:
         registry.register(ask_user_tool())
-    # Route by the model's `provider:` prefix (OpenAI default, Mangaba, …). The manager normally
+    # Route by the model's `provider:` prefix (OpenAI default, Anthropic, …). The manager normally
     # passes its shared router; this fallback covers the TUI / direct build_engine() callers.
     # Resolved here (not at engine construction) because the explorer subagent captures it.
     provider = provider or ProviderRouter(secrets, default_provider="openai")

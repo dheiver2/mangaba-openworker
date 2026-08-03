@@ -110,7 +110,7 @@ class SessionManager:
         *,
         workspace: Optional[str | Path] = None,  # default/seed workspace (e.g. --cwd)
         data_dir: Optional[str | Path] = None,
-        model: str = "mangaba:mangaba-chat",
+        model: str = "gpt-5.6-sol",
         mode: Mode = Mode.INTERACTIVE,
         provider: Optional[ProviderClient] = None,
     ) -> None:
@@ -1409,7 +1409,7 @@ class SessionManager:
                     d.env_key and os.environ.get(d.env_key)
                 )
             else:
-                configured = True  # keyless (Mangaba) — usable out of the box
+                configured = True  # keyless — usable out of the box
             values = {
                 f.key: profile.get(f.key)
                 for f in d.fields
@@ -1500,11 +1500,9 @@ class SessionManager:
     }
 
     def _suggested_models(self, name: str) -> list[str]:
-        """Bare model-name suggestions for the 'add model' form (datalist), per provider.
-        Mangaba → live `/v1/models` do gateway (best-effort); everyone else → the curated matrix,
-        topped up with the compat-vendor extras the matrix doesn't vouch for."""
-        if name == "mangaba":
-            return [m.split(":", 1)[-1] for m in self._mangaba_models()]
+        """Bare model-name suggestions for the 'add model' form (datalist), per provider —
+        the curated matrix, topped up with the compat-vendor extras the matrix doesn't
+        vouch for."""
         from ..providers.matrix import models_for_provider
 
         return list(
@@ -1544,9 +1542,6 @@ class SessionManager:
             profile["key_set_at"] = date.today().isoformat()
         self.secrets.put(f"provider:{name}", profile)
         self._refresh_provider(name)
-        # Detectar/salvar é justamente quando o usuário espera ver a lista NOVA: o cache de
-        # 30 s não pode fazer o modelo recém-baixado demorar meio minuto para aparecer.
-        self._mangaba_models_cache = None
         # Convenience: if the provider recommends a model and it's actually available, add it to
         # the curated list so it shows up in the composer right after configuring the provider.
         rec = d.recommended_model
@@ -1555,26 +1550,10 @@ class SessionManager:
             # OpenAI models stay bare (the router's default); others carry their prefix.
             added = rec if name == "openai" else f"{name}:{rec}"
             self.add_model(added)
-        elif name == "mangaba":
-            # Se o gateway não oferecer exatamente o recomendado, o primeiro que ele listar
-            # serve — qualquer modelo pronto vale mais que um seletor vazio.
-            avail = self._suggested_models(name)
-            if avail:
-                added = f"{name}:{avail[0]}"
-                self.add_model(added)
         # O primeiro provedor que funciona assume o padrão — e um padrão que já funciona não
-        # é roubado. Uma exceção deliberada: o padrão de fábrica é o modelo da casa, que
-        # conversa mas NÃO executa ferramentas. Quem cadastra uma chave foi atrás disso e
-        # ganha um modelo que faz o agente trabalhar de verdade; manter o de fábrica ali
-        # seria entregar menos do que a pessoa acabou de habilitar.
-        from ..providers.capabilities import capabilities_for
-
+        # é roubado.
         atual_serve = self._provider_configured(self._model_provider(self.model))
-        atual_usa_ferramentas = capabilities_for(self.model).tools
-        novo_usa_ferramentas = bool(added) and capabilities_for(added).tools
-        if added and (
-            not atual_serve or (not atual_usa_ferramentas and novo_usa_ferramentas)
-        ):
+        if added and not atual_serve:
             self.set_default_model(added)
         return {"ok": True, "provider": name, "recommended_model": rec}
 
@@ -1623,7 +1602,7 @@ class SessionManager:
         if d is None:
             return False
         if not d.needs_key:
-            return True  # keyless (Mangaba)
+            return True  # keyless
         profile = self.secrets.get(f"provider:{name}") or {}
         return bool(profile.get("api_key")) or bool(
             d.env_key and os.environ.get(d.env_key)
@@ -1660,58 +1639,6 @@ class SessionManager:
         self._save_prefs()
         return {"ok": True, "dm_session": self.dm_session()}
 
-    def _mangaba_alive(self) -> bool:
-        """O gateway está respondendo? Cacheado por 30 s — `get_settings` roda em TODO fetch
-        da GUI e uma sonda de rede a cada um deixaria a interface lenta. Sem chave não é o
-        mesmo que disponível: os modelos só aparecem no seletor enquanto o gateway responde,
-        para o app nunca oferecer o que não vai funcionar."""
-        import time
-
-        agora = time.monotonic()
-        cache = getattr(self, "_mangaba_alive_cache", None)
-        if cache and agora - cache[0] < 30:
-            return cache[1]
-        try:
-            import httpx
-
-            vivo = httpx.get(self._mangaba_base() + "/models", timeout=4.0).status_code == 200
-        except Exception:
-            vivo = False
-        self._mangaba_alive_cache = (agora, vivo)
-        return vivo
-
-    def _mangaba_base(self) -> str:
-        """Base compatível com OpenAI do gateway (perfil salvo ou o padrão oficial)."""
-        from ..providers.registry import DEFAULT_MANGABA_URL
-
-        perfil = self.secrets.get("provider:mangaba") or {}
-        base = (perfil.get("base_url") or DEFAULT_MANGABA_URL).strip().rstrip("/")
-        return base if base.endswith("/v1") else base + "/v1"
-
-    def _mangaba_models(self) -> list[str]:
-        """Modelos que o gateway oferece, como `mangaba:<id>` (direto selecionáveis).
-
-        Mesmo cache de 30 s da sonda de liveness, pelo mesmo motivo: este caminho é chamado
-        de dentro do `get_settings`."""
-        import time
-
-        agora = time.monotonic()
-        cache = getattr(self, "_mangaba_models_cache", None)
-        if cache and agora - cache[0] < 30:
-            return list(cache[1])
-        modelos = self._mangaba_models_uncached()
-        self._mangaba_models_cache = (agora, list(modelos))
-        return modelos
-
-    def _mangaba_models_uncached(self) -> list[str]:
-        try:
-            import httpx
-
-            dados = httpx.get(self._mangaba_base() + "/models", timeout=4.0).json()
-            return [f"mangaba:{m['id']}" for m in dados.get("data", []) if m.get("id")]
-        except Exception:
-            return []
-
     def _curated_models(self) -> list[str]:
         """The models offered in the composer's selector: every curated-matrix model
         (`get_settings` culls the ones whose provider has no key) plus custom ids the user
@@ -1724,15 +1651,11 @@ class SessionManager:
         user = self._prefs.get("models")
         user = user if isinstance(user, list) else []
         hidden = set(self._prefs.get("hidden_models") or [])
-        # Os modelos da casa vivem na MATRIX (não numa consulta ao vivo): sem chave para
-        # cadastrar nem instalação para fazer, exigir um "Detectar" antes de aparecerem só
-        # criaria burocracia entre abrir o app e conversar — e uma consulta de rede aqui
-        # tornaria o seletor dependente do gateway a cada montagem.
         models = [m for m in [*MATRIX, *user] if m not in hidden]
         return list(dict.fromkeys([self.model, *models]))
 
     def add_model(self, model: str) -> dict[str, Any]:
-        """Add a model id (e.g. `gpt-4o`, `mangaba:mangaba-chat`) to the picker.
+        """Add a model id (e.g. `gpt-4o`, `deepseek:deepseek-chat`) to the picker.
         Custom ids persist in prefs; a previously removed matrix model is just unhidden
         (storing it too would shadow future matrix updates)."""
         from ..providers.matrix import MATRIX
@@ -1778,29 +1701,15 @@ class SessionManager:
         # Only surface models whose provider is actually configured — the composer picker
         # reflects exactly what's connected. The active default is always kept selectable
         # (it's hidden behind the "No model" state until a provider is connected anyway).
-        # O gateway Mangaba é sem chave, então "configurado" não diz nada ali — seus modelos
-        # só aparecem enquanto ele responde (sonda de liveness com cache).
         def _selectable(m: str) -> bool:
-            provider = self._model_provider(m)
-            if provider == "mangaba":
-                return self._mangaba_alive()
-            return self._provider_configured(provider)
+            return self._provider_configured(self._model_provider(m))
 
         selectable = [m for m in self._curated_models() if _selectable(m)]
         if self.model not in selectable:
             selectable.insert(0, self.model)
-        from ..providers.matrix import mangaba_display_label, model_labels
+        from ..providers.matrix import model_labels
 
         labels = model_labels()
-        # Os ids do gateway não vivem na MATRIX estática (ela lista modelos de terceiros),
-        # então sem isto eles seriam o único canto da UI mostrando id cru. A lista de
-        # Configurações ▸ Modelos mostra TUDO que o gateway serve, não só o que já foi
-        # marcado no seletor: um id sem nome ao lado de linhas com nome pareceria defeito.
-        for name in self._suggested_models("mangaba"):
-            full_id = f"mangaba:{name}"
-            if full_id not in labels:
-                labels[full_id] = mangaba_display_label(name)
-
         return {
             "provider": "openai",
             "model": self.model,
@@ -1820,7 +1729,6 @@ class SessionManager:
             "nav_layout": self._nav_layout(),
             "sessions_peek": self.sessions_peek(),
             # Guarda-corpos locais (diferenciais do fork; ver mangaba/guardrails.py).
-            "vault_mode": self.vault_mode(),
             "secret_guard": self.secret_guard(),
             "daily_turn_limit": self.turn_budget.limit,
             "turns_used_today": self.turn_budget.used_today,
@@ -1865,15 +1773,6 @@ class SessionManager:
         return {"ok": True, "nav_layout": value}
 
     # -- guarda-corpos locais ---------------------------------------------------
-    def vault_mode(self) -> bool:
-        """Modo "Somente Mangaba": com ele ligado, só os modelos da Mangaba podem rodar."""
-        return bool(self._prefs.get("vault_mode", False))
-
-    def set_vault_mode(self, on: bool) -> dict[str, Any]:
-        self._prefs["vault_mode"] = bool(on)
-        self._save_prefs()
-        return {"ok": True, "vault_mode": self.vault_mode()}
-
     def secret_guard(self) -> bool:
         """Protetor de segredos: redige credenciais da mensagem antes do modelo.
         Ligado por padrão — desligar é a exceção consciente, nunca o estado inicial."""
@@ -1894,24 +1793,6 @@ class SessionManager:
         self.turn_budget.limit = limit
         return {"ok": True, "daily_turn_limit": limit}
 
-    def vault_block(self, model: str) -> Optional[str]:
-        """Mensagem de recusa quando o modo "Somente Mangaba" barra este modelo.
-
-        Este modo já significou "100% local, nada sai desta máquina" — promessa que valia
-        quando os modelos rodavam aqui dentro. Com os modelos servidos pelo gateway, ela
-        deixou de ser verdade e teria virado mentira se mantivéssemos o texto: o que o modo
-        garante hoje é que NENHUM provedor de terceiro é usado, e só isso é o que ele diz.
-        A checagem fica no servidor de propósito: uma UI alterada não a contorna."""
-        if not self.vault_mode():
-            return None
-        if self._model_provider(model) == "mangaba":
-            return None
-        return (
-            f"Modo \"Somente Mangaba\" ligado: o modelo {model} é de outro provedor. "
-            "Escolha um modelo Mangaba ou desligue o modo em Configurações ▸ "
-            "Privacidade e limites."
-        )
-
     def diagnostics(self) -> dict[str, Any]:
         """Raio-x local para o cartão de Diagnóstico — nada disto sai da máquina."""
         import platform
@@ -1928,7 +1809,6 @@ class SessionManager:
             "state_dir": str(self.secrets.path.parent),
             "model": self.model,
             "model_ready": self._provider_configured(self._model_provider(self.model)),
-            "vault_mode": self.vault_mode(),
             "secret_guard": self.secret_guard(),
             "sessions": len(self.list_sessions()),
             "turn_budget": self.turn_budget.snapshot(),

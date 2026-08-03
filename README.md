@@ -29,8 +29,8 @@
 
 O Mangaba vive no seu computador e devolve **trabalho terminado**: um documento pronto, um
 parecer com as contas feitas, a agenda organizada, a caixa de entrada triada. Ele não te
-prende a nenhum modelo — traga a sua chave da OpenAI, Anthropic, Google, DeepSeek e afins,
-**ou rode tudo local, sem chave e sem nuvem**. Seus dados só saem daqui pelo modelo e pelas
+prende a nenhum modelo — traga a sua chave da OpenAI, Anthropic, Google, DeepSeek e afins.
+Seus dados só saem daqui pelo modelo e pelas
 integrações que **você** escolher.
 
 [![Como o Mangaba funciona](docs/assets/how-it-works.png)](https://mangaba-downloads.vercel.app)
@@ -44,8 +44,8 @@ integrações que **você** escolher.
 | **macOS** (Apple Silicon) | [`.dmg`](https://github.com/dheiver2/mangaba-openworker/releases/latest) | `brew tap dheiver2/mangaba && brew install --cask mangaba` |
 | **Windows** (x64) | [`.exe`](https://github.com/dheiver2/mangaba-openworker/releases/latest) | `winget install DheiverSantos.Mangaba` *(em aprovação)* |
 
-Abra o app, **crie a senha de acesso** e peça algo de verdade. Não precisa configurar modelo:
-o Mangaba prepara uma IA local sozinho no primeiro uso (veja abaixo).
+Abra o app, **crie a senha de acesso**, cole a chave do seu provedor de modelo e peça algo
+de verdade.
 
 > **Instaladores ainda não assinados.** No macOS: Ajustes do Sistema ▸ Privacidade e
 > Segurança ▸ "Abrir Mesmo Assim" na primeira execução. No Windows: SmartScreen ▸ "Mais
@@ -71,32 +71,6 @@ docker compose up -d
 Abra http://127.0.0.1:8765, crie a senha e pronto. A porta é publicada apenas em
 `127.0.0.1`. Os dados persistem no volume `mangaba-dados` e a pasta `~/Mangaba` fica
 visível ao agente.
-
-## Mangaba Local: IA sem nuvem e sem chave
-
-Esta é a diferença que mais importa: **o Mangaba não exige conta, chave nem cartão para
-funcionar.** No primeiro uso, ele monta uma IA local sozinho.
-
-- **Instala o motor** (Ollama) automaticamente no macOS. No Windows entrega o instalador
-  oficial para você confirmar — um prompt de administrador aparecendo sozinho é
-  comportamento que não imitamos.
-- **Inicia o motor quando precisa.** Se ele estiver parado, o app sobe o servidor em segundo
-  plano. Você não precisa saber que o Ollama existe.
-- **Baixa um modelo inicial** (Qwen 3 4B, licença Apache-2.0) se a máquina não tiver nenhum.
-- **Recomenda o maior modelo que a SUA máquina aguenta**, pela memória detectada — um clique
-  baixa, com barra de progresso:
-
-  | Memória RAM | Modelo recomendado | Download |
-  |---|---|---|
-  | menos de 6 GB | Qwen 3 4B | ~2,5 GB |
-  | 6 a 12 GB | Qwen 2.5 7B | ~4,7 GB |
-  | 12 a 24 GB | **Qwen 3 14B** | ~9,3 GB |
-  | 24 GB ou mais | **Qwen 3 32B** | ~20,2 GB |
-
-  Só oferecemos quantização **Q4 ou melhor**: abaixo disso a qualidade cai rápido demais para
-  valer o download, por maior que seja o modelo.
-
-Modelos locais **não enviam nada para fora** — nem prompt, nem arquivo, nem metadado.
 
 ## O que ele faz
 
@@ -129,17 +103,17 @@ Modelos locais **não enviam nada para fora** — nem prompt, nem arquivo, nem m
 ├───────────────┬────────────────┬───────────────┤
 │  seus         │  suas          │  seu          │  tudo com as suas chaves,
 │  arquivos     │  ferramentas   │  modelo       │  na sua máquina
-│  & terminal   │  33 conectores │  local ou API │
+│  & terminal   │  33 conectores │  qualquer um  │
 └───────────────┴────────────────┴───────────────┘
 ```
 
 ## Escolha o seu modelo
 
-14 provedores prontos — cole a chave e troque quando quiser:
+13 provedores prontos — cole a chave e troque quando quiser:
 
-**Mangaba Local** (sem chave) · **OpenAI** · **Claude** (Anthropic) · **Gemini** (Google) ·
-**DeepSeek** · **Qwen** (Alibaba) · **Kimi** (Moonshot) · **GLM** (Z.ai) · **MiniMax** ·
-**Mistral** · **Grok** (xAI) · **Meta** · **Together AI** · **Fireworks AI**
+**OpenAI** · **Claude** (Anthropic) · **Gemini** (Google) · **DeepSeek** · **Qwen** (Alibaba) ·
+**Kimi** (Moonshot) · **GLM** (Z.ai) · **MiniMax** · **Mistral** · **Grok** (xAI) · **Meta** ·
+**Together AI** · **Fireworks AI**
 
 A lista curada marca o que já foi verificado para trabalho com ferramentas. Qualquer outro
 identificador de modelo funciona por sua conta e risco.
@@ -159,17 +133,13 @@ máquina; a senha prova que é a **pessoa** certa nela.
 **Esqueceu a senha?** Apague `~/.config/mangaba/passcode.json` — o app pede uma nova na
 próxima abertura. Não há recuperação: só o hash existe, e ele nunca sai da sua máquina.
 
-Downloads de modelo aceitam apenas a biblioteca oficial do Ollama e o Hugging Face; pacotes
-do motor com caminhos de travessia são recusados; e o motor local roda com ambiente mínimo,
-sem enxergar as suas chaves de API.
-
 ## Privacidade
 
 O Mangaba é *local-first*. Tudo mora na sua máquina: o laço do agente, suas conversas, os
 tokens dos conectores e as chaves de modelo — no armazenamento local de segredos do app. A
 única peça na nuvem é um serviço pequeno que intermedeia o OAuth dos conectores, e ele é
 **opcional**: dá para usar o app sem entrar em conta nenhuma, conectando tudo com credenciais
-criadas à mão. Com o Mangaba Local, nem o modelo sai daqui.
+criadas à mão.
 
 Além disso: filtros de privacidade removem remetentes e campos sensíveis antes de o agente
 ver os resultados, e cada chamada de conector fica registrada na aba Atividade.
@@ -244,7 +214,7 @@ montar um manifesto que quebraria os clientes.
 
 | Diretório | O que tem dentro |
 |---|---|
-| `mangaba/` | Backend Python — motor do agente, provedores de modelo, motor local, conectores, cliente MCP, memória, automações, senha local |
+| `mangaba/` | Backend Python — motor do agente, provedores de modelo, conectores, cliente MCP, memória, automações, senha local |
 | `surfaces/gui/` | App desktop — interface React + shell Tauri que supervisiona o servidor |
 | `surfaces/landing/` | Landing page estática (PT-BR, responsiva, tema claro/escuro) |
 | `packaging/` | Builds de instalador, manifesto de atualização, testes de empacotamento, bootstrap de desenvolvimento |
@@ -262,9 +232,6 @@ crédito pela arquitetura original é deles.
 O motor é construído sobre o [**aisuite**](https://github.com/andrewyng/aisuite), biblioteca
 Python leve com API unificada de chat-completions entre provedores de LLM, além de uma camada
 de agentes com ferramentas, toolkits e suporte a MCP.
-
-A IA local roda sobre o [**Ollama**](https://github.com/ollama/ollama) (MIT) — na interface
-ele aparece como "Mangaba Local", mas o motor por baixo é o Ollama e o crédito é dele.
 
 ## Licença
 
