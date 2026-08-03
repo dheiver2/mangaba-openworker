@@ -1502,7 +1502,12 @@ class SessionManager:
     def _suggested_models(self, name: str) -> list[str]:
         """Bare model-name suggestions for the 'add model' form (datalist), per provider —
         the curated matrix, topped up with the compat-vendor extras the matrix doesn't
-        vouch for."""
+        vouch for. Local suggestions are the models já baixados (os demais chegam pelo
+        card do provedor, com download e barra de progresso)."""
+        if name == "local":
+            from ..providers import local_engine
+
+            return local_engine.downloaded_tags()
         from ..providers.matrix import models_for_provider
 
         return list(
@@ -1701,8 +1706,18 @@ class SessionManager:
         # Only surface models whose provider is actually configured — the composer picker
         # reflects exactly what's connected. The active default is always kept selectable
         # (it's hidden behind the "No model" state until a provider is connected anyway).
+        # "local" é sem chave, então "configurado" não diz nada ali — os modelos só
+        # aparecem quando o arquivo GGUF existe no disco (checagem barata, sem rede);
+        # e ver um modelo local presente é a deixa para subir o motor em segundo plano.
+        from ..providers import local_engine
+
+        local_engine.autostart_em_segundo_plano()
+
         def _selectable(m: str) -> bool:
-            return self._provider_configured(self._model_provider(m))
+            provider = self._model_provider(m)
+            if provider == "local":
+                return m.split(":", 1)[-1] in local_engine.downloaded_tags()
+            return self._provider_configured(provider)
 
         selectable = [m for m in self._curated_models() if _selectable(m)]
         if self.model not in selectable:
@@ -1710,6 +1725,8 @@ class SessionManager:
         from ..providers.matrix import model_labels
 
         labels = model_labels()
+        for m in local_engine.CATALOG:
+            labels[f"local:{m['tag']}"] = m["label"]
         return {
             "provider": "openai",
             "model": self.model,
@@ -1904,6 +1921,18 @@ class SessionManager:
         self.model = model
         self._prefs["default_model"] = model
         self._save_prefs()
+        if model.startswith("local:"):
+            # O llama-server serve UM modelo por processo: trocar o padrão local troca o
+            # modelo carregado. Em thread — o load de um 14B leva dezenas de segundos.
+            import threading
+
+            from ..providers import local_engine
+
+            threading.Thread(
+                target=local_engine.ensure_running,
+                args=(model.split(":", 1)[-1],),
+                daemon=True,
+            ).start()
         return {"ok": True, **self.get_settings()}
 
     def set_onboarded(self, value: bool = True) -> dict[str, Any]:

@@ -8,8 +8,9 @@ model string and builds (and caches) its client from the matching SecretStore pr
 
 Today: `openai` (the default, with an optional custom endpoint that covers Azure OpenAI's
 `/openai/v1` and any OpenAI-compliant gateway), `anthropic` (native Messages API via
-`AnthropicProvider`), and `gemini` (native Google GenAI API via `GeminiProvider`).
-Bedrock/Vertex auth for Claude is future work.
+`AnthropicProvider`), `gemini` (native Google GenAI API via `GeminiProvider`), and `local`
+(llama-server embutido, OpenAI-compatible — see `local_engine.py`). Bedrock/Vertex auth for
+Claude is future work.
 """
 
 from __future__ import annotations
@@ -110,6 +111,13 @@ def _build_gemini(profile: dict[str, Any], secrets: Any) -> ProviderClient:
     return GeminiProvider(api_key=api_key, secrets=secrets)
 
 
+def _build_local(profile: dict[str, Any], secrets: Any) -> ProviderClient:
+    # O llama-server não pede chave, mas o SDK exige uma string não vazia — marcador.
+    from .local_engine import DEFAULT_HOST
+
+    return OpenAIProvider(api_key="local", base_url=DEFAULT_HOST + "/v1")
+
+
 
 
 def _openai_compat(vendor: str, default_base_url: str, env_key: Optional[str] = None):
@@ -173,6 +181,18 @@ def _compat(
 
 
 DESCRIPTORS: list[ProviderDescriptor] = [
+    ProviderDescriptor(
+        name="local",
+        title="Mangaba Local",
+        needs_key=False,
+        blurb=(
+            "IA neste computador, sem chave e sem nuvem — o app baixa o motor "
+            "(llama.cpp, MIT) e um modelo Qwen3 (Apache-2.0) com tool calling nativo."
+        ),
+        fields=[],
+        build=_build_local,
+        recommended_model="qwen3-4b",
+    ),
     ProviderDescriptor(
         name="openai",
         title="OpenAI",
@@ -368,6 +388,18 @@ def verify_provider_key(
 
     d = _BY_NAME.get(name) or _BY_NAME["openai"]
     key = (api_key or "").strip()
+    if name == "local":
+        # Sem chave: "verificar" é subir o motor (se der) e ver se ele responde.
+        from .local_engine import DEFAULT_HOST, engine_status, ensure_running
+
+        st = engine_status()
+        if not st["installed"]:
+            return {"ok": False, "error": "O motor local ainda não foi instalado."}
+        if not st["models"]:
+            return {"ok": False, "error": "Nenhum modelo local baixado ainda."}
+        if st["running"] or ensure_running():
+            return {"ok": True}
+        return {"ok": False, "error": "O motor local não subiu — veja o engine.log."}
     try:
         if name == "anthropic":
             resp = httpx.get(

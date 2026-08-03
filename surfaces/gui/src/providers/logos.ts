@@ -6,6 +6,8 @@
 // long tail behind the scroll fold.
 
 import anthropic from "./logos/anthropic.svg";
+// O provedor local usa a marca própria — o motor (llama.cpp) e os modelos rodam aqui dentro.
+import mangabaLocal from "./logos/mangaba.png";
 import openai from "./logos/openai.svg";
 import gemini from "./logos/gemini.svg";
 import fireworks from "./logos/fireworks.svg";
@@ -20,6 +22,7 @@ import xai from "./logos/xai.svg";
 import meta from "./logos/meta.svg";
 
 export const PROVIDER_LOGOS: Record<string, string> = {
+  local: mangabaLocal,
   anthropic,
   openai,
   gemini,
@@ -36,6 +39,9 @@ export const PROVIDER_LOGOS: Record<string, string> = {
 };
 
 export const PROVIDER_ORDER = [
+  // Local primeiro: é a única opção que um usuário recém-instalado usa sem criar conta
+  // em lugar nenhum nem cadastrar cartão.
+  "local",
   "anthropic",
   "openai",
   "gemini",

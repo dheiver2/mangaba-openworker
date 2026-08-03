@@ -177,6 +177,9 @@ def create_app(manager: SessionManager) -> FastAPI:
 
             traceback.print_exc()
         yield
+        from ..providers import local_engine
+
+        local_engine.stop()  # o llama-server é filho nosso; não pode ficar órfão
         await manager.aclose()  # stop gateway + close MCP connections on shutdown
 
     app = FastAPI(title="mangaba", version="0.0.0", lifespan=lifespan)
@@ -1501,6 +1504,29 @@ def create_app(manager: SessionManager) -> FastAPI:
             max_pages=b.get("pdf_max_pages"),
             max_mb=b.get("pdf_max_mb"),
         )
+
+    # -- motor local (Mangaba Local: llama.cpp embutido) -------------------------
+    @app.get("/v1/providers/local-engine")
+    def local_engine_status() -> dict[str, Any]:
+        from ..providers import local_engine
+
+        return local_engine.engine_status()
+
+    @app.post("/v1/providers/local-engine/install")
+    def local_engine_install() -> dict[str, Any]:
+        # Longo (dezenas de MB) mas raro; roda em thread para não segurar o worker.
+        import threading
+
+        from ..providers import local_engine
+
+        threading.Thread(target=local_engine.install, daemon=True).start()
+        return {"ok": True}
+
+    @app.post("/v1/providers/local-engine/pull")
+    def local_engine_pull(body: dict) -> dict[str, Any]:
+        from ..providers import local_engine
+
+        return local_engine.pull(str((body or {}).get("tag") or ""))
 
     @app.post("/v1/settings/secret-guard")
     def settings_set_secret_guard(body: dict) -> dict[str, Any]:

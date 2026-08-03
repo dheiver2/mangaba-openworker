@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
+  getLocalEngine,
   getProviders,
+  installLocalEngine,
+  pullLocalModel,
   removeProvider,
   setProvider,
   verifyProvider,
+  type LocalEngineStatus,
   type ProviderInfo,
 } from "../api";
 import { openExternal } from "../tauri";
@@ -87,6 +91,11 @@ export interface ProviderSetupState {
   cancelBackTimer: () => void;
   statusFor: (p: ProviderInfo, opts?: { lastUsed?: boolean }) => ReactNode;
   setVerifyError: (msg: string) => void;
+  // Motor local (Mangaba Local): null until probed. Drives install-vs-detect in the form.
+  engine: LocalEngineStatus | null;
+  installing: boolean;
+  installEngine: () => Promise<void>;
+  reloadEngine: () => void;
   // Blur-save for non-secret fields on an already-configured provider (the Test button is
   // the KEY's save path; extras like anthropic's thinking_budget must not need a re-test —
   // owner-hit 2026-07-23: the budget silently never saved).
@@ -110,6 +119,8 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
   // Keyless providers (Mangaba) report configured without proving anything runs —
   // a passing Detect this session is what marks them live.
   const [keylessOk, setKeylessOk] = useState<Set<string>>(new Set());
+  const [engine, setEngine] = useState<LocalEngineStatus | null>(null);
+  const [installing, setInstalling] = useState(false);
   // Unsaved per-provider input survives switching cards (owner complaint 2026-07-16).
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
   const backTimer = useRef<number | null>(null);
@@ -143,8 +154,45 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     return () => clearTimeout(t);
   }, [providersLoaded, providersTimedOut]);
 
-  // Enquanto o bootstrap de primeiro uso trabalha (instalar motor / baixar modelo inicial),
-  // o card precisa acompanhar de perto — senão fica preso em "ausente" até reabrir.
+  // Enquanto o motor instala ou um modelo baixa, o card acompanha de perto — senão a
+  // barra de progresso fica parada em 0% até reabrir. A dependência lista TUDO que a
+  // condição lê (bootstrap E pull), pelas razões documentadas na versão antiga do card.
+  const bootPhase = engine?.bootstrap?.phase;
+  const pullPhase = engine?.pull?.phase;
+  useEffect(() => {
+    const ativo =
+      pullPhase === "pulling" ||
+      bootPhase === "installing" ||
+      bootPhase === "starting" ||
+      bootPhase === "pulling";
+    if (!ativo) return;
+    const t = setInterval(() => {
+      void getLocalEngine()
+        .then((e) => {
+          setEngine(e);
+          if (e.bootstrap?.phase === "ready" || e.pull?.phase === "done") void refreshProviders();
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => clearInterval(t);
+  }, [bootPhase, pullPhase]);
+
+  const reloadEngine = () => {
+    void getLocalEngine().then(setEngine).catch(() => {});
+  };
+
+  const installEngine = async () => {
+    setInstalling(true);
+    const res = await installLocalEngine().catch(() => ({ ok: false, error: "unreachable" as string | undefined }));
+    setInstalling(false);
+    if (!res.ok) {
+      setVerify({ state: "error", msg: res.error || "Não consegui instalar o motor local." });
+      return;
+    }
+    // A instalação roda em segundo plano no servidor; o polling acima acompanha.
+    setEngine(await getLocalEngine().catch(() => null));
+  };
+
   const info = providers.find((p) => p.name === sel);
   const credentialed = !!info?.configured && !!info?.needs_key;
 
@@ -161,6 +209,9 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     setDirty(!!draft && Object.values(draft).some(Boolean));
     setVerify({ state: "idle" });
     setShowEndpoint(false);
+    // Só sondamos o motor quando o usuário abre um provedor sem chave — a sonda pode
+    // disparar spawn de processo, não cabe rodar no carregamento da galeria inteira.
+    if (p && !p.needs_key) void getLocalEngine().then(setEngine).catch(() => {});
   };
 
   const backToGallery = () => {
@@ -297,6 +348,10 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     },
     statusFor,
     setVerifyError,
+    engine,
+    installing,
+    installEngine,
+    reloadEngine,
   };
 }
 
@@ -393,6 +448,70 @@ export function ProviderForm({
         </span>
       </div>
       {info?.blurb && <p className="text-[11.5px] text-faint mt-1">{info.blurb}</p>}
+
+      {info && !info.needs_key && (
+        <p className="text-[11.5px] text-faint mt-2">
+          Não precisa de chave — os modelos rodam neste computador.{" "}
+          {ps.engine?.bootstrap && ps.engine.bootstrap.phase === "installing" ? (
+            <span data-testid={`${tp}-engine-bootstrapping`}>
+              Instalando o motor local… {Math.round((ps.engine.bootstrap.progress || 0) * 100)}%
+              <span className="engine-bar"><i style={{ width: `${Math.round((ps.engine.bootstrap.progress || 0) * 100)}%` }} /></span>
+            </span>
+          ) : ps.engine?.pull?.phase === "pulling" ? (
+            <span data-testid={`${tp}-engine-pulling`}>
+              Baixando {ps.engine.pull.tag}… {Math.round((ps.engine.pull.progress || 0) * 100)}%
+              <span className="engine-bar"><i style={{ width: `${Math.round((ps.engine.pull.progress || 0) * 100)}%` }} /></span>
+            </span>
+          ) : ps.engine?.pull?.phase === "error" ? (
+            <span className="text-warnInk" data-testid={`${tp}-engine-pull-error`}>
+              Falha ao baixar {ps.engine.pull.tag}: {ps.engine.pull.error || "erro desconhecido"}
+            </span>
+          ) : ps.engine?.pull?.phase === "done" ? (
+            <span className="text-ok" data-testid={`${tp}-engine-pull-done`}>
+              ✓ {ps.engine.pull.tag} pronto — clique em Detectar para usá-lo.
+            </span>
+          ) : ps.engine?.installed === false ? (
+            // Motor ausente: instalar é o próximo passo, não "Detectar" (que só falharia).
+            <button
+              className="text-muted underline decoration-line underline-offset-2 hover:text-ink disabled:opacity-50"
+              onClick={() => void ps.installEngine()}
+              disabled={ps.installing}
+              data-testid={`${tp}-install-engine`}
+            >
+              {ps.installing ? "Instalando o motor local…" : "Instalar o motor local (llama.cpp, ~20 MB)"}
+            </button>
+          ) : ps.engine ? (
+            <span data-testid={`${tp}-engine-ready`}>
+              {(ps.engine.models || 0) === 0
+                ? "Motor local pronto, mas sem nenhum modelo baixado — baixe um para poder conversar."
+                : ps.engine.running
+                  ? `Motor local ativo${ps.engine.active ? ` (${ps.engine.active})` : ""}.`
+                  : "Motor local instalado — clique em Detectar."}
+              {/* O maior modelo que ESTA máquina roda bem (por RAM detectada): um clique baixa. */}
+              {ps.engine.recommended && !(ps.engine.tags || []).includes(ps.engine.recommended.tag) && (
+                <>
+                  {" "}
+                  <button
+                    className="text-muted underline decoration-line underline-offset-2 hover:text-ink"
+                    onClick={() =>
+                      void pullLocalModel(ps.engine!.recommended!.tag)
+                        .then((r) => {
+                          if (!r.ok) ps.setVerifyError(r.error || "Não consegui baixar o modelo.");
+                          ps.reloadEngine();
+                        })
+                        .catch(() => ps.setVerifyError("Não consegui falar com o servidor local."))
+                    }
+                    data-testid={`${tp}-pull-recommended`}
+                  >
+                    Baixar o recomendado p/ esta máquina ({ps.engine.recommended.tag}, ~{ps.engine.recommended.download_gb} GB)
+                  </button>{" "}
+                  <span className="text-faint">RAM detectada: {Math.round(ps.engine.recommended.ram_gb)} GB.</span>
+                </>
+              )}
+            </span>
+          ) : null}
+        </p>
+      )}
 
       {(info?.fields || []).map((f) => {
         const keyed = (info?.fields || []).some((x) => x.secret);

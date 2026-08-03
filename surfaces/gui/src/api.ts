@@ -810,6 +810,50 @@ export interface ModelSettings {
   turns_used_today?: number;
 }
 
+// -- motor local (Mangaba Local: llama.cpp embutido) --------------------------------
+export type LocalEngineStatus = {
+  state: "running" | "stopped" | "absent";
+  installed: boolean;
+  running: boolean;
+  binary: string | null;
+  /** Quantos modelos locais existem: motor no ar com 0 é o estado "sem modelo" no chat. */
+  models?: number;
+  tags?: string[];
+  active?: string | null;
+  /** Instalação do binário (download da release do llama.cpp) em andamento. */
+  bootstrap?: {
+    phase: "idle" | "installing" | "starting" | "pulling" | "ready" | "needs_user" | "error";
+    progress: number;
+    error: string | null;
+  };
+  /** Largest local model THIS machine runs well (picked by detected RAM). */
+  recommended?: { tag: string; download_gb: number; ram_gb: number };
+  /** UI-triggered model download in flight (card's "Baixar recomendado"). */
+  pull?: { phase: "idle" | "pulling" | "done" | "error"; tag: string | null; progress: number; error: string | null };
+};
+
+/** Is the local engine (Mangaba Local) installed and serving? Decides install vs. detect. */
+export async function getLocalEngine(): Promise<LocalEngineStatus> {
+  const res = await fetch(`${httpBase()}/v1/providers/local-engine`);
+  return res.json();
+}
+
+/** Download + unpack the llama.cpp release on demand. Slow (dezenas de MB) — show progress. */
+export async function installLocalEngine(): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/providers/local-engine/install`, { method: "POST" });
+  return res.json();
+}
+
+/** Start downloading a local model by tag; progress arrives via getLocalEngine().pull. */
+export async function pullLocalModel(tag: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/providers/local-engine/pull`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tag }),
+  });
+  return res.json();
+}
+
 // -- guarda-corpos + diagnóstico ----------------------------------------------------
 
 const postSetting = async (rota: string, value: unknown): Promise<any> => {
