@@ -84,6 +84,9 @@ _pull_lock = threading.Lock()
 _serve_lock = threading.Lock()
 
 # Estado vivo compartilhado com a UI (mesmo shape do card antigo do Mangaba Local).
+# Escrito pelas threads de download/instalação e lido pelo engine_status; o lock evita
+# um snapshot com `phase` novo e `progress` velho (barra momentaneamente inconsistente).
+_state_lock = threading.Lock()
 _bootstrap: dict[str, Any] = {"phase": "idle", "progress": 0.0, "error": None}
 _pull: dict[str, Any] = {"phase": "idle", "tag": None, "progress": 0.0, "error": None}
 
@@ -204,7 +207,8 @@ def install() -> dict[str, Any]:
         if find_binary():
             return {"ok": True}
         try:
-            _bootstrap.update(phase="installing", progress=0.0, error=None)
+            with _state_lock:
+                _bootstrap.update(phase="installing", progress=0.0, error=None)
             rel = httpx.get(_RELEASES_LATEST, timeout=20, follow_redirects=True).json()
             asset = _pick_asset(rel.get("assets") or [])
             if not asset:
@@ -229,10 +233,12 @@ def install() -> dict[str, Any]:
                     f.rename(root / f.name)
             binary = root / _binary_name()
             binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
-            _bootstrap.update(phase="idle", progress=1.0, error=None)
+            with _state_lock:
+                _bootstrap.update(phase="idle", progress=1.0, error=None)
             return {"ok": True}
         except Exception as exc:
-            _bootstrap.update(phase="error", error=str(exc))
+            with _state_lock:
+                _bootstrap.update(phase="error", error=str(exc))
             return {"ok": False, "error": f"Não consegui baixar o motor local ({exc})."}
 
 
@@ -270,14 +276,17 @@ def pull(tag: str) -> dict[str, Any]:
     def _job() -> None:
         with _pull_lock:
             try:
-                _pull.update(phase="pulling", tag=tag, progress=0.0, error=None)
+                with _state_lock:
+                    _pull.update(phase="pulling", tag=tag, progress=0.0, error=None)
                 _download(m["url"], dest, _pull)
-                _pull.update(phase="done", progress=1.0)
+                with _state_lock:
+                    _pull.update(phase="done", progress=1.0)
                 # O modelo recém-baixado é o que a pessoa quer usar: sobe já.
                 ensure_running(tag)
             except Exception as exc:
                 dest.with_suffix(dest.suffix + ".part").unlink(missing_ok=True)
-                _pull.update(phase="error", error=str(exc))
+                with _state_lock:
+                    _pull.update(phase="error", error=str(exc))
 
     threading.Thread(target=_job, daemon=True, name="modelo-pull").start()
     return {"ok": True}
@@ -423,7 +432,6 @@ def engine_status() -> dict[str, Any]:
         "models": len(tags),
         "tags": tags,
         "active": _active_tag,
-        "bootstrap": dict(_bootstrap),
-        "pull": dict(_pull),
+        **({"bootstrap": dict(_bootstrap), "pull": dict(_pull)}),
         "recommended": recommended(),
     }

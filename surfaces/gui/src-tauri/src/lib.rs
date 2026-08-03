@@ -609,6 +609,7 @@ pub fn run() {
             show_main(app);
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Restaura tamanho e posição da janela. Sem isso ela reabria sempre em
         // 1360x900 no centro, descartando o ajuste do usuário a cada abertura —

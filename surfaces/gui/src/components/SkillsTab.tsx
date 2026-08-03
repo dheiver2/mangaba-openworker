@@ -97,7 +97,16 @@ export function SkillsTab({
   const DELETE_NOTE =
     "removida. Se uma conversa já a usou, inicie uma nova para começar do zero.";
 
-  const refresh = () => listSkills().then(setRows);
+  const [loadError, setLoadError] = useState(false);
+  // Sem o catch, o sidecar fora do ar rejeitava a promessa e a tela caía no estado
+  // vazio "Nenhuma skill ainda" — confundindo "não tem skill" com "não carreguei".
+  const refresh = () =>
+    listSkills()
+      .then((r) => {
+        setRows(r);
+        setLoadError(false);
+      })
+      .catch(() => setLoadError(true));
   useEffect(() => {
     refresh();
   }, []);
@@ -357,7 +366,14 @@ export function SkillsTab({
       ) : null}
 
       <div className={`${CARD} divide-y divide-line`}>
-        {rows.length === 0 && !editor ? (
+        {loadError && rows.length === 0 && !editor ? (
+          <div className="p-5 text-[13px] text-danger">
+            Não consegui carregar as skills — o servidor do Mangaba pode estar reiniciando.{" "}
+            <button className="underline" onClick={() => void refresh()}>
+              Tentar de novo
+            </button>
+          </div>
+        ) : rows.length === 0 && !editor ? (
           <div className="p-5 text-[13px] text-muted">
             Nenhuma skill ainda — <b>Adicionar skill</b> ensina a primeira ao seu Mangaba, como
             “preparar meu relatório de status de segunda-feira”.
