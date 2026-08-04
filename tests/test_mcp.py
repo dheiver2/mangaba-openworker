@@ -194,3 +194,34 @@ def test_rest_crud(tmp_path, monkeypatch):
     assert client.delete("/v1/mcp/fs").json()["ok"] is True
     assert client.get("/v1/mcp").json()["servers"] == []
     assert client.delete("/v1/mcp/fs").json()["ok"] is False
+
+
+def test_runtime_ausente_nomeia_o_que_instalar(monkeypatch):
+    """Servidor MCP publicado quase sempre roda por `npx` (Node) — que a máquina de um
+    dev tem e a de um usuário comum não. Sem isto o erro na tela era o do SO, e no
+    Windows é '[WinError 2] O sistema não pode encontrar o arquivo especificado':
+    não diz o que instalar, e o MCP parecia simplesmente não funcionar."""
+    from mangaba.mcp import client
+
+    monkeypatch.setattr(client.shutil if hasattr(client, "shutil") else __import__("shutil"), "which", lambda c: None)
+    import shutil as _sh
+
+    monkeypatch.setattr(_sh, "which", lambda c: None)
+
+    msg = client._runtime_ausente("npx")
+    assert msg and "Node.js" in msg and "nodejs.org" in msg
+
+    msg_uv = client._runtime_ausente("uvx")
+    assert msg_uv and "uv" in msg_uv
+
+    generico = client._runtime_ausente("servidor-proprio")
+    assert generico and "caminho completo" in generico
+
+
+def test_runtime_presente_nao_reclama(monkeypatch):
+    from mangaba.mcp import client
+    import shutil as _sh
+
+    monkeypatch.setattr(_sh, "which", lambda c: "/usr/bin/" + c)
+    assert client._runtime_ausente("npx") is None
+    assert client._runtime_ausente("") is None

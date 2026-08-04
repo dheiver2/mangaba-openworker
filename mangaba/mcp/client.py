@@ -13,6 +13,7 @@ Tool execution from the (sync) ToolRegistry bridges back here via
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from contextlib import AsyncExitStack
 from typing import Any, Optional
 
@@ -118,6 +119,9 @@ class MCPManager:
                         raise ValueError(
                             f"MCP server '{server.name}' is stdio but has no command"
                         )
+                    faltando = _runtime_ausente(server.command)
+                    if faltando:
+                        raise RuntimeError(faltando)
                     params = StdioServerParameters(
                         command=server.command,
                         args=server.args,
@@ -138,6 +142,50 @@ class MCPManager:
         finally:
             self._conns.pop(server.name, None)
             self._tasks.pop(server.name, None)
+
+
+# A maioria dos servidores MCP publicados roda por `npx` (Node) ou `uvx` (Python/uv) —
+# runtimes que a máquina de um desenvolvedor tem e a de um usuário comum não. Sem esta
+# checagem o erro que chegava à tela era o do sistema operacional, que no Windows é
+# "[WinError 2] O sistema não pode encontrar o arquivo especificado": não diz o que
+# instalar, e o servidor parecia simplesmente não funcionar.
+_RUNTIMES = {
+    "npx": ("Node.js", "https://nodejs.org"),
+    "node": ("Node.js", "https://nodejs.org"),
+    "uvx": ("uv", "https://docs.astral.sh/uv/getting-started/installation/"),
+    "uv": ("uv", "https://docs.astral.sh/uv/getting-started/installation/"),
+    "bunx": ("Bun", "https://bun.sh"),
+    "deno": ("Deno", "https://deno.com"),
+}
+
+
+def _runtime_ausente(command: Optional[str]) -> Optional[str]:
+    """Mensagem acionável quando o executável do servidor não está no PATH, ou None."""
+    import shutil
+
+    cmd = (command or "").strip()
+    if not cmd:
+        return None
+    base = Path(cmd).name.lower()
+    for sufixo in (".exe", ".cmd", ".bat", ".ps1"):
+        if base.endswith(sufixo):
+            base = base[: -len(sufixo)]
+    if shutil.which(cmd):
+        return None
+    # No Windows o executável real costuma ser `npx.cmd`; o SDK resolve, mas só se existir.
+    if any(shutil.which(f"{cmd}{s}") for s in (".cmd", ".bat", ".exe", ".ps1")):
+        return None
+    runtime = _RUNTIMES.get(base)
+    if runtime:
+        nome, url = runtime
+        return (
+            f"`{cmd}` não foi encontrado neste computador. Este servidor MCP precisa do "
+            f"{nome} instalado — baixe em {url} e reabra o Mangaba."
+        )
+    return (
+        f"`{cmd}` não foi encontrado no PATH deste computador. Instale o programa do "
+        "servidor MCP, ou aponte o campo `command` para o caminho completo do executável."
+    )
 
 
 def _result_payload(result: Any) -> Any:
