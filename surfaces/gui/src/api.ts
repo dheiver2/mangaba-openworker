@@ -285,7 +285,11 @@ export type McpCatalogItem = {
   name: string;
   titulo: string;
   blurb: string;
-  runtime: string;
+  categoria: string;
+  /** "http" = servidor remoto, não precisa de nada instalado; "stdio" = roda aqui. */
+  transport: "http" | "stdio";
+  oauth: boolean;
+  runtime: string | null;
   runtime_pronto: boolean;
   runtime_titulo: string;
   runtime_url: string;

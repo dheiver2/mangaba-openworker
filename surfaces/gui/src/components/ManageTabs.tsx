@@ -351,7 +351,7 @@ export function McpTab() {
 // JSON (`{"command": "npx", ...}`) — tarefa de desenvolvedor. Quem instalou o app abria
 // aqui, lia "nenhum servidor" e não tinha o que fazer. Na máquina de quem desenvolve o
 // mcp.json já existia, então o buraco só apareceu para os usuários.
-function McpGaleria({
+export function McpGaleria({
   onInstalado,
   onManual,
 }: {
@@ -392,13 +392,37 @@ function McpGaleria({
     onInstalado();
   };
 
+  const categorias = Array.from(new Set(itens.map((i) => i.categoria)));
+
   return (
-    <div className="space-y-2">
-      {itens.map((item) => (
+    <div className="space-y-4">
+      {categorias.map((cat) => (
+        <div key={cat} className="space-y-2">
+          <div className={SEC_H}>{cat}</div>
+      {itens.filter((i) => i.categoria === cat).map((item) => (
         <div key={item.name} className={CARD + " p-3"}>
           <div className="flex items-start gap-3">
             <div className="min-w-0 flex-1">
-              <div className="text-[13px] text-ink font-medium">{item.titulo}</div>
+              <div className="flex items-center gap-2">
+                <span className="text-[13px] text-ink font-medium">{item.titulo}</span>
+                {/* O que a pessoa precisa saber ANTES de clicar: dá para usar já, ou
+                    vai pedir login / instalação? */}
+                {item.transport === "http" && !item.oauth && (
+                  <span className="text-[11px] text-ok bg-okSoft rounded-full px-2 py-0.5">
+                    sem login
+                  </span>
+                )}
+                {item.oauth && (
+                  <span className="text-[11px] text-muted bg-line/40 rounded-full px-2 py-0.5">
+                    entrar com sua conta
+                  </span>
+                )}
+                {item.transport === "stdio" && (
+                  <span className="text-[11px] text-muted bg-line/40 rounded-full px-2 py-0.5">
+                    roda neste computador
+                  </span>
+                )}
+              </div>
               <div className="text-[12px] text-muted mt-0.5">{item.blurb}</div>
               {!item.runtime_pronto && (
                 <div className="text-[12px] text-warnInk mt-1.5">
@@ -444,6 +468,8 @@ function McpGaleria({
               {erro && <div className="text-[12px] text-danger">{erro}</div>}
             </div>
           )}
+        </div>
+      ))}
         </div>
       ))}
 
