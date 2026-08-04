@@ -178,3 +178,33 @@ def test_lancador_marca_handles_como_herdaveis():
     lancador = (RAIZ / "packaging" / "win_launcher.c").read_text(encoding="utf-8")
     assert "SetHandleInformation" in lancador
     assert "HANDLE_FLAG_INHERIT" in lancador
+
+
+# --------------------------------------------------------------------------
+# Publicação: uma release sem o manifesto de update é uma release invisível.
+# --------------------------------------------------------------------------
+def test_publicar_release_sempre_gera_e_sobe_o_manifesto():
+    """Da v0.1.20 à v0.1.26 as releases saíram só com os instaladores. O `latest.json`
+    nunca subiu, o endpoint do updater devolvia 404 e NENHUM usuário viu aviso de
+    atualização — quem instalou a 0.1.20 ficou nela, sem as correções de sete versões.
+    O `gerar_latest_json.sh` já existia e fazia a coisa certa; só dependia de alguém
+    lembrar de chamá-lo. Este teste é o 'alguém'."""
+    script = RAIZ / "packaging" / "publicar_release.sh"
+    assert script.is_file(), "o publicador de release sumiu"
+    texto = script.read_text(encoding="utf-8")
+
+    assert "gerar_latest_json.sh" in texto, "a publicação parou de gerar o manifesto"
+    assert "latest.json" in texto, "a publicação parou de subir o manifesto"
+    # e o passo que prova que funcionou: consultar o endpoint que o APP consulta
+    assert "releases/latest/download/latest.json" in texto, (
+        "sem verificar o endpoint, um manifesto quebrado passa despercebido de novo"
+    )
+
+
+def test_manifesto_cobre_as_duas_plataformas_distribuidas():
+    """macOS atualiza pelo .app.tar.gz (não pelo DMG) e Windows pelo .exe. Faltar um
+    dos dois deixa aquela plataforma sem update, silenciosamente."""
+    gerador = (RAIZ / "packaging" / "gerar_latest_json.sh").read_text(encoding="utf-8")
+    assert "darwin-aarch64" in gerador
+    assert "windows-x86_64" in gerador
+    assert "Mangaba.app.tar.gz" in gerador, "macOS não atualiza pelo DMG"

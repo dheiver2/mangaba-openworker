@@ -208,8 +208,14 @@ de comportamento.
 bash packaging/build_dmg.sh                   # macOS (.dmg + artefatos de auto-update)
 bash packaging/build_windows_cross.sh         # Windows (.exe), por cross-compile no macOS
 bash packaging/testar_windows_wine.sh         # fumaça do sidecar Windows sob Wine
-bash packaging/gerar_latest_json.sh 0.1.18    # manifesto do auto-update
+bash packaging/publicar_release.sh 0.1.28 "Título"   # publica TUDO (usa este)
 ```
+
+**Publique sempre pelo `publicar_release.sh`.** Ele gera o manifesto de auto-update
+(`latest.json`), sobe os instaladores + checksums + manifesto e, no fim, consulta o mesmo
+endpoint que o app consulta para provar que a versão nova está sendo anunciada. Publicar só
+os instaladores deixa a release **invisível**: quem já tem o app instalado nunca recebe o
+aviso e fica parado na versão antiga — foi o que aconteceu da v0.1.20 à v0.1.26.
 
 O build do Windows sai do macOS porque não há máquina nem runner Windows no projeto: o
 sidecar vem do runtime *embeddable* oficial do Windows com wheels `win_amd64`. Como isso não
