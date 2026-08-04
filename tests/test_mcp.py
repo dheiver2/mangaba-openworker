@@ -25,10 +25,12 @@ def _write_json(path, data):
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
-def _fake_tool(name, schema=None, description="desc"):
+def _fake_tool(name, schema=None, description="desc", read_only=None):
+    ann = SimpleNamespace(readOnlyHint=read_only) if read_only is not None else None
     return SimpleNamespace(
         name=name,
         description=description,
+        annotations=ann,
         inputSchema=schema
         or {
             "type": "object",
@@ -36,6 +38,35 @@ def _fake_tool(name, schema=None, description="desc"):
             "required": ["path"],
         },
     )
+
+
+def test_readonly_tools_skip_approval():
+    """readOnlyHint=True → roda sem aprovação (busca de docs não pede 'Permitir?' toda vez);
+    escrita e ferramentas sem a anotação seguem o padrão do servidor (aprovação ligada)."""
+    server = MCPServerDef(name="notion", transport="http", requires_approval=True)
+    fns = build_callables(
+        server,
+        [
+            _fake_tool("search", read_only=True),
+            _fake_tool("create_page", read_only=False),
+            _fake_tool("mystery"),
+        ],
+        lambda t, a: None,
+        asyncio.new_event_loop(),
+    )
+    by = {f.__name__: f.__aisuite_tool_metadata__.requires_approval for f in fns}
+    assert by["mcp__notion__search"] is False
+    assert by["mcp__notion__create_page"] is True
+    assert by["mcp__notion__mystery"] is True
+
+
+def test_server_requires_approval_false_overrides_all():
+    """`requires_approval: false` no config desliga a aprovação do servidor inteiro."""
+    server = MCPServerDef(name="docs", transport="http", requires_approval=False)
+    fns = build_callables(
+        server, [_fake_tool("fetch")], lambda t, a: None, asyncio.new_event_loop()
+    )
+    assert fns[0].__aisuite_tool_metadata__.requires_approval is False
 
 
 # -- config --------------------------------------------------------------------

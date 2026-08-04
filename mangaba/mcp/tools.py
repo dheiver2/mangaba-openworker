@@ -68,6 +68,14 @@ def build_callables(
         name = tool_name(server.name, mcp_tool.name)
         remote = mcp_tool.name
 
+        # Uma ferramenta que se DECLARA só-leitura (readOnlyHint do protocolo MCP) roda sem
+        # aprovação — pedir "Permitir?" a cada busca de documentação é atrito puro. O resto
+        # segue o padrão do servidor (aprovação ligada). `requires_approval: false` no
+        # config ainda desliga tudo de um servidor, para o dono forçar quando quiser.
+        ann = getattr(mcp_tool, "annotations", None)
+        read_only = bool(getattr(ann, "readOnlyHint", False)) if ann else False
+        requires_approval = server.requires_approval and not read_only
+
         def _invoke(_remote: str = remote, **kwargs: Any) -> Any:
             future = asyncio.run_coroutine_threadsafe(call_async(_remote, kwargs), loop)
             return future.result(timeout)
@@ -84,7 +92,7 @@ def build_callables(
             category="mcp",
             risk_level="medium",
             capabilities=[server.name],
-            requires_approval=server.requires_approval,
+            requires_approval=requires_approval,
         )
         _invoke.__mangaba_schema__ = _openai_schema(name, mcp_tool)
         callables.append(_invoke)
