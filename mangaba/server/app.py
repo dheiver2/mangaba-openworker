@@ -480,7 +480,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                 ):
                     return {"ok": False, "error": "hash do manifesto não confere"}
                 with tempfile.TemporaryDirectory() as td:
-                    (Path(td) / f"{slug}.md").write_text(markdown)
+                    (Path(td) / f"{slug}.md").write_text(markdown, encoding="utf-8")
                     summaries = reg.install_from_dir(td)
                 cloud.gallery_install_event(manager.secrets, load_config(), slug)
             else:

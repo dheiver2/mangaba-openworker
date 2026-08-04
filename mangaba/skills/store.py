@@ -402,6 +402,11 @@ class SkillStore:
         scope: str = GLOBAL_SCOPE,
         workspace: Optional[str | Path] = None,
     ) -> dict[str, Any]:
+        # O token vem cru do corpo JSON e vira caminho: sem esta checagem, um
+        # `../../..` escapa do staging e o `shutil.move` abaixo arranca a pasta real
+        # do lugar. Os tokens que emitimos são sempre `uuid4().hex`.
+        if not re.fullmatch(r"[0-9a-f]{32}", str(token or "")):
+            raise ValueError("Unknown or expired upload.")
         staged = self._staging_dir / str(token)
         if not (staged / "SKILL.md").is_file():
             raise ValueError("Unknown or expired upload.")
@@ -425,6 +430,8 @@ class SkillStore:
         return {"name": name, "scope": scope, "path": str(folder)}
 
     def discard_upload(self, token: str) -> None:
+        if not re.fullmatch(r"[0-9a-f]{32}", str(token or "")):
+            return  # mesmo motivo do confirm_upload: isto vira caminho de um rmtree
         staged = self._staging_dir / str(token)
         shutil.rmtree(staged, ignore_errors=True)
 

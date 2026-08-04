@@ -163,6 +163,11 @@ class SessionManager:
         if self.default_workspace:
             self.session_store.touch_workspace(self.default_workspace)
         self._engines: dict[str, TurnEngine] = {}
+        # Lápides: um turno em voo guardou o `engine` no closure do WebSocket, então ele
+        # sobrevive ao `pop` do delete_session e o `save()` do finally reinsere a linha
+        # (ON CONFLICT DO UPDATE) — a sessão reaparecia apontando para um scratch dir já
+        # removido. Ids são UUID; o conjunto não cresce sem limite na prática.
+        self._deleted_sessions: set[str] = set()
         self._running_sessions: set[str] = (
             set()
         )  # sessions with an in-flight turn (busy)
@@ -420,14 +425,25 @@ class SessionManager:
     ) -> Optional[TurnEngine]:
         engine = self._engines.get(session_id)
         if engine is not None:
-            if approver is not None:
-                engine.approver = approver
-            if directory_requester is not None:
-                engine.directory_requester = directory_requester
-            if plan_approver is not None:
-                engine.plan_approver = plan_approver
-            if question_asker is not None:
-                engine.question_asker = question_asker
+            # Um chamador SEM callbacks é um caminho de background (self-wake, entrega de
+            # canal). Antes só sobrescrevíamos quando vinha algo não-None, então o engine
+            # em cache guardava os closures do WebSocket JÁ FECHADO: `is_attended()`
+            # continuava True e o run desassistido parava num prompt que ninguém veria,
+            # ou tentava `ws.send_json` numa conexão morta e caía em dead-letter.
+            # Sem callbacks ⇒ volta para os da Caixa de entrada, que é o certo aqui.
+            agent_name = getattr(engine, "agent_name", agent) or "code"
+            engine.approver = approver or self.inbox_approver(session_id, agent_name)
+            engine.directory_requester = directory_requester or self.inbox_directory_requester(
+                session_id, agent_name
+            )
+            engine.plan_approver = plan_approver or self.inbox_plan_approver(
+                session_id, agent_name
+            )
+            engine.question_asker = question_asker or self.inbox_question_asker(
+                session_id, agent_name
+            )
+            if approver is None and question_asker is None:
+                engine.is_attended = None  # quem está atendendo reinstala isto
             return engine
 
         record = self.session_store.load(session_id)
@@ -3429,6 +3445,8 @@ class SessionManager:
         return {"ok": True, "run": run.to_dict()}
 
     def save(self, session_id: str, engine: TurnEngine) -> None:
+        if session_id in self._deleted_sessions:
+            return  # apagada durante o turno: gravar aqui a ressuscitaria
         executor = getattr(engine, "executor", None)
         workspace = os.path.realpath(str(executor.cwd)) if executor else ""
         self.session_store.save(
@@ -3754,6 +3772,7 @@ class SessionManager:
     def delete_session(self, session_id: str) -> dict[str, Any]:
         if session_id.startswith("__"):
             return {"ok": False, "error": "sessões internas não podem ser excluídas aqui"}
+        self._deleted_sessions.add(session_id)
         engine = self._engines.pop(session_id, None)
         if engine is not None:
             try:

@@ -230,7 +230,7 @@ def install() -> dict[str, Any]:
                 if not found:
                     raise RuntimeError("zip da release não trouxe o llama-server")
                 for f in found.parent.iterdir():
-                    f.rename(root / f.name)
+                    os.replace(f, root / f.name)  # rename falha no Windows se dest existe
             binary = root / _binary_name()
             binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
             with _state_lock:
@@ -317,8 +317,12 @@ def ensure_running(tag: Optional[str] = None, wait_s: float = 120.0) -> bool:
         binary = find_binary()
         if not binary:
             return False
+        # ORDEM IMPORTA: `stop()` apaga o pidfile no fim, então lê-lo depois nunca
+        # encontra nada. O órfão (Quit do desktop = kill abrupto, que pula o lifespan)
+        # só é matável ANTES. `stop()` cuida do processo que ESTE servidor iniciou.
+        if _proc is None or _proc.poll() is not None:
+            _kill_stale_process()
         stop()
-        _kill_stale_process()  # órfão de um Quit anterior ainda pode segurar a porta
         path = model_path(tag)
         assert path is not None
         cmd = [

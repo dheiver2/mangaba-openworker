@@ -344,3 +344,32 @@ def test_user_messages_capped_across_repeated_compactions():
     assert restored is not None
     assert restored.user_messages_dropped == state.user_messages_dropped
     assert restored.user_messages == state.user_messages
+
+
+def test_estimate_tokens_nao_mede_base64_de_anexo():
+    """Regressão: medir a parte binária pelo tamanho serializado dava ~3 milhões de
+    'tokens' para uma foto (teto de anexo = 12 MB), deixando a compactação devida para
+    sempre — a UI piscava 'compactando' a cada iteração do turno."""
+    from mangaba.compaction import estimate_tokens
+
+    foto = "data:image/png;base64," + "A" * 8_000_000
+    msgs = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "o que tem nesta foto?"},
+                {"type": "image_url", "image_url": {"url": foto}},
+            ],
+        }
+    ]
+    sinal = estimate_tokens(msgs)
+    assert sinal < 5_000, f"anexo de 8 MB não pode virar {sinal:,} tokens"
+    # o texto ao lado continua sendo contado
+    assert sinal > 1_000
+
+
+def test_estimate_tokens_ainda_conta_texto_normal():
+    from mangaba.compaction import estimate_tokens
+
+    msgs = [{"role": "user", "content": "x" * 4_000}]
+    assert 900 < estimate_tokens(msgs) < 1_200

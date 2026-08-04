@@ -313,6 +313,8 @@ class TurnEngine:
 
     async def _loop(self) -> AsyncIterator[Event]:
         iterations = 0
+        # O estol é POR TURNO: mensagem nova muda o histórico, então vale tentar de novo.
+        self._compaction_stalled = False
         while True:
             if iterations >= self.max_iterations:
                 yield Event(
@@ -450,6 +452,11 @@ class TurnEngine:
         cfg = self._compaction_config()
         if cfg.get("enabled") is False:
             return False
+        # Já tentamos neste turno e não houve o que compactar (fronteira <= a anterior):
+        # o sinal não muda, então perguntar de novo a cada iteração só queima iterações
+        # — e, quando há histórico, uma chamada de summarizer por volta.
+        if getattr(self, "_compaction_stalled", False):
+            return False
         signal = self._last_context_tokens or _compaction.estimate_tokens(
             self._outbound_messages()
         )
@@ -521,14 +528,18 @@ class TurnEngine:
                     continue
         if state is not None:
             self.compaction_state = state
+            self._compaction_stalled = False
             self._last_context_tokens = None  # stale once the outbound view shrank
             return "Contexto compactado — os turnos mais antigos foram resumidos"
         if failed or force:
             trimmed = _compaction.trim_state(self.messages, prior=self.compaction_state)
             if trimmed is not None:
                 self.compaction_state = trimmed
+                self._compaction_stalled = False
                 self._last_context_tokens = None
                 return "Contexto aparado — os turnos mais antigos foram descartados (resumo indisponível)"
+        # Nada mudou: não insista nas próximas iterações deste turno.
+        self._compaction_stalled = True
         return None
 
     # -- helpers ----------------------------------------------------------------

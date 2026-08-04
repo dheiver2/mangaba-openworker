@@ -155,3 +155,36 @@ def test_download_usa_os_replace_para_sobrescrever(tmp_path, monkeypatch):
     monkeypatch.setattr(local_engine.httpx, "stream", lambda *a, **k: FakeResp())
     local_engine._download("http://x/y.zip", dest, {"progress": 0.0})
     assert dest.read_bytes() == b"nov"  # sobrescreveu, não levantou FileExistsError
+
+
+def test_orfao_e_morto_antes_de_stop_apagar_o_pidfile(tmp_path, monkeypatch):
+    """Regressão: `stop()` apaga o pidfile no fim, então chamá-lo ANTES de
+    `_kill_stale_process()` tornava a recuperação de órfão código morto — no Windows,
+    onde o Quit pula o lifespan, o llama-server ficava segurando a porta e o app
+    passava a servir o modelo anterior em silêncio."""
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path))
+    (tmp_path / "local-engine" / "bin").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "local-engine" / "models").mkdir(parents=True, exist_ok=True)
+
+    binario = tmp_path / "local-engine" / "bin" / local_engine._binary_name()
+    binario.write_text("#!/bin/sh\n")
+    modelo = local_engine.model_path("qwen3-4b")
+    modelo.write_bytes(b"gguf")
+    local_engine._write_pidfile(4242)
+
+    mortos: list[int] = []
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(local_engine.os, "kill", lambda pid, sig: mortos.append(pid))
+    monkeypatch.setattr(local_engine, "is_serving", lambda *a, **k: False)
+    monkeypatch.setattr(local_engine, "_proc", None)
+
+    class FakeProc:
+        pid = 999
+
+        def poll(self):
+            return None
+
+    monkeypatch.setattr(local_engine.subprocess, "Popen", lambda *a, **k: FakeProc())
+    local_engine.ensure_running("qwen3-4b", wait_s=0)
+
+    assert mortos == [4242], "o órfão do pidfile precisa morrer antes de subirmos o nosso"

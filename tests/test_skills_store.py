@@ -437,3 +437,24 @@ def test_seed_defaults_preserves_user_skill(store):
     store.seed_defaults()
     row = next(r for r in store.rows() if r["name"] == "email-profissional")
     assert row["description"] == "minha versão"  # a do usuário venceu
+
+
+def test_confirm_upload_recusa_token_com_travessia(tmp_path, monkeypatch):
+    """Regressão de segurança: o token vira caminho (`_staging_dir / token`). Sem
+    validação, um `../` escapava do staging e o `shutil.move` arrancava a pasta real
+    do lugar, instalando-a como skill global."""
+    import pytest
+
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
+    store = SkillStore()
+
+    vitima = tmp_path / "documentos-importantes"
+    vitima.mkdir(parents=True)
+    (vitima / "SKILL.md").write_text("---\nname: x\n---\noi\n", encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        store.confirm_upload(f"../../{vitima.name}")
+    assert vitima.is_dir(), "a pasta da vítima não pode ter sido movida"
+
+    store.discard_upload(f"../../{vitima.name}")
+    assert vitima.is_dir(), "discard_upload não pode apagar fora do staging"

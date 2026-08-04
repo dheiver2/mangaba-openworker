@@ -45,16 +45,41 @@ _TRIM_FRACTION = 0.10
 # -- token math ---------------------------------------------------------------
 
 
+# Partes binárias viajam como data-URL base64 (até MAX_IMAGE_CHARS = 12 MB em
+# attachments.py). Medi-las por tamanho serializado dava ~3 milhões de "tokens" para uma
+# foto — muito acima de qualquer teto — e deixava a compactação devida para sempre: a UI
+# piscava "compactando" a cada iteração, ou gastava uma chamada de summarizer por volta.
+# O que o provedor cobra por uma imagem é aproximadamente constante, não proporcional ao
+# base64, então é isso que estimamos.
+_BINARY_PARTS = frozenset({"image_url", "input_image", "image", "file", "document"})
+_BINARY_PART_TOKENS = 1_500
+
+
+def _chars_of(obj: Any) -> int:
+    try:
+        return len(json.dumps(obj, default=str))
+    except (TypeError, ValueError):
+        return len(str(obj))
+
+
+def _message_chars(msg: Any) -> int:
+    content = msg.get("content") if isinstance(msg, dict) else None
+    if not isinstance(content, list):
+        return _chars_of(msg)
+    total = _chars_of({k: v for k, v in msg.items() if k != "content"})
+    for part in content:
+        if isinstance(part, dict) and part.get("type") in _BINARY_PARTS:
+            total += _BINARY_PART_TOKENS * 4
+        else:
+            total += _chars_of(part)
+    return total
+
+
 def estimate_tokens(messages: list[dict[str, Any]]) -> int:
     """chars/4 over the serialized messages — the fallback signal for providers that
-    never report usage (documented in the metering code)."""
-    total = 0
-    for msg in messages:
-        try:
-            total += len(json.dumps(msg, default=str))
-        except (TypeError, ValueError):
-            total += len(str(msg))
-    return total // 4
+    never report usage (documented in the metering code). Partes binárias entram pelo
+    custo nominal, não pelo tamanho do base64."""
+    return sum(_message_chars(msg) for msg in messages) // 4
 
 
 def trigger_tokens(

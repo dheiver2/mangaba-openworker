@@ -1073,3 +1073,23 @@ def test_set_provider_persists_extra_fields(tmp_path):
     manager.set_provider("openai", {"base_url": ""})
     providers = {p["name"]: p for p in manager.get_providers()}
     assert "base_url" not in providers["openai"]["values"]
+
+
+def test_sessao_apagada_nao_ressuscita_pelo_save_do_turno(tmp_path, monkeypatch):
+    """Regressão: o turno em voo guardou o `engine` no closure do WebSocket, então ele
+    sobrevive ao `pop` do delete_session e o `save()` do `finally` reinseria a linha
+    (ON CONFLICT DO UPDATE) — a sessão reaparecia em Recentes apontando para um scratch
+    dir que o delete já tinha removido."""
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
+    manager = SessionManager(workspace=tmp_path, provider=ScriptedProvider([]))
+    engine = manager.get_engine("sess-zumbi", workspace=str(tmp_path))
+    assert engine is not None
+    manager.save("sess-zumbi", engine)
+    assert manager.session_store.load("sess-zumbi") is not None
+
+    manager.delete_session("sess-zumbi")
+    assert manager.session_store.load("sess-zumbi") is None
+
+    # o turno em voo termina DEPOIS do delete e chama save() com o engine do closure
+    manager.save("sess-zumbi", engine)
+    assert manager.session_store.load("sess-zumbi") is None, "a sessão ressuscitou"
