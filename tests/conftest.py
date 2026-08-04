@@ -22,6 +22,9 @@ def _isolated_state_dir(tmp_path, monkeypatch):
     as burst noise in the ocw-connect-telemetry-events table)."""
     monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "mangaba-state"))
     monkeypatch.delenv("MANGABA_API_TOKEN", raising=False)
+    # As skills-padrão são semeadas no app real, não nos testes (que assertam sobre um
+    # store vazio). Os testes do próprio seeding chamam seed_defaults() explicitamente.
+    monkeypatch.setenv("MANGABA_SEED_DEFAULT_SKILLS", "0")
 
 
 @pytest_asyncio.fixture

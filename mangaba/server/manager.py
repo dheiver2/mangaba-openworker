@@ -263,6 +263,14 @@ class SessionManager:
         # gates the engine's skill catalog the same way effective_connectors gates connector
         # tools — one resolver feeds the catalog injection, the rail, and the composer popup.
         self.skill_store = SkillStore()
+        # Toda instalação nova já sai com o kit de skills empresariais (semeadas uma vez;
+        # edições/remoções do usuário são preservadas). Desligável nos testes, que assertam
+        # sobre um store vazio (MANGABA_SEED_DEFAULT_SKILLS=0).
+        if os.environ.get("MANGABA_SEED_DEFAULT_SKILLS", "1") != "0":
+            try:
+                self.skill_store.seed_defaults()
+            except Exception:  # semear nunca deve impedir o servidor de subir
+                logger.exception("falha ao semear skills-padrão")
         self.session_skills = SessionSkillStore(base / "session_skills.json")
         # Dead-letter: inbound messages with no destination + background-turn failures, so neither
         # vanishes silently (a debugging/visibility surface, not a redelivery queue).

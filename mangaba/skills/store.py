@@ -89,6 +89,32 @@ class SkillStore:
         self._staging_dir = state_dir() / "skills-staged"
         self._lock = threading.Lock()
 
+    def seed_defaults(self) -> int:
+        """Escreve as skills-padrão empresariais no escopo global, UMA vez por máquina
+        (marcador `.seeded`). Idempotente e não-destrutivo: uma skill que já existe (o
+        usuário criou/editou/renomeou) é preservada; remover uma skill-padrão não a traz
+        de volta. Retorna quantas foram semeadas nesta chamada."""
+        from .defaults import DEFAULT_SKILLS
+
+        marker = self.global_dir / ".seeded"
+        if marker.exists():
+            return 0
+        written = 0
+        for skill in DEFAULT_SKILLS:
+            folder = self.global_dir / skill["name"]
+            if (folder / "SKILL.md").is_file():
+                continue
+            _write_skill_md(
+                folder,
+                name=skill["name"],
+                description=skill["description"],
+                instructions=skill["instructions"],
+            )
+            written += 1
+        self.global_dir.mkdir(parents=True, exist_ok=True)
+        marker.write_text("", encoding="utf-8")
+        return written
+
     # -- scope dirs ---------------------------------------------------------------
     def project_dir(self, workspace: str | Path) -> Path:
         return Path(workspace).expanduser().resolve() / ".mangaba" / "skills"

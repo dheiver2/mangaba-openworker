@@ -410,3 +410,30 @@ def test_rows_report_bundled_file_count(store):
     by_name = {r["name"]: r for r in store.rows()}
     assert by_name["plain"]["files"] == 0  # SKILL.md itself is not "bundled"
     assert by_name["rich"]["files"] == 2  # counted recursively
+
+
+# -- default seed (kit empresarial) ---------------------------------------------
+def test_seed_defaults_creates_kit(store):
+    """Toda instalação nova sai com o kit de skills empresariais; a semeadura é
+    idempotente (marcador .seeded) e não destrói o que o usuário já tem."""
+    from mangaba.skills.defaults import DEFAULT_SKILLS
+
+    n1 = store.seed_defaults()
+    assert n1 == len(DEFAULT_SKILLS) and n1 >= 10
+    names = {r["name"] for r in store.rows()}
+    assert {"email-profissional", "analise-financeira", "cobranca-inadimplencia"} <= names
+    # segunda chamada não reescreve nada
+    assert store.seed_defaults() == 0
+
+
+def test_seed_defaults_preserves_user_skill(store):
+    """Uma skill do usuário com o mesmo nome de uma padrão é preservada, não sobrescrita."""
+    store.create(
+        name="email-profissional",
+        description="minha versão",
+        instructions="Faça do meu jeito.",
+    )
+    # remove o marcador implícito: create não semeia, então seed ainda roda
+    store.seed_defaults()
+    row = next(r for r in store.rows() if r["name"] == "email-profissional")
+    assert row["description"] == "minha versão"  # a do usuário venceu
