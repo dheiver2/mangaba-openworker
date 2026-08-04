@@ -109,6 +109,28 @@ def _approval_body(request) -> str:
     return "\n".join(p for p in (reason, preview) if p)
 
 
+def _mcp_error_message(exc: BaseException) -> str:
+    """Mensagem limpa para uma falha de conexão MCP. O cliente MCP roda a conexão/OAuth
+    dentro de um TaskGroup (anyio), então uma falha real chega embrulhada num
+    ExceptionGroup cujo str() é o inútil "unhandled errors in a TaskGroup (1 sub-
+    exception)". Desembrulhamos até a causa concreta e traduzimos os casos comuns."""
+    # Desce recursivamente pelo primeiro filho de cada ExceptionGroup até a causa raiz.
+    seen = 0
+    while isinstance(exc, BaseException) and hasattr(exc, "exceptions") and exc.exceptions and seen < 10:
+        exc = exc.exceptions[0]
+        seen += 1
+    nome = exc.__class__.__name__
+    texto = str(exc).strip()
+    if "OAuthRegistration" in nome or ("Registration failed" in texto and "404" in texto):
+        return (
+            "Este servidor não suporta login automático (registro dinâmico de cliente). "
+            "Ele precisa de um token de acesso próprio — consulte a documentação do serviço."
+        )
+    if "OAuth" in nome and not texto:
+        return "Falha no login OAuth deste servidor."
+    return texto or nome
+
+
 class SessionManager:
     def __init__(
         self,
@@ -1034,7 +1056,7 @@ class SessionManager:
                 conn = await self.mcp.ensure(server, interactive=True)
                 return {"ok": True, "tools": len(conn.tools)}
             except Exception as exc:
-                self._mcp_errors[name] = str(exc) or exc.__class__.__name__
+                self._mcp_errors[name] = _mcp_error_message(exc)
                 return {"ok": False, "error": self._mcp_errors[name]}
             finally:
                 self._mcp_authorizing.discard(name)
