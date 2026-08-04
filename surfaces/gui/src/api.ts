@@ -281,6 +281,37 @@ export async function getMcpServers(): Promise<McpServer[]> {
   return (await res.json()).servers ?? [];
 }
 
+export type McpCatalogItem = {
+  name: string;
+  titulo: string;
+  blurb: string;
+  runtime: string;
+  runtime_pronto: boolean;
+  runtime_titulo: string;
+  runtime_url: string;
+  runtime_porque: string;
+  campos: { key: string; label: string; help?: string; placeholder?: string }[];
+};
+
+/** Galeria de servidores MCP prontos — a aba nascia vazia e só aceitava JSON à mão. */
+export async function getMcpCatalog(): Promise<McpCatalogItem[]> {
+  const res = await fetch(`${httpBase()}/v1/mcp/catalogo`);
+  const body = await res.json().catch(() => ({}));
+  return body.servidores || [];
+}
+
+export async function installMcpFromCatalog(
+  name: string,
+  valores: Record<string, string>,
+): Promise<{ ok: boolean; error?: string }> {
+  const res = await fetch(`${httpBase()}/v1/mcp/catalogo/instalar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, valores }),
+  });
+  return res.json();
+}
+
 export async function addMcpServer(name: string, config: Record<string, any>) {
   const res = await fetch(`${httpBase()}/v1/mcp`, {
     method: "POST",

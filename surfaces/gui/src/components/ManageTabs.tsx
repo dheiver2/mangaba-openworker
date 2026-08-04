@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import {
+  getMcpCatalog,
+  installMcpFromCatalog,
+  type McpCatalogItem,
   addMcpServer,
   allowUser,
   connectConnector,
@@ -50,6 +53,8 @@ const BTN_BORDERED =
   "text-[12.5px] px-3 py-1.5 rounded-lg border border-line bg-paper hover:border-lineStrong shrink-0";
 const BTN_ACCENT = "text-[12.5px] px-3 py-1.5 rounded-lg bg-accent text-white shrink-0 disabled:opacity-50";
 const BTN_DANGER = "text-[12.5px] text-danger/80 hover:text-danger shrink-0";
+const INPUT =
+  "w-full px-2.5 py-1.5 rounded-lg border border-line bg-paper text-[13px] text-ink outline-none focus:border-accent";
 
 /** Two-letter initials for a chip/avatar (first+last word, else first two chars). */
 function initials(name: string): string {
@@ -271,24 +276,20 @@ export function McpTab() {
   return (
     <div className="space-y-3">
       <p className="text-[12.5px] text-muted leading-relaxed">
-        External tool servers (stdio or HTTP), shared across all agents. Enabled servers' tools are
-        permission-gated. Changes apply to new sessions —{" "}
+        Servidores de ferramentas externas (stdio ou HTTP), compartilhados por todos os agentes.
+        As ferramentas de um servidor ativo passam por aprovação. Mudanças valem para as próximas
+        conversas —{" "}
         <button
           className="text-accent font-medium hover:underline"
           onClick={() => reloadMcp().then(refresh)}
         >
-          reload now
+          recarregar agora
         </button>
         .
       </p>
 
       {servers.length === 0 && !adding ? (
-        <div className={CARD + " p-4 text-[13px] text-muted"}>
-          No MCP servers configured.{" "}
-          <button className="text-accent font-medium" onClick={() => setAdding(true)}>
-            Add a server
-          </button>
-        </div>
+        <McpGaleria onInstalado={refresh} onManual={() => setAdding(true)} />
       ) : (
         <div className="space-y-2">
           {servers.map((s) => (
@@ -342,6 +343,116 @@ export function McpTab() {
         </button>
       ) : null}
       {error && <div className="text-[12.5px] text-danger">{error}</div>}
+    </div>
+  );
+}
+
+// Galeria de servidores MCP prontos. A aba nascia VAZIA e a única saída era digitar
+// JSON (`{"command": "npx", ...}`) — tarefa de desenvolvedor. Quem instalou o app abria
+// aqui, lia "nenhum servidor" e não tinha o que fazer. Na máquina de quem desenvolve o
+// mcp.json já existia, então o buraco só apareceu para os usuários.
+function McpGaleria({
+  onInstalado,
+  onManual,
+}: {
+  onInstalado: () => void;
+  onManual: () => void;
+}) {
+  const [itens, setItens] = useState<McpCatalogItem[] | null>(null);
+  const [aberto, setAberto] = useState<string | null>(null);
+  const [valores, setValores] = useState<Record<string, string>>({});
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    void getMcpCatalog().then(setItens).catch(() => setItens([]));
+  }, []);
+
+  if (itens === null) return <div className="text-[13px] text-muted">Carregando…</div>;
+
+  const instalar = async (item: McpCatalogItem) => {
+    if (item.campos.length && aberto !== item.name) {
+      setAberto(item.name);
+      setValores({});
+      setErro(null);
+      return;
+    }
+    setSalvando(true);
+    setErro(null);
+    const res = await installMcpFromCatalog(item.name, valores).catch(() => ({
+      ok: false,
+      error: "não consegui falar com o servidor local",
+    }));
+    setSalvando(false);
+    if (!res.ok) {
+      setErro(res.error || "não deu para instalar");
+      return;
+    }
+    setAberto(null);
+    onInstalado();
+  };
+
+  return (
+    <div className="space-y-2">
+      {itens.map((item) => (
+        <div key={item.name} className={CARD + " p-3"}>
+          <div className="flex items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] text-ink font-medium">{item.titulo}</div>
+              <div className="text-[12px] text-muted mt-0.5">{item.blurb}</div>
+              {!item.runtime_pronto && (
+                <div className="text-[12px] text-warnInk mt-1.5">
+                  Precisa do {item.runtime_titulo} instalado.{" "}
+                  <a
+                    className="text-accent font-medium hover:underline"
+                    href={item.runtime_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Baixar
+                  </a>{" "}
+                  <span className="text-faint">{item.runtime_porque}</span>
+                </div>
+              )}
+            </div>
+            <button
+              className={BTN_BORDERED}
+              disabled={salvando}
+              onClick={() => void instalar(item)}
+              data-testid={`mcp-instalar-${item.name}`}
+            >
+              {item.campos.length && aberto !== item.name ? "Configurar…" : "Instalar"}
+            </button>
+          </div>
+
+          {aberto === item.name && item.campos.length > 0 && (
+            <div className="mt-3 space-y-2 max-w-[420px]">
+              {item.campos.map((c) => (
+                <div key={c.key}>
+                  <label className="block text-[12px] text-muted mb-1">{c.label}</label>
+                  <input
+                    className={INPUT}
+                    placeholder={c.placeholder}
+                    value={valores[c.key] || ""}
+                    onChange={(e) =>
+                      setValores((v) => ({ ...v, [c.key]: e.target.value }))
+                    }
+                  />
+                  {c.help && <div className="text-[11.5px] text-faint mt-1">{c.help}</div>}
+                </div>
+              ))}
+              {erro && <div className="text-[12px] text-danger">{erro}</div>}
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div className="text-[12.5px] text-muted pt-1">
+        Tem um servidor próprio?{" "}
+        <button className="text-accent font-medium" onClick={onManual}>
+          Adicionar manualmente
+        </button>
+      </div>
     </div>
   );
 }

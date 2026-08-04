@@ -732,6 +732,25 @@ def create_app(manager: SessionManager) -> FastAPI:
     def mcp_list() -> dict[str, Any]:
         return {"servers": manager.list_mcp()}
 
+    @app.get("/v1/mcp/catalogo")
+    def mcp_catalogo() -> dict[str, Any]:
+        """Galeria de servidores prontos. A aba nascia vazia e só aceitava JSON digitado
+        à mão — tarefa de desenvolvedor, não de usuário."""
+        from ..mcp import catalog
+
+        return {"servidores": catalog.listar()}
+
+    @app.post("/v1/mcp/catalogo/instalar")
+    def mcp_catalogo_instalar(body: dict) -> dict[str, Any]:
+        from ..mcp import catalog
+
+        nome = str((body or {}).get("name") or "")
+        try:
+            cfg = catalog.montar_config(nome, (body or {}).get("valores") or {})
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        return manager.add_mcp(nome, cfg)
+
     @app.post("/v1/mcp")
     def mcp_add(body: dict) -> dict[str, Any]:
         name = body.get("name")

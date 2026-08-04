@@ -225,3 +225,51 @@ def test_runtime_presente_nao_reclama(monkeypatch):
     monkeypatch.setattr(_sh, "which", lambda c: "/usr/bin/" + c)
     assert client._runtime_ausente("npx") is None
     assert client._runtime_ausente("") is None
+
+
+def test_catalogo_tem_servidores_prontos_para_instalar():
+    """A aba MCP nascia VAZIA e só aceitava JSON digitado à mão — tarefa de
+    desenvolvedor. Quem instalou o app abria, lia 'nenhum servidor' e não tinha o que
+    fazer ali; na máquina de quem desenvolve o mcp.json já existia, então só os
+    usuários sentiram."""
+    from mangaba.mcp import catalog
+
+    itens = catalog.listar()
+    assert len(itens) >= 5
+    for i in itens:
+        assert i["titulo"] and i["blurb"]
+        assert "runtime_pronto" in i and "runtime_url" in i
+        assert "config" not in i  # a config só é montada na instalação
+
+
+def test_catalogo_monta_config_substituindo_campos():
+    from mangaba.mcp import catalog
+
+    cfg = catalog.montar_config("filesystem", {"pasta": "/tmp/liberado"})
+    assert cfg["command"] == "npx"
+    assert "/tmp/liberado" in cfg["args"]
+    assert cfg["requires_approval"] is True
+
+
+def test_catalogo_recusa_campo_obrigatorio_vazio():
+    import pytest
+
+    from mangaba.mcp import catalog
+
+    with pytest.raises(ValueError, match="Pasta liberada"):
+        catalog.montar_config("filesystem", {})
+    with pytest.raises(ValueError, match="desconhecido"):
+        catalog.montar_config("nao-existe", {})
+
+
+def test_catalogo_marca_runtime_ausente(monkeypatch):
+    """O aviso precisa vir ANTES de instalar: no Windows sem Node, tentar e falhar
+    devolvia '[WinError 2]', que não diz o que instalar."""
+    import shutil as _sh
+
+    from mangaba.mcp import catalog
+
+    monkeypatch.setattr(_sh, "which", lambda c: None)
+    itens = {i["name"]: i for i in catalog.listar()}
+    assert itens["filesystem"]["runtime_pronto"] is False
+    assert "nodejs.org" in itens["filesystem"]["runtime_url"]
