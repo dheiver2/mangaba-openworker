@@ -404,6 +404,53 @@ def stop() -> None:
     _pidfile().unlink(missing_ok=True)
 
 
+def bootstrap_primeiro_uso(on_ready: Optional[Any] = None) -> bool:
+    """Instalação nova: deixa o app utilizável SEM chave e SEM o usuário fazer nada.
+
+    O funil morria exatamente onde deveria ganhar: o Mangaba não exige conta nem cartão
+    (o que o concorrente exige), mas abria em "Sem modelo" e mandava a pessoa achar
+    sozinha Configurações ▸ Modelos. Aqui o app baixa o motor e o menor modelo do
+    catálogo em segundo plano, e avisa quando dá para conversar.
+
+    Escolhemos SEMPRE o 4B, não o `recommended()`: numa máquina de 16 GB o recomendado é
+    o 14B (9,3 GB), que levaria muitos minutos — tempo demais para um primeiro uso. O
+    card do provedor continua oferecendo o modelo maior depois, para quem quiser.
+    """
+    if find_binary() and downloaded_tags():
+        return False  # já tem o que precisa
+    if _bootstrap["phase"] in ("installing", "pulling"):
+        return False  # já está em andamento
+
+    def _job() -> None:
+        try:
+            if not find_binary():
+                with _state_lock:
+                    _bootstrap.update(phase="installing", progress=0.0, error=None)
+                res = install()
+                if not res.get("ok"):
+                    with _state_lock:
+                        _bootstrap.update(phase="error", error=res.get("error"))
+                    return
+            tag = CATALOG[0]["tag"]
+            if tag not in downloaded_tags():
+                with _state_lock:
+                    _bootstrap.update(phase="pulling", progress=0.0, error=None)
+                dest = model_path(tag)
+                assert dest is not None
+                _download(CATALOG[0]["url"], dest, _bootstrap)
+            with _state_lock:
+                _bootstrap.update(phase="ready", progress=1.0, error=None)
+            ensure_running(tag)
+            if on_ready is not None:
+                on_ready(f"local:{tag}")
+        except Exception as exc:  # rede caiu, disco cheio — a UI mostra e oferece retry
+            with _state_lock:
+                _bootstrap.update(phase="error", error=str(exc))
+
+    threading.Thread(target=_job, daemon=True, name="primeiro-uso").start()
+    return True
+
+
 def autostart_em_segundo_plano() -> bool:
     """Sobe o motor sem bloquear quem chamou (a sonda roda em todo fetch da GUI)."""
     global _ULTIMO_AUTOSTART

@@ -164,6 +164,12 @@ def create_app(manager: SessionManager) -> FastAPI:
             import traceback
 
             traceback.print_exc()
+        try:
+            # Instalação nova sem chave nenhuma: prepara a IA local em segundo plano,
+            # para o app nunca abrir num estado em que não dá para fazer nada.
+            manager.preparar_primeiro_uso()
+        except Exception:
+            pass
         yield
         from ..providers import local_engine
 

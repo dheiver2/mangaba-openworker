@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Attachment } from "../types";
 import { isPdfFile, readFile } from "../attach";
-import { getSettings, inspectPdf, sessionSkills, type SessionSkillRow } from "../api";
+import { getLocalEngine, getSettings, inspectPdf, sessionSkills, type LocalEngineStatus, type SessionSkillRow } from "../api";
 import { Dropdown, type Option } from "./Dropdown";
 import { Icon } from "./Icon";
 import { Toggle } from "./Toggle";
@@ -312,6 +312,36 @@ export function Composer(props: Props) {
   };
 
   const needsModel = props.modelReady === false;
+  // Instalação nova prepara a IA local sozinha (server/manager.preparar_primeiro_uso).
+  // Enquanto isso, dizer só "Sem modelo" mandaria a pessoa procurar solução para um
+  // problema que já está sendo resolvido — mostramos o andamento no lugar.
+  const [boot, setBoot] = useState<LocalEngineStatus["bootstrap"] | null>(null);
+  useEffect(() => {
+    if (!needsModel) {
+      setBoot(null);
+      return;
+    }
+    let vivo = true;
+    const ler = () =>
+      void getLocalEngine()
+        .then((e) => {
+          if (!vivo) return;
+          setBoot(e.bootstrap ?? null);
+          // Ficou pronto: recarrega as settings para o seletor sair de "Sem modelo"
+          // sozinho — ninguém deveria precisar reiniciar o app para começar a usar.
+          if (e.bootstrap?.phase === "ready") props.onRetryModels?.();
+        })
+        .catch(() => {});
+    ler();
+    const t = setInterval(ler, 2000);
+    return () => {
+      vivo = false;
+      clearInterval(t);
+    };
+  }, [needsModel]);
+  const preparando =
+    boot && (boot.phase === "installing" || boot.phase === "pulling");
+  const bootPct = Math.round((boot?.progress || 0) * 100);
 
   const submit = () => {
     // While the "/" popup is open the draft is a query, not a message — never send it.
@@ -615,7 +645,20 @@ export function Composer(props: Props) {
           {/* model — a quiet chip, now for the session's whole life (§17 rev 2026-07-22:
               mid-session switching shipped, so the picker stays actionable; the topbar
               subtitle still states the current model). */}
-          {!dictation?.recording && (needsModel ? (
+          {!dictation?.recording && (needsModel && preparando ? (
+            <button
+              className="pill chip"
+              onClick={() => props.onConnectModel?.()}
+              title="O Mangaba está baixando a IA que roda neste computador. Você pode colar uma chave de API para usar agora."
+              data-testid="composer-preparando-ia"
+            >
+              <span className="pill-label">
+                {boot?.phase === "installing"
+                  ? "Preparando a IA local…"
+                  : `Baixando a IA local… ${bootPct}%`}
+              </span>
+            </button>
+          ) : needsModel ? (
             <button
               className="pill model-warn chip"
               onClick={() => props.onConnectModel?.()}

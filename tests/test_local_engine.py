@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+import time
+
+import pytest
+
 from mangaba.providers import local_engine
 
 
@@ -188,3 +192,58 @@ def test_orfao_e_morto_antes_de_stop_apagar_o_pidfile(tmp_path, monkeypatch):
     local_engine.ensure_running("qwen3-4b", wait_s=0)
 
     assert mortos == [4242], "o órfão do pidfile precisa morrer antes de subirmos o nosso"
+
+
+def test_primeiro_uso_baixa_sozinho_quando_nao_ha_nenhum_provedor(tmp_path, monkeypatch):
+    """Instalação nova sem chave: o app precisa se preparar sozinho. Antes abria em
+    'Sem modelo' e mandava a pessoa achar Configurações ▸ Modelos — o funil morria
+    exatamente onde o produto deveria ganhar (não exigimos conta nem cartão)."""
+    from mangaba.server.manager import SessionManager
+
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
+    for var in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+
+    chamado: list[bool] = []
+    monkeypatch.setattr(
+        local_engine, "bootstrap_primeiro_uso", lambda on_ready=None: chamado.append(True) or True
+    )
+    manager = SessionManager(data_dir=tmp_path / "data")
+    assert manager.preparar_primeiro_uso() is True
+    assert chamado, "deveria ter disparado o download em segundo plano"
+
+
+def test_primeiro_uso_nao_gasta_banda_de_quem_ja_tem_chave(tmp_path, monkeypatch):
+    """2,5 GB não podem ser baixados nas costas de quem já configurou um provedor."""
+    from mangaba.server.manager import SessionManager
+
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setattr(
+        local_engine, "bootstrap_primeiro_uso", lambda on_ready=None: pytest.fail("não devia baixar")
+    )
+    manager = SessionManager(data_dir=tmp_path / "data")
+    manager.set_provider("anthropic", {"api_key": "sk-ant-x"})
+    assert manager.preparar_primeiro_uso() is False
+
+
+def test_primeiro_uso_escolhe_o_menor_modelo_e_nao_o_recomendado(tmp_path, monkeypatch):
+    """Numa máquina de 16 GB o `recommended()` é o 14B (9,3 GB) — minutos de espera.
+    Primeiro uso otimiza por TEMPO ATÉ FUNCIONAR; o card oferece o maior depois."""
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path))
+    # `_bootstrap` é global do módulo: sem zerar, a fase deixada por outro teste faz o
+    # guard de "já está em andamento" recusar este disparo.
+    local_engine._bootstrap.update(phase="idle", progress=0.0, error=None)
+    baixados: list[str] = []
+    monkeypatch.setattr(local_engine, "find_binary", lambda: "/fake/llama-server")
+    monkeypatch.setattr(local_engine, "downloaded_tags", lambda: [])
+    monkeypatch.setattr(local_engine, "ensure_running", lambda tag=None, **k: True)
+    monkeypatch.setattr(
+        local_engine, "_download", lambda url, dest, st: baixados.append(url)
+    )
+
+    local_engine.bootstrap_primeiro_uso()
+    for _ in range(100):
+        if baixados:
+            break
+        time.sleep(0.05)
+    assert baixados and "Qwen3-4B" in baixados[0], baixados

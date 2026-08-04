@@ -1704,6 +1704,37 @@ class SessionManager:
                 return prefix
         return "openai"
 
+    def algum_provedor_pronto(self) -> bool:
+        """Existe ALGUM caminho para conversar hoje — chave de terceiro ou modelo local."""
+        from ..providers import local_engine
+        from ..providers.registry import provider_descriptors
+
+        if local_engine.downloaded_tags():
+            return True
+        return any(
+            self._provider_configured(d.name)
+            for d in provider_descriptors()
+            if d.needs_key
+        )
+
+    def preparar_primeiro_uso(self) -> bool:
+        """Instalação nova e sem nenhuma chave: baixa motor + modelo em segundo plano e
+        adota o modelo local como padrão quando ficar pronto. Chamado uma vez, na subida
+        do servidor. Quem já tem chave não paga 2,5 GB de banda por nada."""
+        from ..providers import local_engine
+
+        if self.algum_provedor_pronto():
+            return False
+
+        def _pronto(model_id: str) -> None:
+            try:
+                self.add_model(model_id)
+                self.set_default_model(model_id)
+            except Exception:
+                pass
+
+        return local_engine.bootstrap_primeiro_uso(on_ready=_pronto)
+
     def _provider_configured(self, name: str) -> bool:
         d = get_descriptor(name)
         if d is None:
