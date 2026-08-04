@@ -227,6 +227,33 @@ def test_runtime_presente_nao_reclama(monkeypatch):
     assert client._runtime_ausente("") is None
 
 
+def test_catalogo_e_dominado_por_http_que_nao_exige_runtime():
+    """A correção do relato dos usuários: servidor HTTP não precisa de NADA instalado.
+    Catalogar só servidores `npx` teria mantido o problema — no Windows falta Node,
+    e o erro que chega é '[WinError 2]', que não diz o que instalar."""
+    from mangaba.mcp import catalog
+
+    itens = catalog.listar()
+    http = [i for i in itens if i["transport"] == "http"]
+    assert len(http) >= 12, "o catálogo precisa ser dominado por HTTP"
+    assert all(i["runtime_pronto"] for i in http), "HTTP nunca depende de runtime local"
+
+    # e existe um caminho 'instala e já usa': HTTP sem OAuth
+    sem_login = [i for i in http if not i["oauth"]]
+    assert len(sem_login) >= 5
+
+
+def test_catalogo_monta_config_http_com_oauth():
+    from mangaba.mcp import catalog
+
+    cfg = catalog.montar_config("notion")
+    assert cfg["type"] == "http" and cfg["auth"] == "oauth"
+    assert cfg["url"].startswith("https://")
+
+    aberto = catalog.montar_config("context7")
+    assert "auth" not in aberto and aberto["requires_approval"] is False
+
+
 def test_catalogo_tem_servidores_prontos_para_instalar():
     """A aba MCP nascia VAZIA e só aceitava JSON digitado à mão — tarefa de
     desenvolvedor. Quem instalou o app abria, lia 'nenhum servidor' e não tinha o que
@@ -248,7 +275,6 @@ def test_catalogo_monta_config_substituindo_campos():
     cfg = catalog.montar_config("filesystem", {"pasta": "/tmp/liberado"})
     assert cfg["command"] == "npx"
     assert "/tmp/liberado" in cfg["args"]
-    assert cfg["requires_approval"] is True
 
 
 def test_catalogo_recusa_campo_obrigatorio_vazio():
@@ -273,3 +299,6 @@ def test_catalogo_marca_runtime_ausente(monkeypatch):
     itens = {i["name"]: i for i in catalog.listar()}
     assert itens["filesystem"]["runtime_pronto"] is False
     assert "nodejs.org" in itens["filesystem"]["runtime_url"]
+    # ...mas os HTTP seguem instaláveis mesmo sem Node/uv na máquina
+    assert itens["context7"]["runtime_pronto"] is True
+    assert itens["notion"]["runtime_pronto"] is True
