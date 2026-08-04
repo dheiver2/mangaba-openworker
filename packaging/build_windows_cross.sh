@@ -97,15 +97,23 @@ fi
 # servidor morria no boot com o app preso em "Não conectado". Enviado assim na v0.1.12
 # e v0.1.13; pego rodando o payload sob Wine (o dep-check em macOS não exercita o ramo
 # win32 do mcp).
-if [ ! -d "$TRABALHO/wheels" ]; then
+# A lista de pacotes vive numa variável para poder ser hasheada: o cache de wheels trava as
+# VERSÕES (bom — evita drift entre plataformas), mas até aqui não notava quando a LISTA
+# mudava, então um pacote novo (foi o `python-telegram-bot`) era silenciosamente pulado e o
+# conector saía inerte. Agora o cache é chaveado por um hash da lista: mesma lista → cache
+# reusado (versões estáveis); lista alterada → refaz sozinho.
+WHEEL_PKGS="openai>=1.0 anthropic>=0.40 google-genai>=1.0 textual>=1.0 \
+fastapi>=0.110 uvicorn>=0.27 httptools python-dotenv watchfiles colorama \
+docstring_parser pyyaml>=6 pydantic>=2 mcp>=1.1 httpx>=0.27 \
+websockets>=13 ddgs>=9 croniter>=2 certifi tzdata pypdf pypdfium2 \
+pywin32>=306 python-telegram-bot>=21 slack-bolt>=1.18 slack-sdk>=3 aiohttp>=3.9"
+WHEEL_SIG="$(printf '%s' "$WHEEL_PKGS" | shasum -a 256 | cut -c1-16)"
+if [ ! -f "$TRABALHO/wheels/.sig-$WHEEL_SIG" ]; then
+    rm -rf "$TRABALHO/wheels"  # lista mudou (ou primeiro build): baixa do zero
+    # shellcheck disable=SC2086
     "$PY" -m pip download --platform win_amd64 --python-version "$PY_TAG" \
-        --only-binary=:all: -d "$TRABALHO/wheels" -c "$CONSTRAINTS" \
-        "openai>=1.0" "anthropic>=0.40" "google-genai>=1.0" "textual>=1.0" \
-        "fastapi>=0.110" "uvicorn>=0.27" httptools python-dotenv watchfiles colorama \
-        docstring_parser "pyyaml>=6" "pydantic>=2" "mcp>=1.1" "httpx>=0.27" \
-        "websockets>=13" "ddgs>=9" "croniter>=2" certifi tzdata pypdf pypdfium2 \
-        "pywin32>=306" \
-        "python-telegram-bot>=21" "slack-bolt>=1.18" "slack-sdk>=3" "aiohttp>=3.9"
+        --only-binary=:all: -d "$TRABALHO/wheels" -c "$CONSTRAINTS" $WHEEL_PKGS
+    touch "$TRABALHO/wheels/.sig-$WHEEL_SIG"
 fi
 
 # aisuite é dependência git (sem wheel publicada) — baixa como sdist e extrai.
