@@ -52,7 +52,7 @@ function relayHealth(slack: SlackStatus | null): { dot: string; text: string } {
   return { dot: "bg-ok", text: "Ativo · relay gerenciado" };
 }
 
-export function SlackDetail({ c, cloud, slack, onChanged }: DetailProps) {
+export function SlackDetail({ c, slack, onChanged }: DetailProps) {
   const [adding, setAdding] = useState(false);
   const [subs, setSubs] = useState<Subscription[]>([]);
   const loadSubs = () => getSubscriptions().then(setSubs).catch(() => setSubs([]));
@@ -102,8 +102,8 @@ export function SlackDetail({ c, cloud, slack, onChanged }: DetailProps) {
       {!c.connected && (
         <div className={GRP}>
           <div className={ROW + " text-[12.5px] text-muted"}>
-            One @ocw app, installed per workspace — each keeps its own allow-list.
-            {cloud?.signed_in ? "" : " One-click needs cloud sign-in; Manual works without it."}
+            One @ocw app, installed per workspace — each keeps its own allow-list. Conecte
+            colando os dois tokens do Socket Mode (bot xoxb-… e app xapp-…).
           </div>
         </div>
       )}
@@ -164,7 +164,6 @@ export function SlackDetail({ c, cloud, slack, onChanged }: DetailProps) {
       {adding && (
         <AddConnectionModal
           c={c}
-          cloud={cloud}
           title="Adicionar um workspace"
           onClose={() => setAdding(false)}
           onChanged={changed}

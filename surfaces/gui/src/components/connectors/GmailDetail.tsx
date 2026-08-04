@@ -1,32 +1,26 @@
 import { useState } from "react";
 import {
-  connectManaged,
   disconnectGmailAccount,
   setGmailDefaultAccount,
   setGmailFilters,
   type GmailAccount,
 } from "../../api";
 import { ConnectorBadge } from "../../connectors/ConnectorIcon";
+import { ConnectSetup } from "../ManageTabs";
 import type { DetailProps } from "./ConnectorsSection";
 import { ToolsDisclosure } from "./ToolsDisclosure";
 import { FOOT, GRP, GRP_H, PILL_ACCENT, ROW, TAG_ACCENT, TAG_WARN, XBTN } from "./ui";
 
 // The Gmail detail page (UX-DECISIONS §21): connected mailboxes (multi-account,
 // Default badge, per-account disconnect) + "Never show agents" privacy filters.
-// Adding an account launches managed OAuth DIRECTLY — Gmail has one connect mode,
-// so no modal (the pill-modal is only for ≥2-mode connectors like Slack).
+// Adicionar uma conta = colar um OAuth access token do Google (caminho manual).
+// (O login gerenciado do Mangaba Cloud foi removido deste fork.)
 
 const LABEL = "text-[12.5px] text-muted w-24 shrink-0";
 
-export function GmailDetail({ c, cloud, slack: _slack, onChanged }: DetailProps) {
-  const [busy, setBusy] = useState(false);
+export function GmailDetail({ c, slack: _slack, onChanged }: DetailProps) {
+  const [showManual, setShowManual] = useState(false);
   const accounts = (c.accounts ?? []) as GmailAccount[]; // email-keyed (pre-generic-layer shape)
-
-  const addAccount = async () => {
-    setBusy(true);
-    await connectManaged("gmail"); // completes in the system browser; the poll picks it up
-    setTimeout(() => setBusy(false), 2500);
-  };
 
   return (
     <div data-testid="gmail-detail">
@@ -48,29 +42,33 @@ export function GmailDetail({ c, cloud, slack: _slack, onChanged }: DetailProps)
           </div>
         </div>
         <button
-          className={PILL_ACCENT + (c.managed_paused ? " opacity-50" : "")}
+          className={PILL_ACCENT}
           data-testid="add-account-btn"
-          onClick={addAccount}
-          disabled={busy || !cloud?.signed_in || c.managed_paused}
-          title={
-            c.managed_paused
-              ? "O login Google com um clique chega em breve"
-              : cloud?.signed_in
-                ? ""
-                : "Entre no Mangaba Cloud primeiro"
-          }
+          onClick={() => setShowManual((v) => !v)}
         >
-          {c.managed_paused ? "＋ Adicionar conta · Em breve" : busy ? "Confira seu navegador…" : "＋ Adicionar conta"}
+          ＋ Adicionar conta
         </button>
       </div>
 
-      {!c.connected && (
-        <div className={GRP}>
-          <div className={ROW + " text-[12.5px] text-muted"}>
-            Entre com o Google — cada caixa fica separada e os agentes dizem qual estão usando.
-            {cloud?.signed_in ? "" : " Requires cloud sign-in."}
+      {(showManual || !c.connected) && (
+        <>
+          <div className={GRP_H + " !mt-0"}>Adicionar uma conta</div>
+          <div className={GRP} data-testid="gmail-manual-add">
+            <div className={ROW + " text-[12.5px] text-muted"}>
+              Cole um OAuth access token do Google — cada caixa fica separada e os agentes dizem
+              qual estão usando.
+            </div>
+            <div className="px-1.5 py-1">
+              <ConnectSetup
+                c={c}
+                onConnected={() => {
+                  setShowManual(false);
+                  onChanged();
+                }}
+              />
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {accounts.length > 0 && (

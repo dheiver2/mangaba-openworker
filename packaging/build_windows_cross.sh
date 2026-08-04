@@ -104,7 +104,8 @@ if [ ! -d "$TRABALHO/wheels" ]; then
         "fastapi>=0.110" "uvicorn>=0.27" httptools python-dotenv watchfiles colorama \
         docstring_parser "pyyaml>=6" "pydantic>=2" "mcp>=1.1" "httpx>=0.27" \
         "websockets>=13" "ddgs>=9" "croniter>=2" certifi tzdata pypdf pypdfium2 \
-        "pywin32>=306"
+        "pywin32>=306" \
+        "python-telegram-bot>=21" "slack-bolt>=1.18" "slack-sdk>=3" "aiohttp>=3.9"
 fi
 
 # aisuite é dependência git (sem wheel publicada) — baixa como sdist e extrai.

@@ -39,7 +39,7 @@ function relayHealth(gh: GithubStatus | null): { dot: string; text: string } {
   return { dot: "bg-ok", text: "Ativo · relay gerenciado" };
 }
 
-export function GithubDetail({ c, cloud, onChanged }: DetailProps) {
+export function GithubDetail({ c, onChanged }: DetailProps) {
   const [adding, setAdding] = useState(false);
   const [subs, setSubs] = useState<Subscription[]>([]);
   const [status, setStatus] = useState<GithubStatus | null>(null);
@@ -98,9 +98,8 @@ export function GithubDetail({ c, cloud, onChanged }: DetailProps) {
       {!c.connected && (
         <div className={GRP}>
           <div className={ROW + " text-[12.5px] text-muted"}>
-            Um App @ocw-agent, instalado por conta ou organização — você escolhe os repositórios no
-            GitHub; cada instalação mantém sua própria lista de permitidos.
-            {cloud?.signed_in ? "" : " O clique único exige login na nuvem; um PAT funciona sem ele."}
+            Conecte com um token de acesso pessoal (PAT) do GitHub — cole o token para habilitar
+            as ferramentas de request/response.
           </div>
         </div>
       )}
@@ -146,7 +145,6 @@ export function GithubDetail({ c, cloud, onChanged }: DetailProps) {
       {adding && (
         <AddConnectionModal
           c={c}
-          cloud={cloud}
           title="Adicionar uma instalação"
           onClose={() => setAdding(false)}
           onChanged={changed}

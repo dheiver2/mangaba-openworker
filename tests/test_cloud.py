@@ -9,7 +9,6 @@ manual profiles are never touched by cloud refresh.
 from __future__ import annotations
 
 import time
-import urllib.parse
 
 import pytest
 
@@ -48,175 +47,18 @@ class FakeResponse:
         return self._body
 
 
-# --- sign-in -------------------------------------------------------------------
+# --- session status --------------------------------------------------------------
+# The interactive Mangaba Cloud sign-in (begin_login/complete_login/logout) and the
+# managed one-click begin-flow + broker callbacks were removed from this fork — the
+# broker infrastructure doesn't exist, so those were dead ends. status() survives to
+# back the telemetry route; with no way to sign in it is always signed-out.
 
 
-def test_begin_login_builds_pkce_authorize_url(config, monkeypatch):
-    monkeypatch.delenv("MANGABA_PORT", raising=False)
-    out = cloud.begin_login(config)
-    url = out["authorize_url"]
-    assert url.startswith("https://tenant.auth0.test/authorize?")
-    assert "code_challenge_method=S256" in url
-    assert "client_id=client123" in url
-    # The redirect is the BROKER's stable callback (Auth0 rejects unregistered
-    # loopback ports, and the packaged sidecar binds a random one) …
-    assert "cloud.test%2Fv1%2Fauth%2Fcallback" in url
-    assert out["state"] in url
-    # … and state carries the actual loopback port for the bounce back.
-    assert out["state"].endswith(".8765")
-
-
-def test_begin_login_state_carries_the_actually_bound_port(config, monkeypatch):
-    monkeypatch.setenv("MANGABA_PORT", "52341")
-    out = cloud.begin_login(config)
-    assert out["state"].endswith(".52341")
-
-
-def test_complete_login_stores_tokens_and_account(secrets, config, monkeypatch):
-    begun = cloud.begin_login(config)
-    state = begun["state"]
-    # The redirect_uri the authorize leg advertised — the exchange MUST send the same one
-    # byte-for-byte (RFC 6749 §4.1.3). The 07-09 broker-bounce change updated only the
-    # authorize leg and every real sign-in failed at the exchange; this pin would have
-    # caught it.
-    authorize_redirect = urllib.parse.parse_qs(
-        urllib.parse.urlsplit(begun["authorize_url"]).query
-    )["redirect_uri"][0]
-
-    def fake_post(url, **kwargs):
-        assert url == "https://tenant.auth0.test/oauth/token"
-        assert kwargs["data"]["code_verifier"]
-        assert kwargs["data"]["redirect_uri"] == authorize_redirect
-        return FakeResponse(
-            200, {"access_token": "at1", "refresh_token": "rt1", "expires_in": 3600}
-        )
-
-    def fake_get(url, **kwargs):
-        # Connection restore is NOT part of complete_login (it runs in the
-        # background from the /auth/callback route) — only /v1/me is hit here.
-        assert url == "https://cloud.test/v1/me"
-        return FakeResponse(200, {"user": {"email": "a@b.c", "user_id": "usr_1"}})
-
-    monkeypatch.setattr(cloud.httpx, "post", fake_post)
-    monkeypatch.setattr(cloud.httpx, "get", fake_get)
-
-    result = cloud.complete_login(secrets, config, "code1", state)
-    assert result["ok"] and result["signed_in"]
-    assert result["account"] == "a@b.c"
-    profile = secrets.get(cloud.CLOUD_AUTH_PROFILE)
-    assert profile["access_token"] == "at1"
-    assert profile["refresh_token"] == "rt1"
-
-
-def test_complete_login_rejects_unknown_state(secrets, config):
-    assert not cloud.complete_login(secrets, config, "code", "forged-state")["ok"]
-
-
-# --- restore-on-sign-in: GET /v1/connections → local github install profiles -----
-
-
-def _signed_in(secrets):
-    secrets.put(
-        cloud.CLOUD_AUTH_PROFILE,
-        {"type": "oauth", "access_token": "at1", "expires": time.time() + 3600},
-    )
-
-
-def _github_connection_row(**meta_extra):
-    return {
-        "connection_id": "conn_7",
-        "connector": "github",
-        "provider": "github",
-        "status": "connected",
-        "tenant_metadata": {
-            "installation_id": "101",
-            "account_login": "acme",
-            "github_login": "octocat",
-            "installations": [
-                {
-                    "installation_id": "101",
-                    "account_login": "acme",
-                    "account_type": "Organization",
-                    "repo_selection": "selected",
-                },
-                {
-                    "installation_id": "202",
-                    "account_login": "hooli",
-                    "account_type": "User",
-                    "repo_selection": "all",
-                },
-            ],
-            **meta_extra,
-        },
-    }
-
-
-def test_sync_connections_restores_github_installs(secrets, config, monkeypatch):
-    """Gate: a fresh desktop rebuilds EVERY github install profile from the
-    broker's metadata after sign-in — routing fields only, tokens mint on demand.
-    Other connectors' rows (tokens local-only) and disconnected rows are ignored."""
-    _signed_in(secrets)
-    rows = [
-        _github_connection_row(),
-        {
-            "connector": "slack",
-            "status": "connected",
-            "tenant_metadata": {"team_id": "T1"},
-        },
-        {
-            "connector": "github",
-            "status": "disconnected",
-            "tenant_metadata": {"installation_id": "999", "github_login": "octocat"},
-        },
-    ]
-    monkeypatch.setattr(
-        cloud.httpx, "get", lambda url, **k: FakeResponse(200, {"connections": rows})
-    )
-
-    out = cloud.sync_connections(secrets, config)
-    assert out["ok"] and out["restored"] == ["101", "202"]
-    p = secrets.get("github:install:101")
-    assert p["managed"] and p["account_login"] == "acme"
-    assert p["github_login"] == "octocat" and p["connection_id"] == "conn_7"
-    assert secrets.get("github:install:202")["repo_selection"] == "all"
-    assert secrets.get("github:install:999") is None
-    assert secrets.get("slack:default") is None
-    default = secrets.get("github:default")
-    assert default["mode"] == "relay" and default["default_install"] == "101"
-
-
-def test_sync_connections_pre_restore_rows_fall_back_to_primary(
-    secrets, config, monkeypatch
-):
-    """Rows written before the broker stored the installations list carry only
-    the primary install in tenant_metadata — restore that one."""
-    _signed_in(secrets)
-    row = _github_connection_row()
-    del row["tenant_metadata"]["installations"]
-    monkeypatch.setattr(
-        cloud.httpx, "get", lambda url, **k: FakeResponse(200, {"connections": [row]})
-    )
-    out = cloud.sync_connections(secrets, config)
-    assert out["restored"] == ["101"]
-    assert secrets.get("github:install:101")["account_login"] == "acme"
-
-
-def test_sync_connections_requires_sign_in_and_survives_errors(
-    secrets, config, monkeypatch
-):
-    assert not cloud.sync_connections(secrets, config)["ok"]  # signed out
-    _signed_in(secrets)
-    monkeypatch.setattr(cloud.httpx, "get", lambda url, **k: FakeResponse(503, {}))
-    assert not cloud.sync_connections(secrets, config)["ok"]  # broker down → no crash
-
-
-def test_logout_clears_session(secrets, config):
-    secrets.put(cloud.CLOUD_AUTH_PROFILE, {"access_token": "x"})
-    cloud.logout(secrets)
+def test_status_is_signed_out_without_a_session(secrets):
     assert cloud.status(secrets) == {"signed_in": False, "account": "", "user_id": ""}
 
 
-# --- managed connect -------------------------------------------------------------
+# --- managed profile lifecycle (still used by connectors + broker refresh) --------
 
 
 def test_every_managed_connector_has_a_provider_mapping():
@@ -230,12 +72,6 @@ def test_every_managed_connector_has_a_provider_mapping():
     assert (
         not unmapped
     ), f"managed connectors missing an OAuth provider: {sorted(unmapped)}"
-
-
-def test_begin_managed_connect_requires_sign_in(secrets, config):
-    out = cloud.begin_managed_connect(secrets, config, "gmail")
-    assert not out["ok"]
-    assert "not signed in" in out["error"]
 
 
 def test_managed_profile_is_field_compatible_with_manual(secrets):
@@ -268,26 +104,6 @@ def test_managed_connect_rejected_for_unmanaged_connector(secrets):
     # telegram is manual-only (github gained a managed path with the App relay)
     result = managed_connect_connector(secrets, "telegram", {"access_token": "x"})
     assert not result["ok"]
-
-
-def test_managed_connect_redirect_follows_actual_port(secrets, config, monkeypatch):
-    """The loopback redirect must target the sidecar's real bound port
-    (MANGABA_PORT), not config.port — the packaged app runs on a random port,
-    so an 8765 redirect would hit the wrong (or no) process."""
-    secrets.put(cloud.CLOUD_AUTH_PROFILE, {"access_token": "at", "enabled": True})
-    monkeypatch.setattr(cloud, "fresh_access_token", lambda *a, **k: "at")
-    monkeypatch.setenv("MANGABA_PORT", "52854")  # e.g. what free_port() picked
-
-    seen = {}
-
-    def fake_post(url, **kwargs):
-        seen["redirect"] = kwargs["json"]["redirect"]
-        return FakeResponse(200, {"authorize_url": "https://slack/authorize?x=1"})
-
-    monkeypatch.setattr(cloud.httpx, "post", fake_post)
-    out = cloud.begin_managed_connect(secrets, config, "slack")
-    assert out["ok"]
-    assert seen["redirect"] == "http://127.0.0.1:52854/oauth/callback"  # not 8765
 
 
 def test_manual_paste_still_works_and_is_not_managed(secrets):

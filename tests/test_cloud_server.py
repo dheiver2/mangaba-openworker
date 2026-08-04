@@ -1,5 +1,8 @@
-"""Sidecar loopback routes for Mangaba Cloud: /oauth/callback,
-/auth/callback, /v1/cloud/*, connect-managed gating."""
+"""Sidecar loopback routes that survive the Mangaba Cloud removal: /v1/cloud/status
+(local, always signed-out), /v1/cloud/telemetry, the gallery read endpoints, and
+signed-out connector disconnect. The interactive sign-in (/auth/callback), the
+one-click connect-managed route, and the broker /oauth/callback were removed with
+the managed OAuth flow — the broker infrastructure doesn't exist in this fork."""
 
 from __future__ import annotations
 
@@ -7,12 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mangaba.server import SessionManager, create_app
-
-
-def _allow_managed_state(state: str = "s") -> None:
-    from mangaba import cloud
-
-    cloud._pending_managed_states[state] = cloud._now()
 
 
 @pytest.fixture
@@ -35,91 +32,17 @@ def test_cloud_status_signed_out(client):
     }
 
 
-def test_connect_managed_requires_sign_in(client):
-    # notion, not gmail: the Google trio is managed_paused (CASA pending) and its
-    # guard fires before the sign-in check — see test_google_one_click_paused….
-    body = client.post("/v1/connectors/notion/connect-managed").json()
-    assert not body["ok"]
-    assert "not signed in" in body["error"]
-
-
-def test_oauth_callback_writes_profile_and_returns_page(client):
-    _allow_managed_state()
-    resp = client.post(
-        "/oauth/callback",
-        data={
-            "provider": "google",
-            "connector": "gmail",
-            "connection_id": "conn_9",
-            "access_token": "ya29.tok",
-            "refresh_token": "1//r",
-            "expires_in": "3599",
-            "scope": "gmail.readonly",
-            "account": "a@b.c",
-            "app_state": "s",
-        },
+def test_removed_cloud_routes_are_gone(client):
+    """The managed one-click + interactive sign-in surface was removed: these routes
+    no longer exist (the manual credential-paste path replaces them)."""
+    assert client.post("/v1/connectors/notion/connect-managed").status_code == 404
+    assert client.post("/oauth/callback", data={"app_state": "s"}).status_code == 404
+    assert (
+        client.get("/auth/callback", params={"code": "c", "state": "x"}).status_code
+        == 404
     )
-    assert resp.status_code == 200
-    # §30: the loopback page is a branded card, Title-cased connector name.
-    assert "Gmail connected" in resp.text
-    assert "Served locally by Mangaba" in resp.text
-
-    # Multi-account: the callback lands in gmail:account:<email>; gmail:default
-    # is just the default pointer.
-    profile = client.manager.secrets.get("gmail:account:a@b.c")
-    assert profile["access_token"] == "ya29.tok"
-    assert profile["managed"] is True
-    assert profile["connection_id"] == "conn_9"
-    assert client.manager.secrets.get("gmail:default")["default_account"] == "a@b.c"
-
-    listed = {c["name"]: c for c in client.manager.list_connectors()}
-    assert listed["gmail"]["connected"]
-    assert listed["gmail"]["account"] == "a@b.c"
-    assert [a["email"] for a in listed["gmail"]["accounts"]] == ["a@b.c"]
-
-
-def test_oauth_callback_error_shows_failure_page(client):
-    _allow_managed_state()
-    resp = client.post(
-        "/oauth/callback",
-        data={"connector": "gmail", "error": "access_denied", "app_state": "s"},
-    )
-    assert resp.status_code == 400
-    assert "access_denied" in resp.text
-    assert client.manager.secrets.get("gmail:default") is None
-
-
-def test_oauth_callback_rejects_unmanaged_connector(client):
-    # telegram is manual-only (github gained a managed path with the App relay)
-    _allow_managed_state()
-    resp = client.post(
-        "/oauth/callback",
-        data={"connector": "telegram", "access_token": "x", "app_state": "s"},
-    )
-    assert resp.status_code == 400
-    assert client.manager.secrets.get("telegram:default") is None
-
-
-def test_oauth_callback_rejects_unknown_and_replayed_state(client):
-    form = {
-        "provider": "google",
-        "connector": "gmail",
-        "access_token": "token",
-        "account": "a@b.c",
-        "app_state": "once",
-    }
-    assert client.post("/oauth/callback", data=form).status_code == 400
-    assert client.manager.secrets.get("gmail:default") is None
-
-    _allow_managed_state("once")
-    assert client.post("/oauth/callback", data=form).status_code == 200
-    assert client.post("/oauth/callback", data=form).status_code == 400
-
-
-def test_auth_callback_rejects_unknown_state(client):
-    resp = client.get("/auth/callback", params={"code": "c", "state": "forged"})
-    assert resp.status_code == 400
-    assert "Sign-in failed" in resp.text
+    assert client.post("/v1/cloud/login").status_code == 404
+    assert client.post("/v1/cloud/logout").status_code == 404
 
 
 def test_disconnect_works_signed_out(client):

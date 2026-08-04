@@ -1,42 +1,36 @@
 import { useEffect, useState } from "react";
 import {
-  cloudLogin,
-  connectManaged,
-  getCloudStatus,
   getConnectors,
   setOnboarded,
-  type CloudStatus,
   type Connector,
 } from "../api";
 import { ConnectorBadge } from "../connectors/ConnectorIcon";
 import { deviceLabel } from "../tauri";
 import { ProviderCards, ProviderForm, useProviderSetup } from "../providers/ProviderSetup";
-import { Spinner } from "./AutomationQuickstart";
 
 // First-run onboarding (UX-DECISIONS §24 → §29 → §39): model → your tools → go.
 // §39 (owner design, 2026-07-18): step 1 is a PROVIDER GALLERY — 13 real brand
-// marks, two per row, each card wearing its own state — and step 2 is a
-// two-state tools page whose post-sign-in body is a mini connector gallery with
-// live one-click connects. Both steps share one frame rule: the header and
-// footer never move; only the middle region swaps, at a fixed height.
+// marks, two per row, each card wearing its own state — and step 2 shows what your
+// tools unlock. Both steps share one frame rule: the header and footer never move;
+// only the middle region swaps, at a fixed height.
 // The gallery/form themselves live in providers/ProviderSetup.tsx, shared with
 // Settings ▸ Models (UX-021) so the two surfaces can't drift.
 // Replayable from Settings ▸ General ▸ "Run setup again".
+//
+// A "Mangaba Cloud" (login OAuth + one-click gerenciado) foi removida deste fork.
+// Cada conector é conectado MANUALMENTE na página de Conectores, colando a
+// credencial do próprio fornecedor — step 2 apenas apresenta o que isso destrava.
 
-// Step 2's benefit rows (§41): managed connectors with LIVE prod OAuth apps only,
-// each framed by the job it does (detail copy stays ONE line even with a Connect
-// pill — wrap made rows jump between states). gmail + google_calendar ship as one
-// combined grayed "Coming soon" row — both ride the same Google app, gated on
-// Google verification/CASA; give them rows when it lands.
+// Step 2's benefit rows: the connectors framed by the job each does. Todas se
+// conectam manualmente pela página de Conectores (bot_token, api_token, access token).
 const TOOL_ROWS = [
   { name: "outlook", benefit: "Fique em dia com o e-mail", detail: "Outlook — triar mensagens, redigir respostas, cuidar da agenda." },
   { name: "slack", benefit: "Acompanhe o Slack", detail: "Slack — colocar em dia, responder menções, publicar novidades." },
   { name: "github", benefit: "Entregue código", detail: "GitHub — revisar PRs, acompanhar issues, responder @menções." },
   { name: "notion", benefit: "Tenha suas notas à mão", detail: "Notion — buscar páginas, consultar bases, redigir documentos." },
   { name: "hubspot", benefit: "Mantenha o CRM em dia", detail: "HubSpot — atualizar negócios, registrar notas, preparar calls." },
-  { name: "attio", benefit: "Acompanhe cada relacionamento", detail: "Attio — buscar registros, ler linhas do tempo, registrar notas." },
+  { name: "gmail", benefit: "Fique em dia com o Gmail", detail: "Gmail — triar mensagens, redigir respostas, aplicar filtros." },
 ];
-const TOOLS_SOON = ["gmail", "google_calendar"];
 
 export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "automations") => void }) {
   const [step, setStep] = useState(0);
@@ -60,41 +54,19 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
     setStep(1);
   };
 
-  // -- step 2: connect your everyday tools (§39 two-state page) -------------------
+  // -- step 2: what your everyday tools unlock -----------------------------------
   const [connectors, setConnectors] = useState<Connector[]>([]);
-  const [cloud, setCloud] = useState<CloudStatus | null>(null);
-  const [signinPhase, setSigninPhase] = useState<"opening" | "waiting" | null>(null);
-  // One in-flight connect at a time; clicking another card quietly resets the first.
-  const [pendingTool, setPendingTool] = useState<string | null>(null);
 
-  // Poll while on the tools page: sign-in AND vendor consents land out-of-band in
-  // the system browser. Tighten while either is actually in flight.
+  // Poll while on the tools page so the connector badges resolve as the catalog loads.
   useEffect(() => {
     if (step !== 1) return;
     const load = () => {
       getConnectors().then(setConnectors).catch(() => {});
-      getCloudStatus().then(setCloud).catch(() => {});
     };
     load();
-    const fast = signinPhase === "waiting" || pendingTool !== null;
-    const t = setInterval(load, fast ? 750 : 3000);
+    const t = setInterval(load, 3000);
     return () => clearInterval(t);
-  }, [step, signinPhase, pendingTool]);
-
-  // The poll flips the card to ✓ when the consent lands.
-  useEffect(() => {
-    if (pendingTool && connectors.find((c) => c.name === pendingTool)?.connected)
-      setPendingTool(null);
-  }, [connectors, pendingTool]);
-
-  const startTool = async (name: string) => {
-    setPendingTool(name); // replaces any previous pending connect
-    const res = await connectManaged(
-      name,
-      name === "hubspot" ? { access: "read" } : undefined, // least privilege in onboarding
-    ).catch(() => ({ ok: false }));
-    if (!res.ok) setPendingTool((cur) => (cur === name ? null : cur)); // silent reset — no error walls here
-  };
+  }, [step]);
 
   const finish = async (next?: "work" | "gallery" | "automations") => {
     await setOnboarded(true).catch(() => {});
@@ -169,11 +141,9 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
         )}
 
         {step === 1 && (
-          /* §41 (owner design, 2026-07-19, supersedes §39's card gallery): BENEFIT ROWS are
-             the connect surface — one row set, two states, ZERO layout shift. Pre-sign-in the
-             rows make the case and a pinned band asks for sign-in; after sign-in the band's
-             slot keeps its place but flips to a green congrats, and every row grows a quiet
-             Connect pill. The gated Google pair is ONE combined grayed row. */
+          /* BENEFIT ROWS: what each connector unlocks. Todas se conectam MANUALMENTE
+             pela página de Conectores (o one-click gerenciado do Mangaba Cloud foi
+             removido) — este passo apresenta o valor e manda pro caminho manual. */
           <section data-testid="ob-step-tools" className="flex-1 min-h-0 flex flex-col">
             <h1 className="text-[19px] font-semibold">Conecte suas ferramentas do dia a dia</h1>
             <p className="text-[13px] text-muted mt-0.5 mb-3">
@@ -195,120 +165,33 @@ export function Onboarding({ onDone }: { onDone: (next?: "work" | "gallery" | "a
                       <span className="block text-[13.5px] font-semibold leading-tight">{benefit}</span>
                       <span className="block text-[12px] text-muted truncate">{detail}</span>
                     </span>
-                    {cloud?.signed_in &&
-                      (c.connected ? (
-                        <span className="text-[12px] text-ok font-medium shrink-0">✓ Conectado</span>
-                      ) : pendingTool === name ? (
-                        <span className="text-[12px] text-muted shrink-0">Confira seu navegador…</span>
-                      ) : (
-                        <button
-                          className="shrink-0 rounded-full border border-line px-4 py-1.5 text-[12.5px] font-medium hover:border-lineStrong"
-                          onClick={() => startTool(name)}
-                        >
-                          Conectar
-                        </button>
-                      ))}
+                    {c.connected && (
+                      <span className="text-[12px] text-ok font-medium shrink-0">✓ Conectado</span>
+                    )}
                   </div>
                 );
               })}
-              {/* The gated Google pair: one combined grayed row, both states (§41). */}
-              <div className="flex items-center gap-3 py-2" data-testid="ob-tool-google-soon">
-                <span className="flex gap-1.5 opacity-40 grayscale">
-                  {TOOLS_SOON.map((n) => {
-                    const c = connectors.find((x) => x.name === n);
-                    return c ? <ConnectorBadge key={n} connector={c} size={28} title={c.title} /> : null;
-                  })}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13.5px] font-semibold leading-tight text-faint">
-                    Gmail &amp; Google Calendar
-                  </span>
-                  <span className="block text-[12px] text-faint truncate">
-                    Em breve — aguardando a verificação do app pelo Google.
-                  </span>
-                </span>
-                {cloud?.signed_in && <span className="text-[11.5px] text-faint shrink-0">Em breve</span>}
-              </div>
             </div>
 
-            {/* The band is PINNED outside the scroll area and its slot never moves: the ask
-                pre-sign-in, a green congrats after — zero layout shift at the moment the user
-                returns from the browser (§41). */}
-            {!cloud?.signed_in ? (
-              <div className="mt-3.5 rounded-xl border border-line bg-paper px-4 py-3 flex items-center gap-3.5 shrink-0">
-                <span className="flex-1 text-[12.5px] text-muted leading-snug">
-                  <span className="block text-[13px] font-semibold text-ink mb-0.5">
-                    Entre para ter conexões com um clique
-                  </span>
-                  O Mangaba cuida do OAuth de mais de 20 ferramentas — sem consoles de dev, sem colar chaves.
-                  Os tokens ficam neste {deviceLabel()}.
-                </span>
-                {signinPhase ? (
-                  <span className="inline-flex items-center gap-2 text-[12.5px] text-muted shrink-0">
-                    <Spinner />
-                    {signinPhase === "opening" ? (
-                      "Abrindo o navegador…"
-                    ) : (
-                      <>
-                        Aguardando…{" "}
-                        <button
-                          className="underline hover:text-ink"
-                          onClick={() => setSigninPhase(null)}
-                          data-testid="ob-signin-cancel"
-                        >
-                          Cancelar
-                        </button>
-                      </>
-                    )}
-                  </span>
-                ) : (
-                  <button
-                    className="shrink-0 px-5 py-2 rounded-full bg-ink text-panel text-[13px]"
-                    onClick={async () => {
-                      setSigninPhase("opening");
-                      await cloudLogin().catch(() => {});
-                      setSigninPhase("waiting");
-                    }}
-                    data-testid="ob-cloud-signin"
-                  >
-                    Entrar
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div
-                className="mt-3.5 rounded-xl border border-line bg-okSoft px-4 py-3 shrink-0"
-                data-testid="ob-tools-signedin"
-              >
-                <span className="block text-[13px] font-semibold text-ok mb-0.5">
-                  🎉 Você está conectado{cloud.account ? ` como ${cloud.account}` : ""}
-                </span>
-                <span className="block text-[12.5px] text-muted">
-                  Conecte uma ferramenta acima com um clique — ou adicione depois pela
-                  página de Conectores.
-                </span>
-              </div>
-            )}
+            {/* Manual-path band: pinned outside the scroll, slot never moves. */}
+            <div className="mt-3.5 rounded-xl border border-line bg-paper px-4 py-3 shrink-0">
+              <span className="block text-[13px] font-semibold text-ink mb-0.5">
+                Conecte pela página de Conectores
+              </span>
+              <span className="block text-[12.5px] text-muted leading-snug">
+                Cada ferramenta se conecta colando a credencial do próprio fornecedor
+                (bot_token, api_token, access token). Os tokens ficam neste {deviceLabel()}.
+              </span>
+            </div>
 
-            {/* One footer button, one slot: quiet skip pre-sign-in, black Next after. */}
             <div className="flex items-center mt-3.5">
-              {cloud?.signed_in ? (
-                <button
-                  className="ml-auto px-6 py-2 rounded-full bg-ink text-panel text-[13px] shrink-0"
-                  onClick={() => setStep(2)}
-                  data-testid="ob-continue-tools"
-                >
-                  Avançar
-                </button>
-              ) : (
-                <button
-                  className="ml-auto px-5 py-2 rounded-full border border-line text-[13px] text-muted hover:text-ink hover:border-lineStrong shrink-0"
-                  onClick={() => setStep(2)}
-                  data-testid="ob-tools-skip"
-                >
-                  Continuar sem entrar
-                </button>
-              )}
+              <button
+                className="ml-auto px-6 py-2 rounded-full bg-ink text-panel text-[13px] shrink-0"
+                onClick={() => setStep(2)}
+                data-testid="ob-continue-tools"
+              >
+                Avançar
+              </button>
             </div>
             <p className="text-[11px] text-faint mt-3">
               Mais de 30 ferramentas na página de Conectores — adicione ou remova quando quiser. Os tokens

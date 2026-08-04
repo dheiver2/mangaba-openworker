@@ -467,90 +467,13 @@ export interface Connector {
   installations?: GithubInstallation[]; // GitHub only: App installations (managed relay)
 }
 
-// --- Mangaba Cloud (optional sign-in; manual token paste always works) ---
-
-export interface CloudStatus {
-  signed_in: boolean;
-  account: string;
-  user_id: string;
-  telemetry_enabled?: boolean; // Phase 5 opt-out; signed-out users send nothing regardless
-}
-
-/** Flip the product-telemetry preference (local; only meaningful when signed in). */
-export async function setCloudTelemetry(
-  enabled: boolean,
-): Promise<{ ok: boolean; telemetry_enabled?: boolean }> {
-  const res = await fetch(`${httpBase()}/v1/cloud/telemetry`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enabled }),
-  });
-  return res.json();
-}
-
-export async function getCloudStatus(): Promise<CloudStatus> {
-  const res = await fetch(`${httpBase()}/v1/cloud/status`);
-  return res.json();
-}
-
-export async function cloudLogin(): Promise<{ ok: boolean }> {
-  // The sidecar opens the system browser; the GUI just polls status after.
-  const res = await fetch(`${httpBase()}/v1/cloud/login`, { method: "POST" });
-  return res.json();
-}
-
-/** Poll cloud status until the browser sign-in lands (or the bound runs out).
- *
- * Fast 500ms polls for the first 20s — the moment the user finishes in the
- * browser they're staring at the app waiting for it to flip, and a 2s interval
- * reads as "sign-in is slow" (owner complaint, 2026-07-16) — then relaxes to 2s
- * for the long tail (~2min total). Calls `onDone` with the signed-in status, or
- * null when it timed out. Returns a cancel function (call on unmount). */
-export function waitForCloudSignIn(
-  onDone: (s: CloudStatus | null) => void,
-): () => void {
-  let cancelled = false;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  let polls = 0;
-  const tick = async () => {
-    polls += 1;
-    const s = await getCloudStatus().catch(() => null);
-    if (cancelled) return;
-    if (s?.signed_in) return onDone(s);
-    if (polls >= 90) return onDone(null); // 40×500ms + 50×2s ≈ 2min
-    timer = setTimeout(tick, polls < 40 ? 500 : 2000);
-  };
-  timer = setTimeout(tick, 500);
-  return () => {
-    cancelled = true;
-    if (timer) clearTimeout(timer);
-  };
-}
-
-export async function cloudLogout(): Promise<{ ok: boolean }> {
-  const res = await fetch(`${httpBase()}/v1/cloud/logout`, { method: "POST" });
-  return res.json();
-}
-
-export async function connectManaged(
-  name: string,
-  options?: { access?: "read" | "write" },
-): Promise<{ ok: boolean; error?: string }> {
-  const res = await fetch(
-    `${httpBase()}/v1/connectors/${encodeURIComponent(name)}/connect-managed`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // `access` names a broker-defined consent tier (hubspot read | write).
-      // GitHub needs no flow choice: the broker is authorize-first — one connect
-      // links an existing App installation or redirects on to the install page.
-      body: JSON.stringify({
-        ...(options?.access ? { access: options.access } : {}),
-      }),
-    },
-  );
-  return res.json();
-}
+// --- Conexões manuais ---
+//
+// A "Mangaba Cloud" (login OAuth + one-click gerenciado via broker) foi removida
+// deste fork — a infraestrutura não existe. Cada conector é conectado colando a
+// credencial do próprio fornecedor (bot_token, api_token, access token). O
+// connect MCP local (abaixo) segue disponível: roda inteiro neste computador,
+// sem conta Mangaba.
 
 /** One-click connect for an MCP-backed connector (monday, asana, jira): the sidecar
  * opens the vendor's sign-in in the browser (local OAuth, no cloud account needed);
@@ -903,13 +826,6 @@ export async function setNavLayout(
     body: JSON.stringify({ nav_layout: layout }),
   });
   return res.json();
-}
-
-// Fired after a cloud sign-in/out completes so the account row (§26) refreshes without
-// waiting for the next window focus.
-export const CLOUD_CHANGED = "mangaba:cloud-changed";
-export function announceCloudChanged() {
-  window.dispatchEvent(new CustomEvent(CLOUD_CHANGED));
 }
 
 // Fired the first time Inbox machinery is engaged (an item parks, or a session goes

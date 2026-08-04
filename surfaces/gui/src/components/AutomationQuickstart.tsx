@@ -1,17 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  cloudLogin,
-  connectManaged,
-  getCloudStatus,
   getConnectors,
   getRecentChannels,
-  waitForCloudSignIn,
-  type CloudStatus,
   type Connector,
   type RecentChannel,
 } from "../api";
+import { ConnectSetup } from "./ManageTabs";
 import { ConnectorBadge } from "../connectors/ConnectorIcon";
-import { deviceLabel } from "../tauri";
 import { ChannelPicker } from "./SubscriptionsChip";
 import { SelectMenu } from "./SelectMenu";
 
@@ -204,14 +199,9 @@ export function AutomationQuickstart({
   const picked = TEMPLATES.find((t) => t.key === pickedKey) || null;
 
   const [connectors, setConnectors] = useState<Connector[]>([]);
-  const [cloud, setCloud] = useState<CloudStatus | null>(null);
+  // The connector whose inline MANUAL connect form is open (cole a credencial do
+  // fornecedor). O one-click gerenciado do Mangaba Cloud foi removido deste fork.
   const [pendingConn, setPendingConn] = useState<string | null>(null);
-  // §30 connect states: "opening" while the broker POST is in flight (the browser hasn't
-  // appeared yet), "waiting" once it has — the handoff strip explains the out-of-band finish.
-  const [connFlow, setConnFlow] = useState<{ name: string; phase: "opening" | "waiting" } | null>(
-    null,
-  );
-  const [signinPhase, setSigninPhase] = useState<"opening" | "waiting" | null>(null);
   const [recent, setRecent] = useState<RecentChannel[]>([]);
   const [repo, setRepo] = useState("");
   const [channel, setChannel] = useState("");
@@ -222,10 +212,9 @@ export function AutomationQuickstart({
 
   const refresh = () => {
     getConnectors().then(setConnectors).catch(() => {});
-    getCloudStatus().then(setCloud).catch(() => {});
   };
   // Connector state drives the card dots, so load once up front; poll only while a template
-  // is being configured (connects and the cloud sign-in land out-of-band).
+  // is being configured (manual connects flip the row as soon as the credential validates).
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     refresh();
@@ -252,9 +241,9 @@ export function AutomationQuickstart({
   const channelLabel = channelName ? `#${channelName}` : channel;
   const channelWorkspace = pickedInfo?.workspace;
 
-  // The poll flipping a row to ✓ is what ends its waiting state.
+  // The poll flipping a row to ✓ closes its open manual form.
   useEffect(() => {
-    if (connFlow && connState(connFlow.name)?.connected) setConnFlow(null);
+    if (pendingConn && connState(pendingConn)?.connected) setPendingConn(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectors]);
 
@@ -270,51 +259,12 @@ export function AutomationQuickstart({
     setDay(t.day);
     setTime(t.time);
     setConsent(true);
-    setConnFlow(null);
+    setPendingConn(null);
   };
 
-  const startConnect = async (name: string) => {
-    if (!cloud?.signed_in) {
-      setPendingConn(name); // the pane appears; sign-in completes it
-      return;
-    }
-    // §30: the broker round-trip takes seconds — narrate it on the row itself.
-    setConnFlow({ name, phase: "opening" });
-    // GitHub is authorize-first at the BROKER: one connect links an existing
-    // installation or lands on the install page — no flow choice here anymore.
-    await connectManaged(name).catch(() => {});
-    // The POST resolves once the system browser is off; the poll ends the waiting state.
-    setConnFlow((f) => (f?.name === name ? { name, phase: "waiting" } : f));
-    refresh();
-  };
-
-  const signinPollRef = useRef<(() => void) | null>(null);
-  const cancelSignin = () => {
-    signinPollRef.current?.();
-    signinPollRef.current = null;
-    setSigninPhase(null);
-  };
-  useEffect(() => cancelSignin, []); // never leave the poll running after unmount
-
-  const signInThenConnect = async () => {
-    setSigninPhase("opening");
-    await cloudLogin().catch(() => {});
-    setSigninPhase("waiting");
-    // Poll until the browser flow lands, then finish the pending connect (bounded).
-    signinPollRef.current = waitForCloudSignIn(async (s) => {
-      signinPollRef.current = null;
-      setSigninPhase(null);
-      if (!s?.signed_in) return;
-      setCloud(s);
-      if (pendingConn) {
-        const name = pendingConn;
-        setConnFlow({ name, phase: "opening" });
-        await connectManaged(name).catch(() => {});
-        setConnFlow((f) => (f?.name === name ? { name, phase: "waiting" } : f));
-        setPendingConn(null);
-        refresh();
-      }
-    });
+  // Toggle the inline MANUAL connect form for a connector (cole a credencial).
+  const startConnect = (name: string) => {
+    setPendingConn((cur) => (cur === name ? null : name));
   };
 
   const create = () => {
@@ -410,7 +360,7 @@ export function AutomationQuickstart({
           </div>
           {picked.conns.map(({ name, why }) => {
             const c = connState(name);
-            const flow = connFlow?.name === name ? connFlow : null;
+            const open = pendingConn === name;
             return (
               <div key={name} className="border-b border-line last:border-b-0">
                 <div className="flex items-center gap-3 py-2.5">
@@ -421,91 +371,26 @@ export function AutomationQuickstart({
                   </span>
                   {c?.connected ? (
                     <span className="text-[12.5px] text-ok">✓ Conectado</span>
-                  ) : flow ? (
-                    <span className="inline-flex items-center gap-2 text-[12px] text-muted">
-                      <Spinner />
-                      {flow.phase === "opening"
-                        ? "Abrindo o navegador…"
-                        : `Aguardando o ${c?.title || name}…`}
-                    </span>
                   ) : (
                     <button
                       className="px-3.5 py-1 rounded-full border border-line text-[12.5px] hover:bg-paper"
                       onClick={() => startConnect(name)}
                       data-testid={`ob-connect-${name}`}
                     >
-                      Conectar
+                      {open ? "Fechar" : "Conectar"}
                     </button>
                   )}
                 </div>
-                {/* §30 handoff strip: the flow finishes out-of-band in the browser — say so,
-                    and let Cancel clear the LOCAL state (the browser tab is the user's). */}
-                {flow?.phase === "waiting" && (
-                  <div
-                    className="flex items-start gap-2 bg-accentSoft/50 rounded-lg px-3 py-2 mb-2.5 text-[12px] text-muted"
-                    data-testid="ob-connect-wait"
-                  >
-                    <span>↗</span>
-                    <span className="flex-1 min-w-0">
-                      <b className="text-ink font-medium">
-                        Conclua a conexão com o {c?.title || name} no seu navegador.
-                      </b>{" "}
-                      Aprove por lá e volte — esta página se atualiza sozinha.
-                    </span>
-                    <button
-                      className="text-faint underline hover:text-muted shrink-0"
-                      onClick={() => setConnFlow(null)}
-                      data-testid="ob-connect-cancel"
-                    >
-                      Cancelar
-                    </button>
+                {/* Inline MANUAL connect form: cole a credencial do fornecedor; o poll
+                    fecha o formulário assim que a conexão valida. */}
+                {open && c && !c.connected && (
+                  <div className="-mx-2 pb-2" data-testid={`ob-connect-form-${name}`}>
+                    <ConnectSetup c={c} onConnected={() => { setPendingConn(null); refresh(); }} />
                   </div>
                 )}
               </div>
             );
           })}
-
-          {pendingConn && !cloud?.signed_in && (
-            <div
-              className="bg-accentSoft/50 rounded-xl px-4 py-3 mt-3 text-[12.5px] text-muted"
-              data-testid="ob-cloudpane"
-            >
-              <span className="block text-[13px] text-ink font-medium">
-                Um único login libera todas as conexões com um clique
-              </span>
-              As conexões são intermediadas pelo Mangaba Cloud — seus tokens ficam neste {deviceLabel()}.
-              <div className="flex items-center gap-3 mt-2">
-                {signinPhase ? (
-                  <>
-                    <span className="inline-flex items-center gap-2 text-[12px]">
-                      <Spinner />
-                      {signinPhase === "opening" ? "Abrindo o navegador…" : "Aguardando o login…"}
-                    </span>
-                    {signinPhase === "waiting" && (
-                      <span className="text-[11.5px] text-faint">
-                        Conclua o login no navegador — esta página se atualiza sozinha.{" "}
-                        <button
-                          className="underline hover:text-muted"
-                          onClick={cancelSignin}
-                          data-testid="ob-signin-cancel"
-                        >
-                          Cancelar
-                        </button>
-                      </span>
-                    )}
-                  </>
-                ) : (
-                  <button
-                    className="px-3.5 py-1 rounded-full border border-line text-[12.5px] text-accent hover:bg-panel"
-                    onClick={signInThenConnect}
-                    data-testid="ob-cloud-signin"
-                  >
-                    Entrar no Mangaba Cloud
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
 
           {allConnected && (
             <div className={picked.conns.length ? "bg-paper rounded-xl px-4 py-3.5 mt-3" : ""} data-testid="ob-recipe">

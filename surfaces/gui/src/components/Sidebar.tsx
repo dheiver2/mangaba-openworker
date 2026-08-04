@@ -1,22 +1,15 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { shortcutLabel } from "../tauri";
 import {
-  announceCloudChanged,
   exportSession,
   AUTOMATIONS_CHANGED,
-  CLOUD_CHANGED,
-  cloudLogin,
-  cloudLogout,
   getAutomations,
-  getCloudStatus,
   getPersonas,
   getSettings,
   INBOX_UNLOCK,
   PERSONAS_CHANGED,
   setNavLayout,
-  waitForCloudSignIn,
   type Automation,
-  type CloudStatus,
   type Persona,
   type RecentWorkspace,
   type SurfaceVisibility,
@@ -176,28 +169,18 @@ const compactAge = (iso?: string | null): string => {
 export function Sidebar(props: Props) {
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [appMenuOpen, setAppMenuOpen] = useState(false);
-  // The account row (§26): cloud sign-in status drives the avatar/name/dot; refreshed on
-  // focus and whenever the menu opens (sign-in completes out-of-band in the browser).
-  const [cloud, setCloud] = useState<CloudStatus | null>(null);
   // Inbox chip sticky unlock (§26): absent until the product first parks an item (or a
   // session first goes Unattended), then permanent. Per-device, like nav collapse.
   const [inboxUnlocked, setInboxUnlocked] = useState(
     () => localStorage.getItem("ocw:inbox-unlocked") === "1",
   );
-  const refreshCloud = () => getCloudStatus().then(setCloud).catch(() => {});
   useEffect(() => {
-    refreshCloud();
-    const onFocus = () => refreshCloud();
-    window.addEventListener("focus", onFocus);
-    window.addEventListener(CLOUD_CHANGED, onFocus);
     const unlock = () => {
       localStorage.setItem("ocw:inbox-unlocked", "1");
       setInboxUnlocked(true);
     };
     window.addEventListener(INBOX_UNLOCK, unlock);
     return () => {
-      window.removeEventListener("focus", onFocus);
-      window.removeEventListener(CLOUD_CHANGED, onFocus);
       window.removeEventListener(INBOX_UNLOCK, unlock);
     };
   }, []);
@@ -370,13 +353,6 @@ export function Sidebar(props: Props) {
       {trailing != null && <span aria-hidden>{trailing}</span>}
     </button>
   );
-
-  // Display identity for the account row: the cloud profile only carries the email, so the
-  // row shows the capitalized local part ("rohit@…" → "Rohit"); the menu header shows it all.
-  const accountEmail = cloud?.signed_in ? cloud.account : "";
-  const accountName = accountEmail
-    ? accountEmail.split("@")[0].replace(/^./, (c) => c.toUpperCase())
-    : "";
 
   // Roll the per-session attention/liveness up to the persona header and the footer Inbox: the
   // accent count bubbles (sum), the liveness dot aggregates (working wins over sleeping).
@@ -1160,39 +1136,6 @@ export function Sidebar(props: Props) {
                 data-testid="account-menu"
                 role="menu"
               >
-                {cloud?.signed_in ? (
-                  <div
-                    className="px-3 py-1.5 mb-1 text-[11px] text-faint truncate border-b border-line"
-                    title={`${accountEmail} · Mangaba Cloud`}
-                  >
-                    {accountEmail} · Mangaba Cloud
-                  </div>
-                ) : (
-                  <>
-                    <div className="px-3 py-1.5 text-[11px] text-faint border-b border-line">
-                      Não conectado — conexões com um clique exigem o Mangaba Cloud
-                    </div>
-                    <button
-                      className="w-full flex items-center gap-2.5 px-3 py-1.5 mb-1 text-[13px] text-left text-accent hover:bg-paper"
-                      data-testid="account-sign-in"
-                      onClick={async () => {
-                        setAppMenuOpen(false);
-                        // Opens the system browser server-side; completion lands out-of-band,
-                        // so poll until it flips (refocusing the window also refetches).
-                        await cloudLogin().catch(() => {});
-                        waitForCloudSignIn((s) => {
-                          if (s) setCloud(s);
-                          // Other always-mounted consumers (Settings' telemetry card,
-                          // connector panes) refetch on this.
-                          if (s?.signed_in) announceCloudChanged();
-                        });
-                      }}
-                    >
-                      <Icon name="plug" size={15} className="shrink-0" /> Entrar no Mangaba
-                      Cloud
-                    </button>
-                  </>
-                )}
                 {appMenuItem(
                   "inbox",
                   "Caixa de entrada",
@@ -1211,15 +1154,6 @@ export function Sidebar(props: Props) {
                 )}
                 {appMenuItem("clock", "Automações", props.onOpenScheduled, props.scheduledActive)}
                 {appMenuItem("audit", "Atividade", props.onOpenAudit, props.auditActive)}
-                {cloud?.signed_in && (
-                  <>
-                    <div className="h-px bg-line my-1 mx-2" />
-                    {appMenuItem("signOut", "Sair", async () => {
-                      await cloudLogout().catch(() => {});
-                      announceCloudChanged();
-                    })}
-                  </>
-                )}
               </div>
             </>
           )}
@@ -1230,40 +1164,18 @@ export function Sidebar(props: Props) {
               (appMenuOpen ? "bg-paper text-ink" : "hover:bg-paper")
             }
             data-testid="account-row"
-            onClick={() => {
-              if (!appMenuOpen) refreshCloud();
-              setAppMenuOpen((v) => !v);
-            }}
+            onClick={() => setAppMenuOpen((v) => !v)}
             aria-haspopup="menu"
             aria-expanded={appMenuOpen}
-            aria-label={cloud?.signed_in ? `Conta: ${accountEmail}` : "Conta: não conectado"}
+            aria-label="Menu"
           >
             <span
-              className={
-                "w-6 h-6 rounded-full grid place-items-center text-[10.5px] font-semibold shrink-0 " +
-                (cloud?.signed_in
-                  ? "bg-accentSoft text-accent"
-                  : "bg-paper text-faint border border-line")
-              }
+              className="w-6 h-6 rounded-full grid place-items-center text-[10.5px] font-semibold shrink-0 bg-paper text-muted border border-line"
               aria-hidden
             >
-              {cloud?.signed_in ? accountName.slice(0, 1).toUpperCase() : "?"}
+              <Icon name="gear" size={13} />
             </span>
-            {/* Dizia apenas "Não conectado" e, lido no pé da barra lateral, parecia
-                que o APP estava offline — foi o que levou um usuário a concluir que o
-                Mangaba não havia subido, quando faltava só a conta do Cloud (opcional,
-                usada para conectar integrações com um clique). Nomear o que está
-                desconectado evita o alarme falso. */}
-            <span className={"truncate " + (cloud?.signed_in ? "" : "text-muted")}>
-              {cloud?.signed_in ? accountName : "Conta Cloud (opcional)"}
-            </span>
-            {cloud?.signed_in && (
-              <span
-                className="w-[7px] h-[7px] rounded-full bg-ok shrink-0"
-                title="Conectado ao Mangaba Cloud"
-                aria-hidden
-              />
-            )}
+            <span className="truncate">Menu</span>
             <span className="flex-1" />
             {inboxUnlocked && (
               <span

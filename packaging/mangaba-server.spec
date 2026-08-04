@@ -60,6 +60,20 @@ for pkg in ("uvicorn", "certifi", "anyio", "websockets", "pypdf", "pypdfium2"):
     binaries += b
     hiddenimports += h
 
+# Messaging extras (mangaba[messaging]): os ouvintes de entrada do Telegram e do Slack.
+# São opcionais e lazy-imported dentro de connect() (adapters.py), então a análise estática
+# do PyInstaller os perde — e sem coletá-los o conector do Telegram salva o token mas
+# NUNCA faz polling (connect() cai no ImportError e retorna False em silêncio). Coletados
+# aqui se estiverem no venv de build; ausentes, o build segue sem eles.
+for pkg in ("telegram", "slack_bolt", "slack_sdk", "aiohttp"):
+    try:
+        d, b, h = collect_all(pkg)
+        datas += d
+        binaries += b
+        hiddenimports += h
+    except Exception:
+        pass
+
 # Windows has no system tz database; tzdata ships the zoneinfo files the scheduler needs.
 if IS_WINDOWS:
     try:

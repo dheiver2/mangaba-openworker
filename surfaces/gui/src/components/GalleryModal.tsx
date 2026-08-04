@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-  cloudLogin,
   getCloudGallery,
   getCloudGalleryDetail,
-  getCloudStatus,
   getPersonas,
   installPersona,
-  type CloudStatus,
   type GalleryDetail,
   type GalleryPersona,
 } from "../api";
@@ -52,13 +49,11 @@ export function GalleryModal({
   onClose: () => void;
   onInstalled?: () => void;
 }) {
-  const [cloud, setCloud] = useState<CloudStatus | null>(null);
   const [cards, setCards] = useState<GalleryPersona[]>([]);
   const [installed, setInstalled] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [signingIn, setSigningIn] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [source, setSource] = useState<Source>("all");
@@ -68,7 +63,6 @@ export function GalleryModal({
 
   const reload = async () => {
     setLoading(true);
-    const status = getCloudStatus().then(setCloud).catch(() => setCloud(null));
     getPersonas()
       .then((ps) => setInstalled(new Set(ps.map((p) => p.id))))
       .catch(() => {});
@@ -80,9 +74,6 @@ export function GalleryModal({
       setCards([]);
       setUnavailable(true);
     }
-    // The signed-in check gates which body renders — wait for it too, so the
-    // skeleton never flashes into the wrong state.
-    await status;
     setLoading(false);
   };
   useEffect(() => {
@@ -96,15 +87,6 @@ export function GalleryModal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-
-  const signIn = async () => {
-    setSigningIn(true);
-    await cloudLogin(); // sidecar opens the browser; poll for completion
-    setTimeout(() => {
-      setSigningIn(false);
-      reload();
-    }, 3000);
-  };
 
   const openDetail = async (slug: string) => {
     setDetailSlug(slug);
@@ -163,9 +145,10 @@ export function GalleryModal({
         ))}
       </div>
 
-      {unavailable && cloud?.signed_in && (
+      {unavailable && (
         <div className="text-[12.5px] text-muted">
-          The gallery is unreachable right now — try again in a moment.
+          A galeria está indisponível — ela dependia do Mangaba Cloud, removido deste fork.
+          Instale personas por uma pasta ou URL do Git na página de Personas.
         </div>
       )}
 
@@ -377,7 +360,7 @@ export function GalleryModal({
               Personas selecionadas · as instalações ficam desativadas até você aprovar
             </div>
           </div>
-          {cloud?.signed_in && !detailSlug && (
+          {!detailSlug && (
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
@@ -405,20 +388,6 @@ export function GalleryModal({
                   <div className="h-3 w-72 max-w-full rounded bg-line/60" />
                 </div>
               ))}
-            </div>
-          ) : cloud && !cloud.signed_in ? (
-            <div className={CARD + " p-5 flex items-center gap-4"} data-testid="gallery-signin">
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-[14px] mb-1">Entre para explorar a Galeria</div>
-                <div className="text-[12.5px] text-muted leading-relaxed">
-                  A Galeria é um conjunto selecionado de personas do Mangaba Cloud e exige um
-                  login (gratuito) na nuvem. Instalar personas de uma pasta ou URL do Git — na
-                  página de Personas — sempre funciona sem conta.
-                </div>
-              </div>
-              <button className={BTN_ACCENT} onClick={signIn} disabled={signingIn}>
-                {signingIn ? "Confira seu navegador…" : "Entrar"}
-              </button>
             </div>
           ) : detailSlug ? (
             detailView

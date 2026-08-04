@@ -200,13 +200,14 @@ def client(tmp_path, monkeypatch):
         yield c
 
 
-def test_managed_callback_lands_in_portal_profile(client):
-    import mangaba.cloud as cloud
+def test_managed_profile_lands_in_portal_profile(client):
+    # The broker /oauth/callback route that used to drive this was removed with the
+    # managed one-click flow; seed the same portal profile directly (managed_profile_
+    # from_callback + managed_connect_portal are the code the callback used).
+    from mangaba.cloud import managed_profile_from_callback
 
-    cloud._pending_managed_states["s"] = cloud._now()
-    resp = client.post(
-        "/oauth/callback",
-        data={
+    profile = managed_profile_from_callback(
+        {
             "provider": "hubspot",
             "connector": "hubspot",
             "connection_id": "conn_hs",
@@ -215,12 +216,12 @@ def test_managed_callback_lands_in_portal_profile(client):
             "expires_in": "1800",
             "scope": "crm.objects.contacts.read tickets",
             "account": "Acme Inc",
-            "hub_id": "424242",
-            "sandbox": "1",
-            "app_state": "s",
-        },
+        }
     )
-    assert resp.status_code == 200 and "HubSpot connected" in resp.text
+    profile["hub_id"] = "424242"
+    profile["sandbox"] = True
+    result = hubspot_portals.managed_connect_portal(client.manager.secrets, profile)
+    assert result["ok"]
     profile = client.manager.secrets.get("hubspot:portal:424242")
     assert profile["access_token"] == "hs-at" and profile["sandbox"] is True
     listed = {c["name"]: c for c in client.manager.list_connectors()}

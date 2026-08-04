@@ -622,12 +622,10 @@ def test_sidecar_token_gates_rest_and_websockets(tmp_path, monkeypatch):
     ) as ws:
         assert ws.accepted_subprotocol == "mangaba"
 
-    # Redirect callbacks remain tokenless, then enforce their own signed state.
-    assert client.get(
-        "/auth/callback", params={"code": "x", "state": "bad"}
-    ).status_code == 400
+    # The MCP OAuth redirect callback (local flow) remains tokenless, then enforces
+    # its own signed state. (The Mangaba Cloud /auth/callback and the broker
+    # /oauth/callback were removed with the managed one-click flow.)
     assert client.get("/mcp/oauth/callback").status_code == 400
-    assert client.post("/oauth/callback", data={"app_state": "bad"}).status_code == 400
 
 
 def test_ws_approval_round_trip(tmp_path):
@@ -1051,19 +1049,15 @@ def test_always_allow_grants_survive_restart(tmp_path):
     _run_turn(TestClient(create_app(mgr2)), expect_prompts=0)
 
 
-def test_google_one_click_paused_but_manual_alive(tmp_path):
-    """CASA verification pending: Gmail/Calendar/Drive expose managed_paused (GUI badges
-    "Coming soon"), the managed-connect route refuses, and the manual fields stay."""
+def test_google_descriptors_keep_manual_fields(tmp_path):
+    """The managed one-click flow was removed (no Mangaba Cloud in this fork); every
+    Google connector must still carry its manual credential fields so the manual paste
+    path stays alive."""
     client = _client(tmp_path, [])
     connectors = {c["name"]: c for c in client.get("/v1/connectors").json()["connectors"]}
     for name in ("gmail", "google_calendar", "google_drive"):
         c = connectors[name]
-        assert c["managed"] is True and c["managed_paused"] is True
         assert c["fields"], f"{name} lost its manual fields"
-    assert connectors["slack"]["managed_paused"] is False  # only Google is paused
-
-    refused = client.post("/v1/connectors/gmail/connect-managed", json={}).json()
-    assert refused["ok"] is False and "coming soon" in refused["error"]
 
 
 def test_set_provider_persists_extra_fields(tmp_path):

@@ -26,8 +26,6 @@ def client(tmp_path, monkeypatch):
 
 
 def _install_form(team_id: str) -> dict:
-    state = f"slack-{team_id}"
-    cloud._pending_managed_states[state] = cloud._now()
     return {
         "connector": "slack",
         "team_id": team_id,
@@ -37,8 +35,16 @@ def _install_form(team_id: str) -> dict:
         "account": f"Workspace {team_id}",
         "team_domain": f"dom-{team_id.lower()}",
         "connection_id": f"conn_{team_id}",
-        "app_state": state,
     }
+
+
+def _install(client, team_id: str) -> dict:
+    """Seed a managed Slack workspace directly via the setup helper. The broker
+    /oauth/callback route that used to drive this was removed with the managed
+    one-click flow; the per-workspace disconnect logic under test is unchanged."""
+    from mangaba.connectors.setup import managed_connect_slack_install
+
+    return managed_connect_slack_install(client.manager.secrets, _install_form(team_id))
 
 
 def _no_cloud(monkeypatch):
@@ -52,19 +58,11 @@ def _no_cloud(monkeypatch):
     return calls
 
 
-def test_managed_callback_installs_and_hot_reloads(client, monkeypatch):
-    refreshes = []
-
-    async def _refresh():
-        refreshes.append(True)
-        return []
-
-    monkeypatch.setattr(client.manager, "refresh_gateway", _refresh)
-    resp = client.post("/oauth/callback", data=_install_form("T1"))
-    assert resp.status_code == 200 and "Slack connected" in resp.text
+def test_managed_install_seeds_workspace_and_relay_mode(client):
+    _install(client, "T1")
     assert client.manager.secrets.get("slack:team:T1")["bot_token"] == "xoxb-T1"
-    # The broker-resolved workspace domain persists (names collide; domains don't)
-    # and rides the workspaces list for the GUI's group headers.
+    # The workspace domain persists (names collide; domains don't) and rides the
+    # workspaces list for the GUI's group headers.
     assert client.manager.secrets.get("slack:team:T1")["domain"] == "dom-t1"
     slack = [
         c
@@ -74,10 +72,9 @@ def test_managed_callback_installs_and_hot_reloads(client, monkeypatch):
     assert [w["domain"] for w in slack["workspaces"]] == ["dom-t1"]
     assert slack["workspaces"][0]["approval_owner_ids"] == ["U_T1"]
     assert client.manager.secrets.get("slack:default")["mode"] == "relay"
-    assert refreshes  # new workspace's token loads without an app restart
 
-    # a second workspace instals alongside, not instead
-    client.post("/oauth/callback", data=_install_form("T2"))
+    # a second workspace installs alongside, not instead
+    _install(client, "T2")
     assert client.manager.secrets.get("slack:team:T1") is not None
     assert client.manager.secrets.get("slack:team:T2") is not None
 
@@ -85,7 +82,7 @@ def test_managed_callback_installs_and_hot_reloads(client, monkeypatch):
 def test_disconnect_one_workspace_keeps_the_other(client, monkeypatch):
     cloud_calls = _no_cloud(monkeypatch)
     for t in ("T1", "T2"):
-        client.post("/oauth/callback", data=_install_form(t))
+        _install(client, t)
 
     body = client.post("/v1/connectors/slack/workspaces/T1/disconnect").json()
     assert body["ok"] is True and body["remaining_workspaces"] == 1
@@ -100,7 +97,7 @@ def test_disconnect_one_workspace_keeps_the_other(client, monkeypatch):
 
 def test_disconnect_last_workspace_flips_connector_off(client, monkeypatch):
     _no_cloud(monkeypatch)
-    client.post("/oauth/callback", data=_install_form("T1"))
+    _install(client, "T1")
 
     body = client.post("/v1/connectors/slack/workspaces/T1/disconnect").json()
     assert body["ok"] is True and body["remaining_workspaces"] == 0
@@ -117,7 +114,7 @@ def test_last_disconnect_never_resurrects_manual_creds(client, monkeypatch):
         "slack:default",
         {"type": "token", "bot_token": "xoxb-manual", "app_token": "xapp-manual"},
     )
-    client.post("/oauth/callback", data=_install_form("T1"))
+    _install(client, "T1")
     client.post("/v1/connectors/slack/workspaces/T1/disconnect")
 
     default = client.manager.secrets.get("slack:default")

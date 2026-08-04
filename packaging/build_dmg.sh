@@ -69,6 +69,11 @@ if [ -n "${APPLE_CERTIFICATE:-}" ] && [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
   security list-keychains -d user -s "$KC" login.keychain-db
 fi
 
+# Garante o extra [messaging] no venv de build: sem python-telegram-bot/slack-bolt o spec
+# nao tem o que coletar e o conector do Telegram sai empacotado mas inerte (connect() cai
+# no ImportError e nunca faz polling). Idempotente — no-op se ja estiver instalado.
+"$PLATFORM/.venv/bin/python" -m pip install -q "python-telegram-bot>=21" "slack-bolt>=1.18" "aiohttp>=3.9"
+
 echo "==> [1/5] PyInstaller: bundling mangaba-server ($TRIPLE)"
 "$PLATFORM/.venv/bin/pyinstaller" --noconfirm --clean \
   --distpath "$HERE/dist" --workpath "$HERE/build" "$HERE/mangaba-server.spec"
