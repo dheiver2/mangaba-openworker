@@ -48,6 +48,7 @@ import { FolderGate } from "./components/FolderGate";
 import { Onboarding } from "./components/Onboarding";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { ScheduledView } from "./components/ScheduledView";
+import { FluxosView } from "./components/FluxosView";
 import { RightRail } from "./components/RightRail";
 import { IntegrationsView } from "./components/IntegrationsView";
 import { SettingsView } from "./components/SettingsView";
@@ -214,7 +215,7 @@ export function App() {
   const [modelReady, setModelReady] = useState(true);
   const [secretGuardOn, setSecretGuardOn] = useState(true);
   const [surface, setSurface] = useState<
-    "session" | "scheduled" | "integrations" | "audit" | "inbox" | "persona" | "settings"
+    "session" | "scheduled" | "integrations" | "audit" | "inbox" | "persona" | "settings" | "fluxos"
   >("session");
   // A remembered Scheduled-detail target must not outlive the surface (see the
   // scheduledOpenId comment above): nav re-entry lands on the list, never a
@@ -1329,6 +1330,7 @@ export function App() {
         }}
         onManagePersonas={() => openSettings("personas")}
         onOpenScheduled={() => setSurface("scheduled")}
+        onOpenFluxos={() => setSurface("fluxos")}
         onOpenAutomation={(id) => {
           setScheduledOpenId(id);
           setSurface("scheduled");
@@ -1337,6 +1339,7 @@ export function App() {
         onOpenAudit={() => setSurface("audit")}
         onOpenInbox={() => setSurface("inbox")}
         scheduledActive={surface === "scheduled"}
+        fluxosActive={surface === "fluxos"}
         integrationsActive={surface === "integrations"}
         auditActive={surface === "audit"}
         inboxActive={surface === "inbox"}
@@ -1344,7 +1347,25 @@ export function App() {
         onCollapse={toggleNav}
         onPeekLeave={() => setNavPeek(false)}
       />
-      {surface === "scheduled" ? (
+      {surface === "fluxos" ? (
+        <FluxosView
+          onIniciarFluxo={(prompt) => {
+            // Fluxo pronto = conversa nova com o prompt já preenchido. Diferente do Skills
+            // (que roda dentro de Settings, com o Composer já montado), aqui saímos da
+            // surface "fluxos" — o Composer só monta DEPOIS do setSurface("session") do
+            // startNewSession. Um prefill disparado no mesmo tick chega antes do Composer
+            // existir e se perde. O rAF garante que ele já montou quando o prefill sai.
+            startNewSession();
+            requestAnimationFrame(() => prefillComposer(prompt));
+          }}
+          onAbrirConfig={(destino) => {
+            if (destino === "modelos") openSettings("models");
+            else if (destino === "skills") openSettings("skills");
+            else if (destino === "automacoes") setSurface("scheduled");
+            else setSurface("integrations"); // mcp e conectores vivem em Integrações
+          }}
+        />
+      ) : surface === "scheduled" ? (
         <ScheduledView
           onOpenRun={openRunSession}
           onRunNow={runTaskNow}

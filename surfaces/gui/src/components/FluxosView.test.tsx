@@ -1,0 +1,98 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { Problema } from "../api";
+
+// A tela é a porta de entrada por PROBLEMA. Um fluxo pronto abre a conversa direto; um
+// incompleto leva a pessoa para o ajuste que falta — nunca a deixa num beco sem saída.
+const PROBLEMAS: Problema[] = [
+  {
+    id: "cobrar-atrasados",
+    titulo: "Cobrar quem está atrasado",
+    dor: "Toda semana alguém puxa a lista de vencidos e escreve e-mail por e-mail.",
+    area: "Financeiro",
+    tem_pronto: true,
+    fluxos: [
+      {
+        id: "cobranca-planilha",
+        titulo: "Da planilha, quando eu pedir",
+        resumo: "Você joga a planilha na conversa e ele faz o resto.",
+        entrega: "Um arquivo com as mensagens prontas",
+        agendado: null,
+        modelo: "qualquer",
+        aprovacao: true,
+        prompt: "Leia a planilha de contas a receber e escreva as cobranças.",
+        pronto: true,
+        faltam: 0,
+        problema_id: "cobrar-atrasados",
+        problema: "Cobrar quem está atrasado",
+        pecas: [
+          { rotulo: "cobranca-inadimplencia", tipo: "skill", pronta: true, acao: "" },
+          { rotulo: "Modelo", tipo: "modelo", pronta: true, acao: "" },
+        ],
+      },
+      {
+        id: "cobranca-crm",
+        titulo: "Do CRM, toda segunda",
+        resumo: "Lê os vencidos no CRM e escreve uma cobrança para cada.",
+        entrega: "E-mails em rascunho, agrupados por faixa de atraso",
+        agendado: "Segunda-feira, 9h",
+        modelo: "qualquer",
+        aprovacao: true,
+        prompt: "Liste no CRM os títulos vencidos e escreva as cobranças.",
+        pronto: false,
+        faltam: 1,
+        problema_id: "cobrar-atrasados",
+        problema: "Cobrar quem está atrasado",
+        pecas: [
+          { rotulo: "cobranca-inadimplencia", tipo: "skill", pronta: true, acao: "" },
+          { rotulo: "HubSpot", tipo: "mcp", pronta: false, acao: "conectar_mcp" },
+          { rotulo: "Modelo", tipo: "modelo", pronta: true, acao: "" },
+        ],
+      },
+    ],
+  },
+];
+
+vi.mock("../api", async () => {
+  const real = await vi.importActual<typeof import("../api")>("../api");
+  return { ...real, getFluxos: vi.fn(async () => PROBLEMAS) };
+});
+
+import { FluxosView } from "./FluxosView";
+
+describe("tela de fluxos por problema", () => {
+  afterEach(cleanup);
+  beforeEach(() => vi.clearAllMocks());
+
+  it("mostra o problema com sua dor em linguagem de negócio", async () => {
+    render(<FluxosView onIniciarFluxo={() => {}} onAbrirConfig={() => {}} />);
+    await waitFor(() => expect(screen.getByText("Cobrar quem está atrasado")).toBeTruthy());
+    expect(screen.getByText(/puxa a lista de vencidos/)).toBeTruthy();
+  });
+
+  it("um fluxo pronto abre a conversa com o prompt preenchido", async () => {
+    const iniciar = vi.fn();
+    render(<FluxosView onIniciarFluxo={iniciar} onAbrirConfig={() => {}} />);
+    await waitFor(() => expect(screen.getByText("Da planilha, quando eu pedir")).toBeTruthy());
+    fireEvent.click(screen.getByText("Usar agora"));
+    expect(iniciar).toHaveBeenCalledWith(
+      "Leia a planilha de contas a receber e escreva as cobranças.",
+    );
+  });
+
+  it("um fluxo incompleto leva para o ajuste que falta, não para a conversa", async () => {
+    const iniciar = vi.fn();
+    const config = vi.fn();
+    render(<FluxosView onIniciarFluxo={iniciar} onAbrirConfig={config} />);
+    await waitFor(() => expect(screen.getByText("Do CRM, toda segunda")).toBeTruthy());
+    // o botão nomeia a ação pendente, não um genérico "configurar"
+    fireEvent.click(screen.getByText(/Falta entrar na conta/));
+    expect(iniciar).not.toHaveBeenCalled();
+    expect(config).toHaveBeenCalledWith("mcp"); // HubSpot pendente → tela de MCP
+  });
+
+  it("o resumo diz quantos problemas já dão para usar", async () => {
+    render(<FluxosView onIniciarFluxo={() => {}} onAbrirConfig={() => {}} />);
+    await waitFor(() => expect(screen.getByText(/1 de 1/)).toBeTruthy());
+  });
+});

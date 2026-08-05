@@ -298,6 +298,43 @@ export type McpCatalogItem = {
 };
 
 /** Galeria de servidores MCP prontos — a aba nascia vazia e só aceitava JSON à mão. */
+// -- fluxos agênticos por problema (a porta de entrada por DOR, não por mecanismo) ---
+export type FluxoPeca = {
+  rotulo: string;
+  tipo: "skill" | "mcp" | "conector" | "automação" | "modelo";
+  pronta: boolean;
+  acao: string;
+};
+export type Fluxo = {
+  id: string;
+  titulo: string;
+  resumo: string;
+  entrega: string;
+  agendado: string | null;
+  modelo: "qualquer" | "local" | "forte";
+  aprovacao: boolean;
+  prompt: string;
+  pecas: FluxoPeca[];
+  pronto: boolean;
+  faltam: number;
+  problema_id: string;
+  problema: string;
+};
+export type Problema = {
+  id: string;
+  titulo: string;
+  dor: string;
+  area: string;
+  fluxos: Fluxo[];
+  tem_pronto: boolean;
+};
+
+export async function getFluxos(): Promise<Problema[]> {
+  const res = await fetch(`${httpBase()}/v1/fluxos`);
+  const body = await res.json().catch(() => ({}));
+  return body.problemas || [];
+}
+
 export async function getMcpCatalog(): Promise<McpCatalogItem[]> {
   const res = await fetch(`${httpBase()}/v1/mcp/catalogo`);
   const body = await res.json().catch(() => ({}));

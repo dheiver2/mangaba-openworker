@@ -128,12 +128,14 @@ interface Props {
   onOpenPersona: (id: string) => void;
   onManagePersonas: () => void;
   onOpenScheduled: () => void;
+  onOpenFluxos: () => void;
   // Scheduled-band row click: open the Automations surface ON that automation (UX-023).
   onOpenAutomation: (id: string) => void;
   onOpenIntegrations: () => void;
   onOpenAudit: () => void;
   onOpenInbox: () => void;
   scheduledActive: boolean;
+  fluxosActive: boolean;
   integrationsActive: boolean;
   auditActive: boolean;
   inboxActive: boolean;
@@ -1021,6 +1023,23 @@ export function Sidebar(props: Props) {
         >
           <Icon name="search" size={15} className="shrink-0" /> Buscar
           <span className="kbd-hint">⌘K</span>
+        </button>
+      </div>
+
+      {/* Fluxos por problema: a porta de entrada por DOR do dia a dia, não por mecanismo.
+          Primeira linha da navegação de propósito — é por onde quem não sabe o que o app
+          faz descobre o que ele resolve. */}
+      <div className="px-2.5 mt-1">
+        <button
+          className={
+            "w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-[13px] text-left hover:bg-paper hover:text-ink " +
+            (props.fluxosActive ? "text-ink bg-paper" : "text-muted")
+          }
+          data-testid="nav-fluxos"
+          onClick={props.onOpenFluxos}
+        >
+          <Icon name="sparkle" size={15} className="shrink-0" />
+          <span className="flex-1">Resolver um problema</span>
         </button>
       </div>
 
