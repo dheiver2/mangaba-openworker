@@ -65,15 +65,22 @@ def test_quota_errors_are_translated():
     assert msg and "out of quota" in msg
 
 
-def test_unrelated_errors_pass_through_raw():
-    # a plain rate-limit (429 without a quota code) must NOT be dressed up
-    assert (
-        friendly_model_error(
-            "gpt-5.6-sol",
-            RuntimeError("Error code: 429 - rate_limit_exceeded, retry after 2s"),
-        )
-        is None
+def test_rate_limit_nao_e_disfarcado_de_problema_de_acesso():
+    """A intenção original deste caso era: 429 NÃO pode virar 'sua conta não tem acesso'.
+    Isso continua valendo. O que mudou (2026-08-05) é que agora ele ganha mensagem
+    PRÓPRIA, de ritmo: o gateway da organização passou a limitar por chave e o JSON cru
+    não dizia nada a quem só queria trabalhar."""
+    msg = friendly_model_error(
+        "gpt-5.6-sol",
+        RuntimeError("Error code: 429 - rate_limit_exceeded, retry after 2s"),
     )
+    assert msg is not None, "429 de ritmo tem mensagem própria desde 2026-08-05"
+    # ...mas nunca a de acesso/cota, que mandaria a pessoa para o lugar errado
+    assert "acesso" not in msg.lower()
+    assert "quota" not in msg.lower() and "crédito" not in msg.lower()
+
+
+def test_unrelated_errors_pass_through_raw():
     # a 404 from a wrong base_url isn't an access problem
     assert (
         friendly_model_error(
