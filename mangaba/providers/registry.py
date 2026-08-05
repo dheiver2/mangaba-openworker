@@ -254,21 +254,6 @@ DESCRIPTORS: list[ProviderDescriptor] = [
     # OpenAI-compatible vendors, listed as first-class providers so users don't need to know the
     # "point the OpenAI slot at a different endpoint" trick (owner call, 2026-07-04). Each keeps
     # its own key profile; the endpoint is prefilled and editable (regional variants in `help`).
-    # Gateway Mangaba da organização: a chave NÃO é criada num console de vendor, é
-    # distribuída pelo administrador — por isso o texto de ajuda aponta para ele, e não
-    # para uma URL de cadastro. `env_key` existe para implantação em lote (variável de
-    # ambiente na máquina) sem cada pessoa colar a chave à mão.
-    _compat(
-        "mangaba_gateway",
-        "Mangaba (organização)",
-        base_url="https://mangaba-iprojectti.ngrok.app/v1",
-        recommended_model="mangaba-chat",
-        env_key="MANGABA_GATEWAY_API_KEY",
-        endpoint_help=(
-            "Endereço do gateway da sua organização. Peça a chave ao administrador — "
-            "ela não é criada num site, é distribuída internamente."
-        ),
-    ),
     _compat(
         "zai",
         "Z AI (GLM)",
@@ -276,6 +261,18 @@ DESCRIPTORS: list[ProviderDescriptor] = [
         recommended_model="glm-5.2",
         env_key="ZAI_API_KEY",
         endpoint_help="Prefilled with Z AI's international endpoint. China mainland: https://open.bigmodel.cn/api/paas/v4",
+    ),
+    _compat(
+        "mangaba-nordeste",
+        "Mangaba Nordeste (Mangaba AI)",
+        base_url="https://mangaba-iprojectti.ngrok.app/v1",
+        recommended_model="Mangaba-Nordeste-30B",
+        env_key="MANGABA_NORDESTE_API_KEY",
+        endpoint_help=(
+            "Provedor agêntico da Mangaba AI servido no Brasil (Nossa Telecom/AL). "
+            "Verificado agêntico pleno em 2026-08-05 (tools, streaming, parallel). "
+            "Gere chaves-cliente no Swagger (/docs → /admin/keys)."
+        ),
     ),
     _compat(
         "deepseek",
@@ -461,7 +458,7 @@ def verify_provider_key(
         }
 
     if resp.status_code < 300:
-        if name == "mangaba_gateway":
+        if name == "mangaba-nordeste":
             # Gateway próprio da organização: chave válida NÃO garante agente. O gateway
             # anterior deste projeto aceitava o parâmetro `tools` e nunca devolvia
             # `tool_calls` — e o modelo, em vez de falhar, INVENTAVA o resultado da

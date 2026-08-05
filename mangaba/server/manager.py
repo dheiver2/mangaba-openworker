@@ -1640,7 +1640,7 @@ class SessionManager:
             from ..providers import local_engine
 
             return local_engine.downloaded_tags()
-        if name == "mangaba_gateway":
+        if name == "mangaba-nordeste":
             return self._modelos_do_gateway(name)
         from ..providers.matrix import models_for_provider
 

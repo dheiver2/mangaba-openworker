@@ -82,6 +82,12 @@ MATRIX: dict[str, ModelEntry] = {
         "Gemini 2.5 Flash · Google", _AGENTIC_VISION, 1_048_576
     ),
     # -- direct OpenAI-compatible vendors ----------------------------------------
+    # Mangaba-Nordeste-30B (Mangaba AI, servido no Brasil — Nossa Telecom/AL, CPU):
+    # verificado agêntico pleno pelo verificar_provedor.py em 2026-08-05 (tools,
+    # role:tool, SSE, tool_calls no streaming e paralelo). Sem visão (GGUF de texto).
+    "mangaba-nordeste:Mangaba-Nordeste-30B": ModelEntry(
+        "Mangaba-Nordeste-30B · Mangaba AI", _AGENTIC, 32_768
+    ),
     # Muse Spark (Meta Model API, public preview 2026-07-09): multimodal + tools via
     # their OpenAI-compat surface. Vision yes; PDFs unverified over compat — falls
     # back via pdf_support.py like the other compat vendors.

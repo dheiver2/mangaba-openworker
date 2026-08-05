@@ -120,7 +120,7 @@ def test_gateway_da_organizacao_avisa_quando_nao_executa_ferramenta(monkeypatch)
     monkeypatch.setattr(httpx, "post", lambda *a, **k: RespSemToolCalls())
 
     res = verify_provider_key(
-        "mangaba_gateway", api_key="chave-do-admin", base_url="https://gw.exemplo/v1"
+        "mangaba-nordeste", api_key="chave-do-admin", base_url="https://gw.exemplo/v1"
     )
     assert res["ok"] is True, "a chave é válida — não é erro"
     assert "aviso" in res, "mas o usuário precisa saber que não é agente"
@@ -162,7 +162,7 @@ def test_gateway_da_organizacao_sem_aviso_quando_executa_ferramenta(monkeypatch)
     monkeypatch.setattr(httpx, "post", lambda *a, **k: RespComToolCalls())
 
     res = verify_provider_key(
-        "mangaba_gateway", api_key="chave-do-admin", base_url="https://gw.exemplo/v1"
+        "mangaba-nordeste", api_key="chave-do-admin", base_url="https://gw.exemplo/v1"
     )
     assert res["ok"] is True and "aviso" not in res
 
@@ -170,9 +170,9 @@ def test_gateway_da_organizacao_sem_aviso_quando_executa_ferramenta(monkeypatch)
 def test_descriptor_do_gateway_pede_chave_e_aponta_para_o_admin():
     from mangaba.providers.registry import get_descriptor
 
-    d = get_descriptor("mangaba_gateway")
+    d = get_descriptor("mangaba-nordeste")
     assert d is not None and d.needs_key is True
     campos = {f.key: f for f in d.fields}
     assert campos["api_key"].secret is True
     # a chave vem do administrador, não de um cadastro num site
-    assert "administrador" in campos["base_url"].help
+    assert "/admin/keys" in campos["base_url"].help  # a chave sai do Swagger do gateway
