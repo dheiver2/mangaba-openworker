@@ -1736,6 +1736,46 @@ class SessionManager:
                 return prefix
         return "openai"
 
+    # -- fluxos agênticos prontos (por problema, não por mecanismo) -----------------
+    def fluxos_por_problema(self) -> list[dict[str, Any]]:
+        """Os problemas do dia a dia com seus fluxos, já com o que falta em cada um.
+
+        Cruza o catálogo com o estado REAL da máquina: skill instalada e ativa, servidor MCP
+        de fato conectado (não apenas cadastrado), conector autenticado e modelo utilizável.
+        Peça cadastrada não é peça funcionando — declarar pronto o que não foi verificado
+        faria o fluxo prometer trabalho que morre no meio."""
+        from ..fluxos import listar_problemas
+        from ..fluxos.estado import resolver_problemas
+        from ..mcp import catalog as mcp_catalog
+
+        linhas = self.skill_store.rows()
+        instaladas = {r["name"] for r in linhas}
+        desativadas = self.skill_store.disabled_names()
+
+        mcps = self.list_mcp()
+        conectados = {m["name"] for m in mcps if m.get("status") == "connected"}
+        conhecidos = {m["name"]: m["name"] for m in mcps}
+        rotulos = {i["name"]: i["titulo"] for i in mcp_catalog.listar()}
+
+        conectores = self.list_connectors()
+        con_ok = {c["name"] for c in conectores if c.get("connected")}
+        con_rotulo = {c["name"]: c.get("title") or c["name"] for c in conectores}
+
+        from ..providers import local_engine
+
+        return resolver_problemas(
+            listar_problemas(),
+            skills_instaladas=instaladas,
+            skills_desativadas=desativadas,
+            mcps_conectados=conectados,
+            mcps_conhecidos=conhecidos,
+            conectores_conectados=con_ok,
+            conectores_conhecidos=con_rotulo,
+            modelo_pronto=self.algum_provedor_pronto(),
+            modelo_local_pronto=bool(local_engine.downloaded_tags()),
+            rotulo_mcp=lambda n: rotulos.get(n, ""),
+        )
+
     def algum_provedor_pronto(self) -> bool:
         """Existe ALGUM caminho para conversar hoje — chave de terceiro ou modelo local."""
         from ..providers import local_engine

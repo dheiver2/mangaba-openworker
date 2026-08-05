@@ -732,6 +732,25 @@ def create_app(manager: SessionManager) -> FastAPI:
     def mcp_list() -> dict[str, Any]:
         return {"servers": manager.list_mcp()}
 
+    @app.get("/v1/fluxos")
+    def fluxos_listar() -> dict[str, Any]:
+        """Problemas do dia a dia com os fluxos que os resolvem, já com o que falta em cada.
+        A porta de entrada por PROBLEMA — os cinco mecanismos ficam por baixo."""
+        return {"problemas": manager.fluxos_por_problema()}
+
+    @app.get("/v1/fluxos/{fluxo_id}")
+    def fluxo_detalhe(fluxo_id: str) -> dict[str, Any]:
+        from ..fluxos import fluxo_por_id
+
+        base = fluxo_por_id(fluxo_id)
+        if base is None:
+            return {"ok": False, "error": f"fluxo desconhecido: {fluxo_id}"}
+        for p in manager.fluxos_por_problema():
+            for f in p["fluxos"]:
+                if f["id"] == fluxo_id:
+                    return {"ok": True, "fluxo": f}
+        return {"ok": False, "error": f"fluxo desconhecido: {fluxo_id}"}
+
     @app.get("/v1/mcp/catalogo")
     def mcp_catalogo() -> dict[str, Any]:
         """Galeria de servidores prontos. A aba nascia vazia e só aceitava JSON digitado
