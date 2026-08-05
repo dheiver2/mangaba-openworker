@@ -108,9 +108,24 @@ def test_estouro_de_contexto_vira_mensagem_acionavel():
 
 
 def test_janela_do_gateway_e_a_medida_nao_a_anunciada():
-    """O /v1/models do gateway declara 32768, mas o llama-server atrás dele roda com
-    8192 (provado com um prompt de 10k tokens → HTTP 400). Declarar 32k fazia a
-    compactação nunca disparar e o turno morrer no erro cru."""
+    """A janela declarada tem de ser SEMPRE a medida. Este número já valeu 8.192 —
+    o gateway anunciava 32768 mas servia 8192, porque no llama-server o `-c` é dividido
+    entre os slots de `--parallel`. Depois de o administrador corrigir (-c 131072 ÷ 4
+    slots), a medição confirmou 32.768: prompt de 10k passa, que antes era recusado."""
     from mangaba.providers.matrix import model_context_windows
 
-    assert model_context_windows()["mangaba-nordeste:Mangaba-Nordeste-30B"] == 8_192
+    assert model_context_windows()["mangaba-nordeste:Mangaba-Nordeste-30B"] == 32_768
+
+
+def test_verificador_mede_a_janela_em_vez_de_confiar_no_anuncio():
+    """A lição que custou uma release: eu declarei 32.768 confiando no /v1/models e o
+    valor real era 8.192. O verificador de provedor passa a sondar a janela com prompts
+    crescentes e avisa quando a medida diverge do anúncio."""
+    from pathlib import Path
+
+    script = (
+        Path(__file__).resolve().parents[1] / "packaging" / "verificar_provedor.py"
+    ).read_text(encoding="utf-8")
+    assert "Janela de contexto (medida" in script
+    assert "DIVERGE do anúncio" in script
+    assert "--parallel" in script  # a pegadinha que causou o caso real

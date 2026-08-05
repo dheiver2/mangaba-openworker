@@ -231,6 +231,56 @@ def main() -> int:
     except Exception as exc:
         r.registra("stream_tools", "Tool calling DENTRO do streaming", False, str(exc)[:90])
 
+    # -- janela de contexto REAL --------------------------------------------------------
+    # Anúncio não é medida. Um gateway já declarou `context_window: 32768` servindo 8192
+    # (o `-c` do llama-server é dividido entre os slots de `--parallel`), e confiar no
+    # anúncio fez a compactação nunca disparar: o turno morria num 400 cru. Aqui a janela
+    # é sondada de verdade, com prompts crescentes até o endpoint recusar.
+    print("\nJanela de contexto (medida, não a anunciada)")
+    anunciada = None
+    try:
+        dados = httpx.get(
+            base + "/models",
+            headers={"Authorization": f"Bearer {key}"} if key else {},
+            timeout=30,
+        ).json()
+        for m in dados.get("data") or []:
+            if m.get("id") == modelo:
+                anunciada = m.get("context_window") or m.get("max_context_length")
+    except Exception:
+        pass
+
+    medida_min = None
+    for alvo in (4_000, 8_000, 16_000, 32_000):
+        try:
+            resp = _post(base, key, {
+                "model": modelo,
+                "messages": [{"role": "user", "content": "palavra " * int(alvo * 0.95)}],
+                "max_tokens": 5,
+            })
+            if resp.status_code == 400 and "context" in resp.text.lower():
+                break
+            if resp.status_code < 300:
+                medida_min = alvo
+            else:
+                break
+        except Exception:
+            break  # timeout num prompt grande é latência, não limite — paramos aqui
+
+    if medida_min:
+        detalhe = f"aceitou ~{medida_min:,} tokens"
+        if anunciada:
+            detalhe += f" · anunciada: {anunciada:,}"
+            if medida_min < int(anunciada) * 0.5:
+                detalhe += "  ← DIVERGE do anúncio"
+        r.registra("janela", "Janela de contexto", True, detalhe, essencial=False)
+        if anunciada and medida_min < int(anunciada) * 0.5:
+            print(f"           {AMARELO}Declare a MEDIDA em providers/matrix.py, não a anunciada.{FIM}")
+            print(f"           {CINZA}Dica: no llama-server o `-c` é dividido entre os slots de --parallel.{FIM}")
+    else:
+        r.registra("janela", "Janela de contexto", False,
+                   "não consegui medir (timeout ou recusa cedo)", essencial=False)
+
     # -- opcionais ---------------------------------------------------------------------
     print("\nOpcionais (o app funciona sem, com menos recursos)")
 
