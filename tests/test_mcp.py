@@ -302,3 +302,23 @@ def test_catalogo_marca_runtime_ausente(monkeypatch):
     # ...mas os HTTP seguem instaláveis mesmo sem Node/uv na máquina
     assert itens["context7"]["runtime_pronto"] is True
     assert itens["notion"]["runtime_pronto"] is True
+
+
+def test_catalogo_de_crm_so_tem_endpoint_que_respondeu():
+    """Cada URL de CRM foi testada antes de entrar: um POST de `initialize` que volta 401
+    prova que o servidor existe e só falta login. O do Salesforce ficou de FORA — a
+    imprensa o dá como oficial, mas mcp.salesforce.com não resolveu (05/08/2026).
+    Catalogar endereço que não responde é prometer o que não existe."""
+    from mangaba.mcp import catalog
+
+    crm = [i for i in catalog.listar() if i["categoria"] == "CRM e vendas"]
+    assert len(crm) >= 8
+    nomes = {i["titulo"] for i in crm}
+    assert {"HubSpot", "Pipedrive", "Attio", "Close", "Intercom"} <= nomes
+    assert "Salesforce" not in nomes, "endpoint não verificado não entra no catálogo"
+
+    # CRM mexe em dado de cliente: login e aprovação são obrigatórios
+    for i in crm:
+        assert i["oauth"] is True, f"{i['titulo']} tem de exigir login"
+        assert i["requires_approval"] is True, f"{i['titulo']} tem de pedir aprovação"
+        assert i["transport"] == "http"

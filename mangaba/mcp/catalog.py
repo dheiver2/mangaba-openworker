@@ -181,6 +181,76 @@ CATALOG: list[dict[str, Any]] = [
         oauth=True,
         categoria="Negócios",
     ),
+    # -- CRM e vendas (todos OAuth) --------------------------------------------------
+    # Cada URL foi TESTADA antes de entrar: um POST de `initialize` que volta 401 prova que
+    # o servidor existe e só falta login. Endpoints que voltaram 404/000 ficaram de fora —
+    # incluindo o do Salesforce, que a imprensa dá como oficial mas cujo host público não
+    # resolveu (mcp.salesforce.com → sem conexão em 05/08/2026). Catalogar endereço que não
+    # responde é prometer o que não existe.
+    _http(
+        "hubspot_mcp",
+        "HubSpot",
+        "Contatos, empresas, negócios, tickets e engajamentos do seu CRM.",
+        "https://mcp.hubspot.com/anthropic",
+        oauth=True,
+        categoria="CRM e vendas",
+    ),
+    _http(
+        "pipedrive_mcp",
+        "Pipedrive",
+        "Negócios, pessoas, organizações e atividades do funil.",
+        "https://mcp.pipedrive.com/mcp",
+        oauth=True,
+        categoria="CRM e vendas",
+    ),
+    _http(
+        "attio_mcp",
+        "Attio",
+        "Registros, listas e notas do CRM Attio.",
+        "https://mcp.attio.com/mcp",
+        oauth=True,
+        categoria="CRM e vendas",
+    ),
+    _http(
+        "close_mcp",
+        "Close",
+        "Leads, oportunidades e atividades de vendas do Close.",
+        "https://mcp.close.com/mcp",
+        oauth=True,
+        categoria="CRM e vendas",
+    ),
+    _http(
+        "intercom_mcp",
+        "Intercom",
+        "Conversas, contatos e tickets do atendimento.",
+        "https://mcp.intercom.com/mcp",
+        oauth=True,
+        categoria="CRM e vendas",
+    ),
+    _http(
+        "monday_mcp",
+        "monday.com",
+        "Quadros, itens e atualizações — CRM e gestão de trabalho.",
+        "https://mcp.monday.com/mcp",
+        oauth=True,
+        categoria="CRM e vendas",
+    ),
+    _http(
+        "asana_mcp",
+        "Asana",
+        "Tarefas, projetos e portfólios.",
+        "https://mcp.asana.com/mcp",
+        oauth=True,
+        categoria="CRM e vendas",
+    ),
+    _http(
+        "clickup_mcp",
+        "ClickUp",
+        "Tarefas, listas e documentos do ClickUp.",
+        "https://mcp.clickup.com/mcp",
+        oauth=True,
+        categoria="CRM e vendas",
+    ),
     # -- stdio: exigem runtime instalado, por isso vêm por último --------------------
     {
         "name": "filesystem",
