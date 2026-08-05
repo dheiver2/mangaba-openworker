@@ -129,3 +129,28 @@ def test_verificador_mede_a_janela_em_vez_de_confiar_no_anuncio():
     assert "Janela de contexto (medida" in script
     assert "DIVERGE do anúncio" in script
     assert "--parallel" in script  # a pegadinha que causou o caso real
+
+
+def test_429_de_ritmo_e_diferente_de_429_de_credito():
+    """O gateway da organização passou a limitar por chave (30 req/min). O laço agêntico
+    é rajado — com cache quente um hop leva ~1,7s, o que dá ~35 req/min de UM agente só,
+    acima do teto. Sem tratar, a pessoa via o JSON cru; e 'sem crédito' é outro problema,
+    com outra saída."""
+    from mangaba.providers.errors import friendly_model_error
+
+    ritmo = friendly_model_error(
+        "mangaba-nordeste:X",
+        Exception(
+            "Error code: 429 - {'error': {'message': 'Rate limit exceeded: 30 requests "
+            "per minute', 'type': 'rate_limit_exceeded'}}"
+        ),
+    )
+    assert ritmo and "rajada" in ritmo
+    assert "rpm" in ritmo  # o que pedir ao administrador
+
+    credito = friendly_model_error(
+        "mangaba-nordeste:X",
+        Exception("Error code: 429 - {'error': {'code': 'insufficient_quota'}}"),
+    )
+    assert credito and "quota" in credito.lower()
+    assert credito != ritmo, "ritmo e crédito pedem ações diferentes"

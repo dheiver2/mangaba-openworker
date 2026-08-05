@@ -58,6 +58,18 @@ def friendly_model_error(model: str, exc: Exception) -> Optional[str]:
         "gradually or require a plan upgrade. Pick a different model, or check "
         "the provider's console for availability."
     )
+    # 429 de RITMO (não de crédito). O gateway da organização passou a limitar por chave
+    # (30 req/min por padrão) e o laço agêntico é rajado: com cache quente um hop leva
+    # ~1,7s, o que dá ~35 req/min de UM agente só — acima do teto. O SDK já tenta 2x com
+    # backoff; quando esgota, isto é o que a pessoa lê, em vez do JSON cru.
+    if "rate_limit" in text or "rate limit" in text or "too many requests" in text:
+        return (
+            "O provedor recusou por excesso de requisições no minuto — o agente faz uma "
+            "chamada por passo e trabalha em rajada. Aguarde alguns segundos e mande de "
+            "novo. Se este for o gateway da sua organização, peça ao administrador para "
+            "aumentar o limite por minuto (`rpm`) da sua chave: uso agêntico pede pelo "
+            "menos 60/min."
+        )
     if any(marker in text for marker in _NO_QUOTA):
         return (
             f"Your account is out of quota for {model} — add credits or raise the limit "
