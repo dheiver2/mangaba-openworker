@@ -202,6 +202,34 @@ Estado atual: **971 testes Python** e **96 de unidade** passando. Na suíte e2e,
 cerca de 30 ainda esperam textos em inglês — dívida da tradução das assertivas, não regressão
 de comportamento.
 
+### Adicionar um provedor de modelo
+
+O motor fala **OpenAI-compatível**. Antes de cadastrar um endpoint novo, verifique-o de
+verdade — "é compatível com a OpenAI" não garante nada na prática:
+
+```shell
+python3 packaging/verificar_provedor.py \
+    --base-url https://api.exemplo.com/v1 --api-key sk-… --model nome-do-modelo
+```
+
+| Requisito | Por que é essencial |
+|---|---|
+| `GET /v1/models` | O botão "Testar" valida a chave por aqui antes de salvar |
+| `POST /v1/chat/completions` | O básico |
+| **Devolver `tool_calls` estruturado** | É o que separa agente de chat |
+| Aceitar `role: "tool"` + `tool_call_id` de volta | O laço agêntico é multi-turno |
+| Streaming SSE | O app sempre streama |
+| **`tool_calls` DENTRO do streaming** | Funcionar só sem stream quebra em produção |
+
+Opcionais: várias ferramentas numa resposta (`parallel_tool_calls`) e visão (`image_url`).
+
+> **Aceitar `tools` não é o mesmo que suportar.** Vários gateways aceitam o parâmetro e nunca
+> devolvem `tool_calls` — e o modelo, em vez de falhar, **inventa** o resultado da ferramenta
+> (pedimos uma listagem de arquivos e ele escreveu uma saída de `ls` que nunca rodou). Foi o
+> que derrubou o gateway antigo deste projeto. Sem tool calling nativo, declare `tools=False`
+> em `providers/capabilities.py`: o motor então **cala** as ferramentas, em vez de deixar a
+> fabricação passar por trabalho feito.
+
 ### Empacotamento
 
 ```shell
