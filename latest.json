@@ -1,15 +1,15 @@
 {
-  "version": "0.1.28",
-  "notes": "Mangaba v0.1.28 \u2014 https://github.com/dheiver2/mangaba-openworker/releases/tag/v0.1.28",
-  "pub_date": "2026-08-05T11:56:48Z",
+  "version": "0.1.29",
+  "notes": "Mangaba v0.1.29 \u2014 https://github.com/dheiver2/mangaba-openworker/releases/tag/v0.1.29",
+  "pub_date": "2026-08-05T14:30:46Z",
   "platforms": {
     "darwin-aarch64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSOTB3SlVtTzRWS3V3bmlKZmJQZTNtZGladVpuS3pRRGxvUE5hM3hHWm01OW9VZHRwUjE5SisvbXpncXQ3K1VNMUFQM1BFdnRaSWtZRVA1VGtBclFhQUhsSS9CbkZCVVEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1OTI5NTYzCWZpbGU6TWFuZ2FiYS5hcHAudGFyLmd6CkdHMFl5eTUxTjFIcjdtSFd4VzdHblAwUUtvSnlxaHlOU0k2NnFsd0JRd1hjZ0hiRmVBVHd6MEltUWRDd1p0RTB6QWQ3SU8zREZxQ2s2Wkw2dFFLSEJRPT0K",
-      "url": "https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.28/Mangaba.app.tar.gz"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSOTB3SlVtTzRWS2xHVWNqc3IwQWFGQi9hMFdHS1RaRWM4aUtYK1RFNldwempUc1V6MS9uWTBIYWVTNGNGU2VFV1JDZGpxNFQrRkg3ZVJUWUh1TjZ1ZXR4SjZmREVXMUFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1OTMzMDIzCWZpbGU6TWFuZ2FiYS5hcHAudGFyLmd6CnJmYnJiRVpLM0E0Zlh1WUxFaDFydlZvYkJwUUhuRlI4NTRrL3M3czhwUGVWaW8wZVlnZUJjb051NWRtS3NrT0dsN0VpSlI4L0c2RnNFeXhxUDJJY0NnPT0K",
+      "url": "https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.29/Mangaba.app.tar.gz"
     },
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSOTB3SlVtTzRWS2xKampIRGVTSkhiTDdqNERkdXRGalFEcE9EMUF4a280U2pkVTNwMEg5aGxzamgzRU1QMm5BbWovaXJoclZBZHpUcUhVd0FWWm45QVJuZHA5K0pKRndBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1OTI5NzYyCWZpbGU6TWFuZ2FiYV8wLjEuMjhfeDY0LXNldHVwLmV4ZQorTHJnZHhQOElsblJxTlhqdGtjNnRENllCTUdrMTNJalBWdkdacFRwWTg5OWRYSzZhVVNRaUx4dVBubzBFbXQ2L2NHRS9UMDV0WGo5elpzeFBwdXRCUT09Cg==",
-      "url": "https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.28/Mangaba_0.1.28_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSOTB3SlVtTzRWS2xEZmNjM2tLODI2eFlEQ2NCYzRpb0hIMHNid3kvWnJqeVRWVDRVckNXVFVqSG4vK2tQbC84WlNhSCsrYytsMERrcVBybHIvV2lSTHhTNWh4R2pYSHdBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1OTM1Mjc4CWZpbGU6TWFuZ2FiYV8wLjEuMjlfeDY0LXNldHVwLmV4ZQpHbk4ycFhvZDdBcDVOWFMxZnVwRmxOUlFwdEcrdDU3TFVGbkVpY1lMRXNGOHpnVkZ0SVhGdit3SFI4aU5TdVFhbkhQSTljWVhVQ21NYlh5RkhDZkhCdz09Cg==",
+      "url": "https://github.com/dheiver2/mangaba-openworker/releases/download/v0.1.29/Mangaba_0.1.29_x64-setup.exe"
     }
   }
 }
