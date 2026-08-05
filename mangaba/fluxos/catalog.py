@@ -72,8 +72,7 @@ PROBLEMAS: list[dict[str, Any]] = [
                 "para cada — tom mais firme conforme o atraso cresce.",
                 entrega="E-mails em rascunho, agrupados por faixa de atraso, para você revisar",
                 skills=["cobranca-inadimplencia", "email-profissional"],
-                mcps=["hubspot_mcp"],
-                conectores=["gmail"],
+                conectores=["hubspot", "gmail"],
                 agendado="Segunda-feira, 9h",
                 prompt="Liste no CRM os títulos vencidos, agrupe por faixa de atraso "
                        "(1-15, 16-30, 31+ dias) e escreva uma cobrança para cada cliente "
@@ -146,7 +145,7 @@ PROBLEMAS: list[dict[str, Any]] = [
                 "coerente com esse histórico.",
                 entrega="Proposta estruturada: escopo, entregáveis, prazo e investimento",
                 skills=["proposta-comercial"],
-                mcps=["hubspot_mcp"],
+                conectores=["hubspot"],
                 prompt="Puxe o histórico deste cliente no CRM e monte uma proposta comercial "
                        "seguindo a skill, coerente com o que já foi conversado.",
             ),
@@ -185,7 +184,7 @@ PROBLEMAS: list[dict[str, Any]] = [
                 "Lê o que mudou na semana no Linear ou no monday e escreve o status sozinho.",
                 entrega="Relatório com feito, em andamento, bloqueios e próximos passos",
                 skills=["relatorio-status-semanal"],
-                mcps=["linear", "monday_mcp"],
+                conectores=["linear", "monday"],
                 agendado="Sexta-feira, 17h",
                 prompt="Leia o que mudou nesta semana no quadro de tarefas e escreva o "
                        "relatório de status semanal seguindo a skill.",
@@ -196,8 +195,7 @@ PROBLEMAS: list[dict[str, Any]] = [
                 "Mesmo relatório, publicado no canal — o time lê sem ninguém repassar.",
                 entrega="Mensagem no canal, depois da sua aprovação",
                 skills=["relatorio-status-semanal"],
-                mcps=["linear"],
-                conectores=["slack"],
+                conectores=["linear", "slack"],
                 agendado="Sexta-feira, 17h",
                 prompt="Monte o relatório de status da semana a partir do quadro de tarefas "
                        "e publique no canal combinado.",
@@ -218,7 +216,8 @@ PROBLEMAS: list[dict[str, Any]] = [
                 "responsável e prazo.",
                 entrega="Ata estruturada mais as tarefas criadas no quadro",
                 skills=["ata-de-reuniao"],
-                mcps=["granola", "linear"],
+                mcps=["granola"],
+                conectores=["linear"],
                 prompt="Leia as notas da reunião, monte a ata seguindo a skill e crie as "
                        "tarefas decididas no quadro, com responsável e prazo.",
             ),

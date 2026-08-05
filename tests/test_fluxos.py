@@ -73,8 +73,13 @@ def test_mcp_cadastrado_mas_nao_conectado_conta_como_faltando():
     """A lição que custou caro neste projeto: cadastro mente, verificação não. Um servidor
     com OAuth aparece na lista antes de existir token — chamá-lo de pronto faria o fluxo
     morrer no meio do trabalho."""
-    ctx = {**CTX_TUDO_PRONTO, "mcps_conectados": set()}  # cadastrado, sem token
-    r = resolver_fluxo(fluxo_por_id("cobranca-crm-semanal"), **ctx)
+    # triagem-suporte usa Intercom, que só existe como MCP (sem conector nativo).
+    ctx = {
+        **CTX_TUDO_PRONTO,
+        "mcps_conectados": set(),  # cadastrado, sem token
+        "mcps_conhecidos": {"intercom_mcp": "Intercom"},
+    }
+    r = resolver_fluxo(fluxo_por_id("triagem-suporte"), **ctx)
     assert r["pronto"] is False
     mcp = next(p for p in r["pecas"] if p["tipo"] == "mcp")
     assert mcp["pronta"] is False and mcp["acao"] == "conectar_mcp"
@@ -102,7 +107,8 @@ def test_automacao_nao_impede_o_fluxo_de_rodar_sob_demanda():
     """O agendamento é criado quando a pessoa ativa o fluxo, nunca antes — um agendamento
     que nasce ligado seria o app trabalhando sem convite. E enquanto não existe, o fluxo
     roda sob demanda: contá-lo como impedimento assustaria sem motivo."""
-    r = resolver_fluxo(fluxo_por_id("cobranca-crm-semanal"), **CTX_TUDO_PRONTO)
+    ctx = {**CTX_TUDO_PRONTO, "conectores_conectados": {"hubspot", "gmail"}}
+    r = resolver_fluxo(fluxo_por_id("cobranca-crm-semanal"), **ctx)
     agenda = next(p for p in r["pecas"] if p["tipo"] == "automação")
     assert agenda["pronta"] is False and agenda["acao"] == "criar_automacao"
     assert r["pronto"] is True, "automação pendente não pode bloquear o uso sob demanda"
@@ -133,3 +139,55 @@ def test_manager_resolve_contra_a_maquina_de_verdade():
             assert any(x["tipo"] == "modelo" for x in f["pecas"]), (
                 "todo fluxo depende de um modelo — a peça tem de aparecer"
             )
+
+
+def test_toda_peca_referenciada_existe_de_verdade():
+    """A auditoria que pega o erro mais provável: eu escrevi os fluxos de memória e
+    declarei skills, MCPs e conectores por nome. Um nome errado produz um fluxo que
+    NUNCA fica pronto — a peça inexistente conta como faltando para sempre, e a pessoa
+    fica travada num cartão que não tem como completar. Esta trava roda contra as fontes
+    reais, então um typo quebra o CI em vez de chegar ao usuário."""
+    import glob
+    import os
+    import tempfile
+
+    from mangaba.mcp import catalog as mcp_cat
+    from mangaba.server.manager import SessionManager
+
+    skills_reais = {
+        os.path.basename(d)
+        for d in glob.glob(os.path.expanduser("~/.config/mangaba/skills/*"))
+        if os.path.isdir(d)
+    }
+    # Fallback: se a máquina de CI não tiver skills semeadas, usa as skills-padrão do código.
+    if not skills_reais:
+        from mangaba.skills.defaults import DEFAULTS
+
+        skills_reais = {d["name"] for d in DEFAULTS}
+
+    mcps_reais = {i["name"] for i in mcp_cat.listar()}
+    m = SessionManager(workspace=tempfile.mkdtemp())
+    con_reais = {c["name"] for c in m.list_connectors()}
+
+    for f in FLUXOS.values():
+        for s in f["skills"]:
+            assert s in skills_reais, f"{f['id']}: skill inexistente {s!r}"
+        for x in f["mcps"]:
+            assert x in mcps_reais, f"{f['id']}: mcp inexistente {x!r}"
+        for c in f["conectores"]:
+            assert c in con_reais, f"{f['id']}: conector inexistente {c!r}"
+
+
+def test_prefere_conector_nativo_quando_existe():
+    """Regra de escolha da auditoria: quando um serviço tem conector NATIVO (OAuth
+    gerenciado, mais fácil), o fluxo usa o conector — não o MCP do mesmo serviço, que
+    pede login manual. MCP só quando é o ÚNICO caminho (Granola, Intercom não têm
+    conector nativo)."""
+    # HubSpot, Linear e monday têm conector nativo: nenhum fluxo deve citá-los como MCP.
+    tem_conector = {"hubspot_mcp", "linear", "monday_mcp", "asana_mcp", "clickup_mcp"}
+    for f in FLUXOS.values():
+        vazou = tem_conector & set(f["mcps"])
+        assert not vazou, (
+            f"{f['id']}: usa MCP {vazou} de serviço que tem conector nativo — "
+            "prefira o conector"
+        )
