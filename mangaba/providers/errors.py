@@ -13,6 +13,8 @@ dressed up as an access problem.
 
 from __future__ import annotations
 
+import re
+
 from typing import Optional
 
 # Error-body markers, verbatim from the vendors' error codes/messages:
@@ -38,6 +40,19 @@ _NO_QUOTA = (
 def friendly_model_error(model: str, exc: Exception) -> Optional[str]:
     """One actionable sentence for "your account can't use this model" failures, or None."""
     text = str(exc).lower()
+    # Estouro de contexto do llama.cpp (gateways próprios e o motor local). O corpo cru é
+    # um JSON com n_ctx/n_prompt_tokens que não diz NADA para quem só quer trabalhar — e
+    # o caso real que motivou isto foi um gateway anunciando 32k e servindo 8k.
+    if "exceed_context_size" in text or "exceeds the available context size" in text:
+        nums = re.findall(r"\((\d+) tokens\)", str(exc))
+        pedido, cabe = (nums + ["?", "?"])[:2]
+        return (
+            f"A conversa ficou maior que a janela de contexto de {model}: foram "
+            f"{pedido} tokens para um limite de {cabe}. Comece uma sessão nova, "
+            "desligue conectores que não estiver usando (cada um soma ferramentas ao "
+            "prompt), ou escolha um modelo com janela maior. Se este for um gateway "
+            "da sua organização, peça ao administrador para aumentar o `--ctx-size`."
+        )
     no_access = (
         f"Your account doesn't have access to {model} — new models can roll out "
         "gradually or require a plan upgrade. Pick a different model, or check "

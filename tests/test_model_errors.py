@@ -85,3 +85,32 @@ def test_unrelated_errors_pass_through_raw():
         friendly_model_error("gpt-5.6-sol", RuntimeError("connection reset by peer"))
         is None
     )
+
+
+def test_estouro_de_contexto_vira_mensagem_acionavel():
+    """O corpo cru do llama.cpp é um JSON com n_ctx/n_prompt_tokens que não diz nada a
+    quem só quer trabalhar. Caso real: um gateway anunciava context_window 32768 e
+    servia n_ctx 8192 — o usuário via o JSON e não tinha o que fazer com ele."""
+    from mangaba.providers.errors import friendly_model_error
+
+    exc = Exception(
+        "Error code: 400 - {'error': {'code': 400, 'message': 'request (12187 tokens) "
+        "exceeds the available context size (8192 tokens), try increasing it', "
+        "'type': 'exceed_context_size_error', 'n_prompt_tokens': 12187, 'n_ctx': 8192}}"
+    )
+    msg = friendly_model_error("mangaba-nordeste:Mangaba-Nordeste-30B", exc)
+    assert msg is not None
+    assert "12187" in msg and "8192" in msg
+    # as três saídas que a pessoa tem, e a que o admin tem
+    assert "sessão nova" in msg
+    assert "conectores" in msg
+    assert "--ctx-size" in msg
+
+
+def test_janela_do_gateway_e_a_medida_nao_a_anunciada():
+    """O /v1/models do gateway declara 32768, mas o llama-server atrás dele roda com
+    8192 (provado com um prompt de 10k tokens → HTTP 400). Declarar 32k fazia a
+    compactação nunca disparar e o turno morrer no erro cru."""
+    from mangaba.providers.matrix import model_context_windows
+
+    assert model_context_windows()["mangaba-nordeste:Mangaba-Nordeste-30B"] == 8_192

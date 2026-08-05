@@ -85,8 +85,15 @@ MATRIX: dict[str, ModelEntry] = {
     # Mangaba-Nordeste-30B (Mangaba AI, servido no Brasil — Nossa Telecom/AL, CPU):
     # verificado agêntico pleno pelo verificar_provedor.py em 2026-08-05 (tools,
     # role:tool, SSE, tool_calls no streaming e paralelo). Sem visão (GGUF de texto).
+    #
+    # A janela é 8.192 — MEDIDA, não a anunciada. O /v1/models declara
+    # `context_window: 32768`, mas o llama-server atrás do gateway roda com n_ctx=8192:
+    # um prompt de 10k tokens volta 400 "exceeds the available context size (8192)".
+    # Declarar 32k aqui fazia a compactação nunca disparar e o turno morrer no erro cru.
+    # Quando o administrador subir o --ctx-size do gateway, atualize este número (o
+    # modelo suporta até 262.144).
     "mangaba-nordeste:Mangaba-Nordeste-30B": ModelEntry(
-        "Mangaba-Nordeste-30B · Mangaba AI", _AGENTIC, 32_768
+        "Mangaba-Nordeste-30B · Mangaba AI", _AGENTIC, 8_192
     ),
     # Muse Spark (Meta Model API, public preview 2026-07-09): multimodal + tools via
     # their OpenAI-compat surface. Vision yes; PDFs unverified over compat — falls
