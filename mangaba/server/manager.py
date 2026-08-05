@@ -1601,6 +1601,36 @@ class SessionManager:
         "mistral": ["mistral-large-latest", "mistral-small-latest"],
     }
 
+    def _modelos_do_gateway(self, name: str) -> list[str]:
+        """Modelos que o gateway da organização serve, perguntados a ele.
+
+        Diferente dos vendors públicos, aqui não dá para embutir uma lista: o catálogo é
+        de quem administra o gateway e muda sem nos avisar. Melhor esforço — se não
+        responder, o usuário ainda pode digitar o id do modelo à mão."""
+        perfil = self.secrets.get(f"provider:{name}") or {}
+        base = (perfil.get("base_url") or "").strip()
+        if not base:
+            d = get_descriptor(name)
+            base = next(
+                (f.default for f in (d.fields if d else []) if f.key == "base_url"), ""
+            )
+        if not base:
+            return []
+        chave = (perfil.get("api_key") or "").strip()
+        try:
+            import httpx
+
+            resp = httpx.get(
+                base.rstrip("/") + "/models",
+                headers={"Authorization": f"Bearer {chave}"} if chave else {},
+                timeout=6.0,
+            )
+            if resp.status_code >= 300:
+                return []
+            return [m["id"] for m in (resp.json().get("data") or []) if m.get("id")]
+        except Exception:
+            return []
+
     def _suggested_models(self, name: str) -> list[str]:
         """Bare model-name suggestions for the 'add model' form (datalist), per provider —
         the curated matrix, topped up with the compat-vendor extras the matrix doesn't
@@ -1610,6 +1640,8 @@ class SessionManager:
             from ..providers import local_engine
 
             return local_engine.downloaded_tags()
+        if name == "mangaba_gateway":
+            return self._modelos_do_gateway(name)
         from ..providers.matrix import models_for_provider
 
         return list(

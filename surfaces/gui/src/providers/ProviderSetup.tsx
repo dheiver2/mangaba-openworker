@@ -35,7 +35,7 @@ export const KEY_HELP: Record<string, { url: string; label: string }> = {
   xai: { url: "https://console.x.ai", label: "console.x.ai" },
 };
 
-export type Verify = { state: "idle" | "testing" | "ok" | "error"; msg?: string };
+export type Verify = { state: "idle" | "testing" | "ok" | "error"; msg?: string; aviso?: string };
 
 /** Brand chip: always a light plate so multicolor marks read on any theme. */
 export function ProviderMark({ name, title, size = 32 }: { name: string; title: string; size?: number }) {
@@ -229,7 +229,9 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
   const runTestAndSave = async (): Promise<boolean> => {
     if (!sel) return false;
     setVerify({ state: "testing" });
-    const res = await verifyProvider(sel, fields).catch(() => ({ ok: false, error: "unreachable" }));
+    const res = await verifyProvider(sel, fields).catch(
+      () => ({ ok: false, error: "unreachable" }) as Awaited<ReturnType<typeof verifyProvider>>,
+    );
     if (!res.ok) {
       setVerify({ state: "error", msg: res.error || "couldn't verify" });
       return false;
@@ -242,7 +244,9 @@ export function useProviderSetup(opts?: { onSaved?: () => void }): ProviderSetup
     // unconditionally for keyless providers is safe — it's the same idempotent save.
     if (dirty || !info?.configured || !info?.needs_key) await setProvider(sel, fields).catch(() => {});
     if (!info?.needs_key) setKeylessOk((s) => new Set(s).add(sel));
-    setVerify({ state: "ok" });
+    // Chave válida e mesmo assim há o que dizer: um gateway pode autenticar e não
+    // executar ferramenta. O usuário está olhando AGORA — é a hora de contar.
+    setVerify({ state: "ok", aviso: res.aviso });
     setDirty(false);
     setDrafts((d) => ({ ...d, [sel]: {} }));
     await refreshProviders();
@@ -655,6 +659,11 @@ export function ProviderForm({
       {/* Error line: fixed height so failures never reflow the form. */}
       <div className="mt-3 min-h-[19px] text-[12.5px]">
         {ps.verify.state === "error" && <span className="text-warnInk">{ps.verify.msg}</span>}
+        {ps.verify.state === "ok" && ps.verify.aviso && (
+          <span className="text-warnInk" data-testid={`${tp}-verify-aviso`}>
+            {ps.verify.aviso}
+          </span>
+        )}
       </div>
       {footer}
     </div>

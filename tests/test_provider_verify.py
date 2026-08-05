@@ -94,3 +94,85 @@ def test_verify_unexpected_status(monkeypatch):
     res = verify_provider_key("anthropic", api_key="sk-ant-x")
     assert res["ok"] is False
     assert "500" in res["error"]
+
+
+def test_gateway_da_organizacao_avisa_quando_nao_executa_ferramenta(monkeypatch):
+    """Chave válida NÃO garante agente. O gateway anterior deste projeto aceitava o
+    parâmetro `tools` e nunca devolvia `tool_calls` — e o modelo, em vez de falhar,
+    INVENTAVA o resultado (pedimos uma listagem de arquivos e ele escreveu uma saída de
+    `ls` que nunca rodou). O 'Testar' é o único momento em que a pessoa está olhando."""
+    import httpx
+
+    class RespModelos:
+        status_code = 200
+
+        def json(self):
+            return {"data": [{"id": "mangaba-chat"}]}
+
+    class RespSemToolCalls:
+        status_code = 200
+
+        def json(self):
+            # aceita `tools`, responde texto — o caso perigoso
+            return {"choices": [{"message": {"content": "O clima em Maceió é ensolarado."}}]}
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: RespModelos())
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: RespSemToolCalls())
+
+    res = verify_provider_key(
+        "mangaba_gateway", api_key="chave-do-admin", base_url="https://gw.exemplo/v1"
+    )
+    assert res["ok"] is True, "a chave é válida — não é erro"
+    assert "aviso" in res, "mas o usuário precisa saber que não é agente"
+    assert "inventar" in res["aviso"] or "ferramenta" in res["aviso"]
+
+
+def test_gateway_da_organizacao_sem_aviso_quando_executa_ferramenta(monkeypatch):
+    import httpx
+
+    class RespModelos:
+        status_code = 200
+
+        def json(self):
+            return {"data": [{"id": "mangaba-chat"}]}
+
+    class RespComToolCalls:
+        status_code = 200
+
+        def json(self):
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "id": "c1",
+                                    "function": {
+                                        "name": "obter_clima",
+                                        "arguments": '{"cidade":"Maceió"}',
+                                    },
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: RespModelos())
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: RespComToolCalls())
+
+    res = verify_provider_key(
+        "mangaba_gateway", api_key="chave-do-admin", base_url="https://gw.exemplo/v1"
+    )
+    assert res["ok"] is True and "aviso" not in res
+
+
+def test_descriptor_do_gateway_pede_chave_e_aponta_para_o_admin():
+    from mangaba.providers.registry import get_descriptor
+
+    d = get_descriptor("mangaba_gateway")
+    assert d is not None and d.needs_key is True
+    campos = {f.key: f for f in d.fields}
+    assert campos["api_key"].secret is True
+    # a chave vem do administrador, não de um cadastro num site
+    assert "administrador" in campos["base_url"].help

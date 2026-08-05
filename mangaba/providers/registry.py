@@ -254,6 +254,21 @@ DESCRIPTORS: list[ProviderDescriptor] = [
     # OpenAI-compatible vendors, listed as first-class providers so users don't need to know the
     # "point the OpenAI slot at a different endpoint" trick (owner call, 2026-07-04). Each keeps
     # its own key profile; the endpoint is prefilled and editable (regional variants in `help`).
+    # Gateway Mangaba da organização: a chave NÃO é criada num console de vendor, é
+    # distribuída pelo administrador — por isso o texto de ajuda aponta para ele, e não
+    # para uma URL de cadastro. `env_key` existe para implantação em lote (variável de
+    # ambiente na máquina) sem cada pessoa colar a chave à mão.
+    _compat(
+        "mangaba_gateway",
+        "Mangaba (organização)",
+        base_url="https://mangaba-iprojectti.ngrok.app/v1",
+        recommended_model="mangaba-chat",
+        env_key="MANGABA_GATEWAY_API_KEY",
+        endpoint_help=(
+            "Endereço do gateway da sua organização. Peça a chave ao administrador — "
+            "ela não é criada num site, é distribuída internamente."
+        ),
+    ),
     _compat(
         "zai",
         "Z AI (GLM)",
@@ -446,7 +461,67 @@ def verify_provider_key(
         }
 
     if resp.status_code < 300:
+        if name == "mangaba_gateway":
+            # Gateway próprio da organização: chave válida NÃO garante agente. O gateway
+            # anterior deste projeto aceitava o parâmetro `tools` e nunca devolvia
+            # `tool_calls` — e o modelo, em vez de falhar, INVENTAVA o resultado da
+            # ferramenta. Testar aqui é o único momento em que a pessoa está olhando.
+            aviso = _sonda_tool_calling(base_url or "", key, resp)
+            if aviso:
+                return {"ok": True, "aviso": aviso}
         return {"ok": True}
     if resp.status_code in (401, 403):
         return {"ok": False, "error": "Invalid API key."}
     return {"ok": False, "error": f"{d.title} returned HTTP {resp.status_code}."}
+
+
+def _sonda_tool_calling(base_url: str, key: str, resp_models: Any) -> Optional[str]:
+    """Uma chamada barata que prova se o gateway executa ferramenta. Devolve o aviso a
+    mostrar, ou None quando está tudo certo. Nunca levanta: é um extra da verificação."""
+    import httpx
+
+    try:
+        modelos = [m["id"] for m in (resp_models.json().get("data") or []) if m.get("id")]
+    except Exception:
+        modelos = []
+    if not modelos or not base_url:
+        return None
+    ferramenta = {
+        "type": "function",
+        "function": {
+            "name": "obter_clima",
+            "description": "Retorna o clima atual de uma cidade.",
+            "parameters": {
+                "type": "object",
+                "properties": {"cidade": {"type": "string"}},
+                "required": ["cidade"],
+            },
+        },
+    }
+    try:
+        r = httpx.post(
+            base_url.rstrip("/") + "/chat/completions",
+            headers={"Authorization": f"Bearer {key}"} if key else {},
+            json={
+                "model": modelos[0],
+                "messages": [
+                    {"role": "user", "content": "Qual o clima em Maceió? Use a ferramenta."}
+                ],
+                "tools": [ferramenta],
+                "tool_choice": "auto",
+            },
+            timeout=45,
+        )
+        if r.status_code >= 300:
+            return None  # sem conclusão: não vale assustar por um erro transitório
+        msg = (r.json().get("choices") or [{}])[0].get("message", {}) or {}
+        if msg.get("tool_calls"):
+            return None
+        return (
+            "Chave válida, mas este gateway não devolveu uma chamada de ferramenta no "
+            "teste. Modelos assim conversam, porém não leem arquivos, não rodam comandos "
+            "e não usam conectores — e alguns chegam a inventar o resultado. Confirme com "
+            "o administrador se o gateway suporta tool calling."
+        )
+    except Exception:
+        return None
