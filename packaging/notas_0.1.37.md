@@ -50,6 +50,27 @@ provedor declara a própria prontidão, então a armadilha não fica armada para
   usado esse número para justificar decisões de projeto. Medido em processo limpo: **0,4 s**.
   O 19 s era uma leitura fria única, não o custo real.
 
+## Primeira resposta mais rápida
+
+Cada turno reenvia um "prefixo" fixo ao modelo: as instruções do agente mais o catálogo de
+ferramentas. Medindo o custo real disso:
+
+- no **motor local**, o prefill frio custa **~5 ms por token** — 3.675 tokens levaram 18,9 s
+  (a mesma chamada com o cache quente cai para 1,3 s);
+- no **gateway**, um prompt curto responde em **0,55 s** de forma estável, mas a partir de
+  alguns milhares de tokens a cadeia de fallback desvia para modelos **5× mais lentos**
+  (2 s a 4,8 s).
+
+Ou seja: o prefixo sozinho já tirava toda sessão da faixa rápida. Esta versão corta a gordura
+que dava para cortar **sem remover nenhuma capacidade** — o gerador de esquemas emitia campos
+vazios (`description: ""`, `default: null`) para cada parâmetro, e o modelo relia esse lixo em
+todo turno. São ~4% do prefixo, ~1,3 s a menos de espera na primeira resposta de cada sessão
+local.
+
+Entra junto um **teto de tamanho por família de agente**, verificado automaticamente. Sem ele
+o prefixo volta a crescer sem ninguém perceber — foi exatamente o que aconteceu desde a
+0.1.33, e agora a build falha antes de a lentidão chegar até você.
+
 ## Ressalvas de sempre
 
 O build do Windows continua **sem teste em hardware Windows real** (impossível a partir do
