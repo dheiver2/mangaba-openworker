@@ -536,7 +536,55 @@ class SessionManager:
         self._engines[session_id] = engine
         if is_new_session:
             self._emit_session_created(session_id, agent_name)
+            self._warm_engine(engine)
         return engine
+
+    def _warm_engine(self, engine: TurnEngine) -> Optional[Any]:
+        """Pré-aquece o cache de prompt do provedor com o prefixo ESTÁVEL da sessão (system +
+        esquema de ferramentas), em background, no instante em que a sessão nasce.
+
+        Por quê: nos modelos em CPU o custo da PRIMEIRA resposta é o prefill do prefixo —
+        medido em ~23 s no Nordeste-30B e ~3,6 s no Qwen3-4B local para ~3k tokens de
+        sistema+tools. Uma vez prefillado, o mesmo prefixo responde em ~0,6 s (cache quente,
+        ~38× mais rápido). Este disparo paga esse prefill ANTES de a pessoa mandar a mensagem
+        — escondido atrás do "abrindo sessão" —, então a 1ª mensagem real reaproveita o cache
+        em vez de esperar do zero.
+
+        Só vale onde o prefill domina: modelos locais/CPU. Para provedores de nuvem (rápidos)
+        seria só queimar tokens à toa, então ficam de fora. Best-effort e daemon: se falhar, a
+        sessão segue — só volta a pagar o prefill frio na 1ª mensagem, como antes. Devolve a
+        thread (ou None se pulou) para os testes conseguirem sincronizar.
+        """
+        if self._model_provider(engine.model) not in ("local", "mangaba-nordeste"):
+            return None
+        system = [m for m in engine.messages if m.get("role") == "system"][:1]
+        if not system:
+            return None
+
+        def _prime() -> None:
+            try:
+                # Mesmo system + mesmas tools = mesmo prefixo que a 1ª mensagem real vai
+                # enviar; o cache do gateway/llama-server casa tudo até o início do turno do
+                # usuário. O conteúdo do usuário aqui é irrelevante — pedimos só 1 token de
+                # saída, o custo é o prefill do prefixo, que é justamente o que queremos pagar
+                # adiantado. (Ressalva: num gateway com --parallel, o aquecimento e a mensagem
+                # real podem cair em slots diferentes, com caches separados — aí o ganho não
+                # se realiza. Do lado local, com um slot só, casa sempre.)
+                engine.provider.complete(
+                    model=engine.model,
+                    messages=system + [{"role": "user", "content": "ok"}],
+                    tools=engine.registry.schemas() or None,
+                    max_tokens=1,
+                    temperature=0,
+                )
+            except Exception:
+                pass  # aquecer é oportunista; a sessão nunca depende disto
+
+        import threading
+
+        t = threading.Thread(target=_prime, name=f"warm-{engine.model}", daemon=True)
+        t.start()
+        return t
 
     def _emit_session_created(self, session_id: str, persona_id: str) -> None:
         """Phase 5 telemetry, fired once per brand-new session on a background thread
