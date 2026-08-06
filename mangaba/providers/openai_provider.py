@@ -121,7 +121,7 @@ class OpenAIProvider(ProviderClient):
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            # Lazy import so the SDK is only required when actually talking to OpenAI.
+            import httpx
             from openai import OpenAI
 
             key = self._api_key or resolve_api_key(self._secrets)
@@ -133,6 +133,12 @@ class OpenAIProvider(ProviderClient):
             kwargs: dict[str, Any] = {"api_key": key}
             if self._base_url:
                 kwargs["base_url"] = self._base_url
+            
+            # Cliente HTTP dedicado com pool de conexões persistentes e keep-alive de longa duração
+            kwargs["http_client"] = httpx.Client(
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100, keepalive_expiry=120.0),
+                timeout=httpx.Timeout(60.0, connect=10.0),
+            )
             self._client = OpenAI(**kwargs)
         return self._client
 

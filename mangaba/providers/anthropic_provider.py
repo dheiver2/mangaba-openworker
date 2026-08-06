@@ -360,7 +360,7 @@ class AnthropicProvider(ProviderClient):
 
     def _ensure_client(self) -> Any:
         if self._client is None:
-            # Lazy import so the SDK is only required when actually talking to Anthropic.
+            import httpx
             from anthropic import Anthropic
 
             key = self._api_key or resolve_api_key(self._secrets)
@@ -369,7 +369,11 @@ class AnthropicProvider(ProviderClient):
                     "No Anthropic API key configured. Set ANTHROPIC_API_KEY in the environment, "
                     "or add your key in Manage → Configure Models."
                 )
-            self._client = Anthropic(api_key=key)
+            http_client = httpx.Client(
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100, keepalive_expiry=120.0),
+                timeout=httpx.Timeout(60.0, connect=10.0),
+            )
+            self._client = Anthropic(api_key=key, http_client=http_client)
         return self._client
 
     def _request_kwargs(

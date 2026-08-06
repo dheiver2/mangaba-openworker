@@ -103,3 +103,190 @@ def test_pula_se_nao_ha_system_para_aquecer():
     eng.messages = [{"role": "user", "content": "oi"}]  # sem system
     assert m._warm_engine(eng) is None
     assert chamadas == []
+
+
+def test_aquecimento_usa_a_visao_outbound_completa():
+    """Numa sessão retomada o prefixo frio é o HISTÓRICO inteiro, não só o system — aquecer
+    só com o system pagaria uma fração do prefill e a 1ª mensagem real pagaria o resto.
+    Quando o engine expõe a visão outbound (a mesma que o próximo turno envia), o
+    aquecimento tem de usá-la por inteiro."""
+    m = _mgr()
+    eng, chamadas = _fake_engine("local:Qwen3-4B-Q4_K_M")
+    historia = [
+        SYSTEM,
+        {"role": "user", "content": "faça a análise"},
+        {"role": "assistant", "content": "feito — segue o resumo"},
+    ]
+    eng._outbound_messages = lambda: list(historia)
+    t = m._warm_engine(eng)
+    assert t is not None
+    t.join(timeout=5)
+    kw = chamadas[0]
+    assert kw["messages"][:3] == historia, "o prefixo aquecido deve ser a visão outbound inteira"
+    assert kw["messages"][-1]["role"] == "user"
+
+
+def test_aquece_tambem_sessao_retomada(monkeypatch):
+    """A lacuna que motivou isto: o aquecimento disparava só em sessão NOVA. Reabrir uma
+    conversa de ontem depois de o app/motor reiniciar reconstrói o engine com o cache do
+    provedor frio — e um prefixo ainda maior (o histórico). Todo engine CONSTRUÍDO aquece;
+    engine já vivo em memória (retorno de cache do get_engine) não re-aquece."""
+    import tempfile as _tf
+    from types import SimpleNamespace as _NS
+
+    from mangaba.permissions import Mode
+
+    m = _mgr()
+    aquecidos: list[str] = []
+    monkeypatch.setattr(m, "_warm_engine", lambda eng: aquecidos.append(eng.model) or None)
+
+    eng = m.get_engine("s_ret", agent="cowork")
+    assert len(aquecidos) == 1, "sessão nova aquece"
+
+    # Engine vivo: get_engine devolve o cache — sem novo aquecimento.
+    m.get_engine("s_ret")
+    assert len(aquecidos) == 1, "engine já vivo não re-aquece"
+
+    # Simula reinício: engine despejado, mas o registro da sessão existe no disco.
+    ws = _tf.mkdtemp()
+    registro = _NS(
+        agent="cowork",
+        workspace=ws,
+        model=eng.model,
+        mode=Mode.INTERACTIVE.value,
+        messages=[{"role": "system", "content": "x"}, {"role": "user", "content": "oi"}],
+        extra_roots=[],
+        grants=None,
+        compaction=None,
+    )
+    del m._engines["s_ret"]
+    monkeypatch.setattr(m.session_store, "load", lambda sid: registro if sid == "s_ret" else None)
+    m.get_engine("s_ret")
+    assert len(aquecidos) == 2, "sessão RETOMADA (rebuild) também aquece"
+
+
+# -- compactação proativa pós-turno ---------------------------------------------------------
+#
+# O "de repente ficou lento de novo" das sessões longas: um turno termina acima do gatilho
+# de compactação e o SEGUINTE abre pagando o resumidor + o re-prefill da visão compactada na
+# frente do usuário. O caminho proativo paga isso em background enquanto ele lê a resposta,
+# e re-aquece o cache com a visão nova.
+
+
+def _provider_roteirizado(ordem: list[str]):
+    from mangaba.providers import AssistantTurn, ModelCapabilities, ProviderClient
+
+    class _P(ProviderClient):
+        def complete(self, *, model, messages, tools=None, **s):
+            ordem.append("modelo")
+            return AssistantTurn(text="pronto", finish_reason="stop")
+
+        def capabilities(self, model):
+            return ModelCapabilities()
+
+    return _P()
+
+
+def test_turno_acima_do_gatilho_compacta_e_reaquece_em_background():
+    import asyncio
+
+    ordem: list[str] = []
+    m = SessionManager(workspace=tempfile.mkdtemp(), provider=_provider_roteirizado(ordem))
+    eng = m.get_engine("s_pos", agent="cowork")
+
+    # 1ª chamada = checkpoint no topo da iteração (não compacta no meio do turno);
+    # 2ª = o gate pós-turno (aí sim, acima do gatilho).
+    chamadas = {"n": 0}
+
+    def _due():
+        chamadas["n"] += 1
+        return chamadas["n"] >= 2
+
+    eng._compaction_due = _due
+    feito = {"compact": 0, "warm": 0}
+
+    async def _fake_compact(force=False, ask_on_failure=True):
+        assert ask_on_failure is False, "pós-turno NUNCA pode abrir prompt de Retry/Aparar"
+        feito["compact"] += 1
+        return "Contexto compactado"
+
+    eng._compact_now = _fake_compact
+    eng.prewarm_hook = lambda: feito.__setitem__("warm", feito["warm"] + 1)
+
+    async def _go():
+        async for _ in eng.run("oi"):
+            pass
+        task = eng._post_turn_task
+        assert task is not None, "turno acima do gatilho deveria agendar a task pós-turno"
+        await task
+
+    asyncio.run(_go())
+    assert feito["compact"] == 1, "compactou em background"
+    assert feito["warm"] == 1, "re-aqueceu o cache com a visão compactada"
+    assert any(mm.get("kind") == "compacted" for mm in eng.messages if mm.get("role") == "notice")
+
+
+def test_turno_abaixo_do_gatilho_nao_agenda_nada():
+    import asyncio
+
+    ordem: list[str] = []
+    m = SessionManager(workspace=tempfile.mkdtemp(), provider=_provider_roteirizado(ordem))
+    eng = m.get_engine("s_semgat", agent="cowork")
+    eng._compaction_due = lambda: False
+
+    async def _go():
+        async for _ in eng.run("oi"):
+            pass
+
+    asyncio.run(_go())
+    assert eng._post_turn_task is None, "abaixo do gatilho não há custo a antecipar"
+
+
+def test_proximo_turno_espera_a_compactacao_em_voo():
+    """Se o usuário mandar a próxima mensagem com a compactação ainda rodando, o turno novo
+    ESPERA — abrir o turno lendo o estado no meio da troca veria história pela metade. No
+    pior caso ele espera o que esperaria de qualquer jeito (a compactação do início de turno
+    de antes)."""
+    import asyncio
+
+    ordem: list[str] = []
+    m = SessionManager(workspace=tempfile.mkdtemp(), provider=_provider_roteirizado(ordem))
+    eng = m.get_engine("s_espera", agent="cowork")
+
+    async def _go():
+        async def _compactando():
+            await asyncio.sleep(0.05)
+            ordem.append("compactou")
+
+        eng._post_turn_task = asyncio.get_running_loop().create_task(_compactando())
+        async for _ in eng.run("próxima"):
+            pass
+
+    asyncio.run(_go())
+    assert ordem == ["compactou", "modelo"], (
+        f"o modelo só pode rodar DEPOIS da compactação em voo terminar; veio {ordem}"
+    )
+    assert eng._post_turn_task is None, "a task consumida deve ser limpa"
+
+
+def test_compact_now_nao_pergunta_quando_ask_on_failure_false(monkeypatch):
+    """O caminho proativo roda sem turno aberto — um prompt de Retry/Aparar do nada seria um
+    susto. Com ask_on_failure=False, falha do resumidor cai no comportamento não-atendido
+    (aparar e seguir), mesmo com a sessão atendida."""
+    import asyncio
+
+    ordem: list[str] = []
+    m = SessionManager(workspace=tempfile.mkdtemp(), provider=_provider_roteirizado(ordem))
+    eng = m.get_engine("s_askoff", agent="cowork")
+    eng.is_attended = lambda: True
+
+    def _nunca(*a, **k):
+        raise AssertionError("question_asker não pode ser chamado no caminho proativo")
+
+    eng.question_asker = _nunca
+    monkeypatch.setattr(
+        "mangaba.compaction.build_state",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("resumidor fora do ar")),
+    )
+    # Não pode levantar (nem perguntar): falha → tenta aparar → segue.
+    asyncio.run(eng._compact_now(ask_on_failure=False))

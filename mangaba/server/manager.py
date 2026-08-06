@@ -536,7 +536,13 @@ class SessionManager:
         self._engines[session_id] = engine
         if is_new_session:
             self._emit_session_created(session_id, agent_name)
-            self._warm_engine(engine)
+        # Aquecimento a cada CONSTRUÇÃO de engine, não só em sessão nova: um engine retomado
+        # (reinício do app/motor, eviction) chega com o cache do provedor tão frio quanto um
+        # novo — e com um prefixo MAIOR (histórico inteiro) para prefillar. Aquecer um cache
+        # que já está quente custa ~nada (o prefill acerta o cache), então o disparo é seguro
+        # nos dois casos. A compactação pós-turno re-aquece via este mesmo caminho (hook).
+        self._warm_engine(engine)
+        engine.prewarm_hook = lambda eng=engine: self._warm_engine(eng)
         return engine
 
     def _warm_engine(self, engine: TurnEngine) -> Optional[Any]:
@@ -557,22 +563,29 @@ class SessionManager:
         """
         if self._model_provider(engine.model) not in ("local", "mangaba-nordeste"):
             return None
-        system = [m for m in engine.messages if m.get("role") == "system"][:1]
-        if not system:
+        # A visão OUTBOUND completa (histórico + compactação aplicada), não só o system: numa
+        # sessão retomada o prefixo frio é o histórico inteiro, e após compactar é a visão
+        # compactada — aquecer com qualquer outra coisa erraria o cache. Fallback para o
+        # system puro cobre callers diretos sem a API interna.
+        try:
+            prefixo = engine._outbound_messages()
+        except Exception:
+            prefixo = [m for m in engine.messages if m.get("role") == "system"][:1]
+        if not prefixo:
             return None
 
         def _prime() -> None:
             try:
-                # Mesmo system + mesmas tools = mesmo prefixo que a 1ª mensagem real vai
-                # enviar; o cache do gateway/llama-server casa tudo até o início do turno do
-                # usuário. O conteúdo do usuário aqui é irrelevante — pedimos só 1 token de
-                # saída, o custo é o prefill do prefixo, que é justamente o que queremos pagar
-                # adiantado. (Ressalva: num gateway com --parallel, o aquecimento e a mensagem
-                # real podem cair em slots diferentes, com caches separados — aí o ganho não
-                # se realiza. Do lado local, com um slot só, casa sempre.)
+                # Mesmo prefixo + mesmas tools que a próxima mensagem real vai enviar; o
+                # cache do gateway/llama-server casa tudo até o turno novo do usuário. O
+                # "ok" é irrelevante — pedimos 1 token de saída, o custo é o prefill do
+                # prefixo, que é justamente o que queremos pagar adiantado. (Ressalva: num
+                # gateway com --parallel, o aquecimento e a mensagem real podem cair em
+                # slots diferentes, com caches separados — aí o ganho não se realiza. Do
+                # lado local, com um slot só, casa sempre.)
                 engine.provider.complete(
                     model=engine.model,
-                    messages=system + [{"role": "user", "content": "ok"}],
+                    messages=prefixo + [{"role": "user", "content": "ok"}],
                     tools=engine.registry.schemas() or None,
                     max_tokens=1,
                     temperature=0,

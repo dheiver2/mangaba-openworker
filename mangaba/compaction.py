@@ -56,6 +56,8 @@ _BINARY_PART_TOKENS = 1_500
 
 
 def _chars_of(obj: Any) -> int:
+    if isinstance(obj, str):
+        return len(obj)
     try:
         return len(json.dumps(obj, default=str))
     except (TypeError, ValueError):
@@ -63,7 +65,13 @@ def _chars_of(obj: Any) -> int:
 
 
 def _message_chars(msg: Any) -> int:
-    content = msg.get("content") if isinstance(msg, dict) else None
+    if not isinstance(msg, dict):
+        return _chars_of(msg)
+    content = msg.get("content")
+    if isinstance(content, str):
+        # Caminho rápido: texto puro (evita o overhead de json.dumps completo)
+        role_len = len(msg.get("role") or "")
+        return len(content) + role_len + 20
     if not isinstance(content, list):
         return _chars_of(msg)
     total = _chars_of({k: v for k, v in msg.items() if k != "content"})

@@ -125,6 +125,14 @@ class TurnEngine:
         # fechamento cutuca UMA vez ao se aproximar do teto de iterações. Ambos via steering.
         self._done_nudged = False
         self._wrapup_warned = False
+        # Compactação proativa pós-turno: quando um turno termina acima do gatilho, o custo
+        # (resumidor + re-prefill da visão nova) é pago em background enquanto o usuário lê a
+        # resposta — em vez de na cara dele no início do turno seguinte. O hook re-aquece o
+        # cache do provedor com a visão compactada (instalado pelo manager; None em callers
+        # diretos). `run()` aguarda a task em voo antes de abrir o próximo turno.
+        self.prewarm_hook: Optional[Callable[[], Any]] = None
+        self._post_turn_task: Optional[asyncio.Task] = None
+        self._compacted_this_turn = False
         # tool_call.id → the standing rule that auto-allowed it ("tool → target"), so the
         # TOOL_FINISHED event can carry the note to the tool card (§25).
         self._standing_notes: dict[str, str] = {}
@@ -210,6 +218,17 @@ class TurnEngine:
         # literal "/skill …" line for the transcript, while `content` carries the model-facing
         # framing. `ts` (unix seconds, stamped on every appended message) is the same kind of
         # sidecar.
+        # Compactação proativa em voo? Termina antes de abrir o turno — ela muda a visão
+        # outbound e o compaction_state, e um turno lendo o estado no meio da troca veria
+        # história pela metade. No pior caso o usuário espera o que esperaria de qualquer
+        # jeito (a compactação rodaria agora, no início do turno, como antes).
+        pending = self._post_turn_task
+        if pending is not None and not pending.done():
+            try:
+                await pending
+            except Exception:
+                pass
+        self._post_turn_task = None
         message: dict[str, Any] = {
             "role": "user",
             "content": user_input,
@@ -351,6 +370,10 @@ class TurnEngine:
         # As cutucadas de orquestração valem por turno — zeram a cada nova mensagem do usuário.
         self._done_nudged = False
         self._wrapup_warned = False
+        # A compactação proativa pós-turno só age se a compactação NÃO rodou neste turno:
+        # quando roda no meio, o call seguinte do modelo já envia (e re-prefilla) a visão
+        # compactada — repetir em background só queimaria mais uma rodada de resumidor.
+        self._compacted_this_turn = False
         while True:
             if iterations >= self.max_iterations:
                 yield Event(
@@ -382,6 +405,7 @@ class TurnEngine:
             notice = None
             if self._compaction_due():
                 yield Event(EventType.COMPACTING, {})
+                self._compacted_this_turn = True
                 notice = await self._compact_now()
             if notice:
                 self._append_notice("compacted", notice)
@@ -420,6 +444,7 @@ class TurnEngine:
                 # so a model that keeps overflowing still terminates in the error path.
                 if _compaction.is_context_overflow(exc) and not self._cancel.is_set():
                     yield Event(EventType.COMPACTING, {})
+                    self._compacted_this_turn = True
                     notice = await self._compact_now(force=True)
                     if notice:
                         self._append_notice("compacted", notice)
@@ -473,6 +498,11 @@ class TurnEngine:
                 if self._steering:
                     self._inject_steering()
                     continue
+                # Turno terminou acima do gatilho de compactação? Paga o resumidor + o
+                # re-aquecimento AGORA, em background, enquanto o usuário lê — o turno
+                # seguinte abre com a visão já compactada e o cache quente, em vez de
+                # começar com um "Compactando…" de vários segundos + prefill frio.
+                self._schedule_post_turn_compaction()
                 yield Event(
                     EventType.TURN_END,
                     {"status": "completed", "iterations": iterations},
@@ -523,12 +553,46 @@ class TurnEngine:
             cap_tokens=int(cfg["cap_tokens"]),
         )
 
-    async def _compact_now(self, *, force: bool = False) -> Optional[str]:
+    def _schedule_post_turn_compaction(self) -> None:
+        """Compactação proativa: o turno terminou acima do gatilho, então o PRÓXIMO turno
+        abriria pagando o resumidor + o re-prefill da visão compactada na frente do usuário
+        (o "de repente ficou lento de novo" das sessões longas). Paga esse custo agora, em
+        background, e re-aquece o cache do provedor com a visão nova via `prewarm_hook`.
+        `run()` aguarda a task antes de abrir o turno seguinte, então não há corrida com o
+        estado; falha aqui é neutra — o turno seguinte compacta como sempre compactou."""
+        if self._compacted_this_turn:
+            return  # já compactou no meio do turno; o modelo já re-prefillou a visão nova
+        if not self._compaction_due() or self._compaction_stalled:
+            return
+        if self._post_turn_task is not None and not self._post_turn_task.done():
+            return
+
+        async def _go() -> None:
+            try:
+                notice = await self._compact_now(ask_on_failure=False)
+                if notice:
+                    self._append_notice("compacted", notice)
+                hook = self.prewarm_hook
+                if hook is not None:
+                    hook()
+            except Exception:
+                pass  # proativo é oportunista; o caminho síncrono do próximo turno cobre
+
+        try:
+            self._post_turn_task = asyncio.get_running_loop().create_task(_go())
+        except RuntimeError:
+            pass  # sem loop rodando (caller síncrono exótico) — segue sem proatividade
+
+    async def _compact_now(
+        self, *, force: bool = False, ask_on_failure: bool = True
+    ) -> Optional[str]:
         """Run the compaction policy. Callers gate on `_compaction_due()` (or `force`,
         the overflow path). Returns the user-facing notice text when the outbound view
         changed, else None. Failure policy per spec: retry once (both modes); attended →
         Retry / Trim prompt; unattended → auto-trim and continue (never park a run on
-        bookkeeping)."""
+        bookkeeping). `ask_on_failure=False` força o caminho não-atendido: o disparo
+        proativo pós-turno roda em background, sem turno aberto — abrir um prompt de
+        Retry/Aparar do nada, com o usuário já lendo a resposta, seria um susto."""
         cfg = self._compaction_config()
         pct = float(cfg["threshold_pct"])
         cap = int(cfg["cap_tokens"])
@@ -557,7 +621,13 @@ class TurnEngine:
                 break
             except Exception:
                 failed = True
-        if failed and self.question_asker is not None and self.is_attended and self.is_attended():
+        if (
+            failed
+            and ask_on_failure
+            and self.question_asker is not None
+            and self.is_attended
+            and self.is_attended()
+        ):
             while True:
                 answer = await self._interruptible(
                     self.question_asker(
