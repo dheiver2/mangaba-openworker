@@ -826,11 +826,14 @@ class TurnEngine:
         # descritas no prompt e responde com um bloco <tool_call>, convertido de volta
         # em chamadas reais — ver `_mensagens_com_protocolo` no provedor OpenAI.
         tools = self.registry.schemas() or None
-        model, messages, settings = (
-            self.model,
-            self._outbound_messages(),
-            self.model_settings,
-        )
+        # `_outbound_messages` NÃO é barato: ele adapta anexos para o modelo ativo, e nesse
+        # caminho cabem extração de texto de PDF, rasterização de páginas e OCR. Medido em
+        # 2026-08-06: uma página A4 escaneada leva ~4,4 s de CPU. Rodando aqui, direto no laço
+        # de eventos, um PDF de poucas páginas congelava o servidor inteiro — todas as sessões,
+        # todo o streaming — por dezenas de segundos. Vai para uma thread, como todo o resto do
+        # trabalho bloqueante deste arquivo.
+        model, settings = self.model, self.model_settings
+        messages = await asyncio.to_thread(self._outbound_messages)
         provider = self.provider
 
         def produce():

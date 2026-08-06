@@ -368,3 +368,78 @@ def test_motor_real_le_um_documento_gerado_na_hora():
 
     texto = ocr.ler_texto(buf.getvalue()) or ""
     assert "1284" in texto.replace(".", "").replace(" ", "")
+
+
+# -- achados da auditoria (2026-08-06) ------------------------------------------------------
+
+
+def test_dimensoes_cobre_todo_formato_que_a_ferramenta_aceita():
+    """`ler_imagem` aceitava .webp/.bmp/.tif, mas o leitor de cabeçalho só entendia PNG e
+    JPEG: o OCR funcionava e a nota saía com formato '?' e dimensões nulas."""
+    from mangaba.tools.imagem import _EXTENSOES
+
+    pytest.importorskip("PIL")
+    import io as _io
+
+    from PIL import Image
+
+    for fmt in ("PNG", "JPEG", "WEBP", "BMP", "GIF"):
+        buf = _io.BytesIO()
+        Image.new("RGB", (123, 77), "white").save(buf, format=fmt)
+        info = ocr._dimensoes(buf.getvalue())
+        assert info["formato"] == fmt, f"{fmt} não reconhecido"
+        assert (info.get("largura"), info.get("altura")) == (123, 77), fmt
+
+    # TIFF guarda as dimensões longe do cabeçalho; reconhecer o formato já basta para a nota.
+    assert ".tif" in _EXTENSOES and ".webp" in _EXTENSOES
+
+
+def test_adaptacao_de_anexos_sai_do_laco_de_eventos():
+    """O achado mais grave da auditoria: `_outbound_messages` adapta anexos — extrai texto de
+    PDF, rasteriza páginas e roda OCR — e era chamado direto no laço de eventos. Medido: uma
+    página A4 escaneada custa ~4,4 s de CPU, então um PDF de poucas páginas congelava o
+    servidor inteiro (todas as sessões, todo o streaming). Tem de rodar numa thread."""
+    import pathlib
+    import re
+
+    fonte = (pathlib.Path(__file__).resolve().parents[1] / "mangaba" / "engine.py").read_text(
+        encoding="utf-8"
+    )
+    dentro_do_astream = fonte.split("async def _astream")[1][:3000]
+    assert re.search(r"to_thread\(\s*self\._outbound_messages\s*\)", dentro_do_astream), (
+        "_outbound_messages precisa ir para uma thread — ele pode rodar OCR"
+    )
+
+
+def test_pdf_tambem_aquece_o_motor_ao_anexar():
+    """O aquecimento cobria só imagem. O caminho caro — PDF escaneado — ficava descoberto."""
+    import pathlib
+
+    fonte = (
+        pathlib.Path(__file__).resolve().parents[1] / "mangaba" / "attachments.py"
+    ).read_text(encoding="utf-8")
+    assert fonte.count("ocr.aquecer()") == 2, "imagem E pdf devem aquecer o motor"
+
+
+def test_corte_de_paginas_e_dito_em_voz_alta(monkeypatch):
+    """Teto silencioso é pior do que teto nenhum: o agente leria 8 de 40 páginas e
+    responderia como se tivesse lido o documento inteiro."""
+    from mangaba import pdf_support
+
+    monkeypatch.setattr(pdf_support, "extract_text", lambda _: "")
+    monkeypatch.setattr(
+        pdf_support, "rasterize", lambda _d, max_pages=1: ["data:image/png;base64,AAAA"]
+    )
+    monkeypatch.setattr(pdf_support, "inspect", lambda _: {"ok": True, "pages": 40})
+    monkeypatch.setattr(ocr, "disponivel", lambda: True)
+    monkeypatch.setattr(ocr, "ler_texto", lambda _: "pagina 1")
+
+    class _Caps:
+        pdf = False
+        vision = False
+
+    texto = pdf_support.adapt_content(
+        [{"type": "file", "file": {"filename": "d.pdf", "file_data": "x"}}], _Caps()
+    )[0]["text"]
+    assert "40" in texto and str(pdf_support.OCR_MAX_PAGES) in texto
+    assert "NÃO estão" in texto

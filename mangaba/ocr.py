@@ -15,11 +15,16 @@ Isto NÃO substitui visão de verdade: OCR lê texto, não descreve cena. "Que c
 camisa?" continua exigindo Claude/Gemini/OpenAI. O que ele resolve é o caso comum e chato —
 documento, nota fiscal, print de erro, slide, contrato escaneado.
 
-Custos que moldaram o código:
-- o primeiro `import` do onnxruntime custa ~19 s. Por isso o import é preguiçoso (dentro da
-  função) e o motor fica em cache num singleton: quem nunca anexa imagem nunca paga.
-- a inferência em si é rápida (~0,3 s numa imagem de 900×260), mas é CPU-bound e síncrona:
-  quem chamar de dentro do laço async tem de jogar numa thread.
+Custos MEDIDOS em 2026-08-06 (o primeiro texto deste módulo dizia "~19 s para carregar" e
+usava isso para justificar o aquecimento — o número era de uma leitura fria única, não o
+custo real, e a auditoria o derrubou):
+- `import rapidocr_onnxruntime`: ~0,3 s. Construir o `RapidOCR()`: ~0,4 s com o disco quente.
+  Ainda assim o import é preguiçoso e o motor fica num singleton — quem nunca anexa imagem
+  não paga nada, e a primeira vez de todas (modelos frios) chegou a ~19 s.
+- a INFERÊNCIA é o custo de verdade e escala com a página: ~0,3 s numa faixa de 900×260,
+  mas ~4,4 s numa página A4 cheia de texto. É CPU-bound e síncrona — quem chamar de dentro
+  do laço async TEM de jogar numa thread, senão congela todas as sessões (foi o que
+  aconteceu com PDF escaneado até a 0.1.36).
 """
 
 from __future__ import annotations
@@ -62,9 +67,9 @@ def disponivel() -> bool:
 
 
 def _obter_motor() -> Any:
-    """Singleton do motor. O `import` e a construção custam caro (~19 s na primeira vez,
-    carregando onnxruntime e os modelos), então acontecem uma vez por processo — e sob lock,
-    porque duas sessões podem anexar imagem ao mesmo tempo."""
+    """Singleton do motor: ~0,4 s com o disco quente, e bem mais na primeira vez de todas
+    (modelos frios). Acontece uma vez por processo, sob lock — duas sessões podem anexar
+    imagem ao mesmo tempo."""
     global _motor, _motor_falhou
     if _motor is not None or _motor_falhou:
         return _motor
@@ -112,10 +117,11 @@ def como_instalar() -> str:
 def aquecer() -> Optional[threading.Thread]:
     """Carrega o motor em segundo plano, sem bloquear quem chamou.
 
-    O consumo do OCR acontece dentro de `_outbound_messages`, que roda no laço de eventos do
-    servidor — pagar ali os ~19 s do primeiro import do onnxruntime congelaria o streaming de
-    todas as sessões. Chamado quando uma imagem é ANEXADA, o custo cabe no intervalo entre
-    anexar e enviar. Devolve a thread (ou None se não há o que aquecer) para os testes."""
+    Chamado quando uma imagem ou um PDF é ANEXADO, o custo de subir o motor cabe no intervalo
+    entre anexar e enviar, em vez de aparecer como demora na primeira resposta. Isto NÃO é o
+    que protege o laço de eventos — quem faz isso é o `asyncio.to_thread` em torno de
+    `_outbound_messages` (engine.py), porque o peso está na inferência, não na carga.
+    Devolve a thread (ou None se não há o que aquecer) para os testes."""
     if _motor is not None or _motor_falhou or not disponivel():
         return None
     t = threading.Thread(target=_obter_motor, daemon=True, name="ocr-warmup")
@@ -185,12 +191,43 @@ def _dimensoes(dados: bytes) -> dict[str, Any]:
     """Formato e tamanho lidos do cabeçalho, sem Pillow (excluído do sidecar empacotado).
 
     `imghdr` saiu da biblioteca padrão no Python 3.13, e puxar Pillow só para isto
-    contraria o motivo de o spec o excluir. São dois cabeçalhos de campo fixo — PNG e JPEG
-    cobrem print de tela e foto de celular, que é o caso real. O resto degrada para
-    "formato desconhecido", nunca para exceção."""
+    contraria o motivo de o spec o excluir. Cobre os formatos que `ler_imagem` aceita —
+    antes só PNG e JPEG, e um .webp ou .bmp saía com formato "?" e dimensões nulas mesmo
+    tendo o OCR funcionado. O que não for reconhecido degrada para "formato desconhecido",
+    nunca para exceção."""
     import struct
 
     try:
+        if dados[:4] == b"RIFF" and dados[8:12] == b"WEBP":
+            tipo = dados[12:16]
+            if tipo == b"VP8X":
+                largura = int.from_bytes(dados[24:27], "little") + 1
+                altura = int.from_bytes(dados[27:30], "little") + 1
+                return {"formato": "WEBP", "largura": largura, "altura": altura}
+            if tipo == b"VP8L":
+                b = int.from_bytes(dados[21:25], "little")
+                return {
+                    "formato": "WEBP",
+                    "largura": (b & 0x3FFF) + 1,
+                    "altura": ((b >> 14) & 0x3FFF) + 1,
+                }
+            if tipo == b"VP8 ":
+                largura, altura = struct.unpack("<HH", dados[26:30])
+                return {
+                    "formato": "WEBP",
+                    "largura": largura & 0x3FFF,
+                    "altura": altura & 0x3FFF,
+                }
+            return {"formato": "WEBP"}
+        if dados[:2] == b"BM":
+            largura, altura = struct.unpack("<ii", dados[18:26])
+            return {"formato": "BMP", "largura": abs(largura), "altura": abs(altura)}
+        if dados[:6] in (b"GIF87a", b"GIF89a"):
+            largura, altura = struct.unpack("<HH", dados[6:10])
+            return {"formato": "GIF", "largura": largura, "altura": altura}
+        if dados[:4] in (b"II*\x00", b"MM\x00*"):
+            # TIFF guarda as dimensões em IFD, longe do cabeçalho; o formato já ajuda.
+            return {"formato": "TIFF"}
         if dados[:8] == b"\x89PNG\r\n\x1a\n":
             largura, altura = struct.unpack(">II", dados[16:24])
             return {"formato": "PNG", "largura": largura, "altura": altura}

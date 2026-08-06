@@ -59,27 +59,55 @@ def _payload(kwargs: dict[str, Any]) -> dict[str, Any]:
     return body
 
 
+# `ngrok-skip-browser-warning` evita a interstitial HTML do túnel gratuito, que chegaria
+# aqui como JSON inválido. Sem Authorization: o provedor é sem chave por definição, e um
+# header desses só poderia carregar a chave de OUTRO provedor para um endpoint de terceiro.
+_CABECALHOS = {
+    "Content-Type": "application/json",
+    "ngrok-skip-browser-warning": "1",
+}
+
+
 class _Completions:
     """A superfície `client.chat.completions` que o `OpenAIProvider` consome."""
 
     def __init__(self, base_url: str) -> None:
         self._url = base_url.rstrip("/") + CHAT_PATH
+        self._http: Any = None
+
+    def _cliente(self) -> Any:
+        """Cliente com pool, criado uma vez. Um `httpx.Client` novo por chamada refazia o
+        handshake TLS a cada hop: medido em 2026-08-06, 278 ms contra 130 ms reaproveitando
+        — 148 ms jogados fora por chamada, ~1,5 s num laço agêntico de 10 hops."""
+        if self._http is None:
+            import httpx
+
+            self._http = httpx.Client(
+                timeout=httpx.Timeout(_TIMEOUT_READ, connect=_TIMEOUT_CONNECT),
+                limits=httpx.Limits(max_keepalive_connections=10, keepalive_expiry=120.0),
+                headers=_CABECALHOS,
+            )
+        return self._http
 
     def create(self, **kwargs: Any) -> Any:
-        import httpx
-
         body = _payload(kwargs)
-        # `ngrok-skip-browser-warning` evita a interstitial HTML do túnel gratuito, que
-        # chegaria aqui como JSON inválido.
-        headers = {
-            "Content-Type": "application/json",
-            "ngrok-skip-browser-warning": "1",
-        }
-        timeout = httpx.Timeout(_TIMEOUT_READ, connect=_TIMEOUT_CONNECT)
+        http = self._cliente()
         if body.get("stream"):
-            return self._stream(body, headers, timeout)
-        with httpx.Client(timeout=timeout) as http:
-            resp = http.post(self._url, json=body, headers=headers)
+            # A requisição é ABERTA aqui, não dentro do gerador. Se ficasse lá, o
+            # `create()` devolveria um gerador sem ter tocado a rede — e o laço de
+            # param-fix-retry do OpenAIProvider, que envolve exatamente esta chamada,
+            # nunca veria erro nenhum: um 5xx do gateway só estouraria durante a
+            # iteração, longe do único ponto que sabe consertar e repetir.
+            resp = http.send(
+                http.build_request("POST", self._url, json=body), stream=True
+            )
+            if resp.status_code >= 400:
+                resp.read()
+                resp.close()
+                _raise_for_status(resp)
+            return self._chunks(resp)
+
+        resp = http.post(self._url, json=body)
         _raise_for_status(resp)
         data = resp.json()
         # Embrulho do gateway; um `chat.completion` cru também é aceito, caso ele mude.
@@ -89,31 +117,29 @@ class _Completions:
 
         return ChatCompletion.construct(**data)
 
-    def _stream(self, body: dict[str, Any], headers: dict[str, str], timeout: Any) -> Iterator[Any]:
-        import httpx
-
+    def _chunks(self, resp: Any) -> Iterator[Any]:
         from openai.types.chat import ChatCompletionChunk
 
-        with httpx.Client(timeout=timeout) as http:
-            with http.stream("POST", self._url, json=body, headers=headers) as resp:
-                if resp.status_code >= 400:
-                    resp.read()
-                    _raise_for_status(resp)
-                for line in resp.iter_lines():
-                    if not line or not line.startswith("data:"):
-                        continue
-                    payload = line[5:].strip()
-                    if not payload or payload == "[DONE]":
-                        continue
-                    try:
-                        obj = json.loads(payload)
-                    except json.JSONDecodeError:
-                        continue
-                    if isinstance(obj, dict) and isinstance(obj.get("data"), dict):
-                        obj = obj["data"]
-                    if not isinstance(obj, dict) or "choices" not in obj:
-                        continue
-                    yield ChatCompletionChunk.construct(**obj)
+        try:
+            for line in resp.iter_lines():
+                if not line or not line.startswith("data:"):
+                    continue
+                payload = line[5:].strip()
+                if not payload or payload == "[DONE]":
+                    continue
+                try:
+                    obj = json.loads(payload)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict) and isinstance(obj.get("data"), dict):
+                    obj = obj["data"]
+                if not isinstance(obj, dict) or "choices" not in obj:
+                    continue
+                yield ChatCompletionChunk.construct(**obj)
+        finally:
+            # Fecha mesmo se quem consome abandonar o gerador no meio (Parar no meio de uma
+            # resposta é o caso comum) — senão a conexão fica pendurada no pool.
+            resp.close()
 
 
 def _raise_for_status(resp: Any) -> None:

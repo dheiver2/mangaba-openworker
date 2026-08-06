@@ -56,11 +56,10 @@ def build_user_content(
             if _is_data_image(url) and len(url) <= MAX_IMAGE_CHARS:
                 parts.append({"type": "image_url", "image_url": {"url": url}})
                 added += 1
-                # Carrega o motor de OCR numa thread AGORA. Ele só é usado depois, quando o
-                # modelo ativo não tem visão, mas o primeiro import do onnxruntime custa
-                # ~19 s — e o consumo acontece dentro de `_outbound_messages`, no laço de
-                # eventos do servidor. Pagar ali travaria o streaming de TODAS as sessões;
-                # aqui o custo cabe no intervalo entre anexar e mandar a mensagem.
+                # Carrega o motor de OCR numa thread AGORA, para o custo dele caber no
+                # intervalo entre anexar e mandar a mensagem. Subir o motor com o disco
+                # quente custa ~0,4 s; a primeira vez, com os modelos ainda frios, custou
+                # ~19 s numa medição. É a inferência que pesa de verdade (ver ocr.py).
                 from . import ocr
 
                 ocr.aquecer()
@@ -71,6 +70,12 @@ def build_user_content(
                 parts.append(
                     {"type": "file", "file": {"filename": name, "file_data": url}}
                 )
+                # Mesmo motivo do ramo de imagem: um PDF escaneado passa por OCR na hora de
+                # enviar, e o motor precisa estar de pé antes disso. Antes só a imagem aquecia
+                # — o caminho barato protegido e o caro descoberto.
+                from . import ocr
+
+                ocr.aquecer()
                 added += 1
         elif kind == "text":
             body = str(a.get("text") or "")[:MAX_TEXT_CHARS]

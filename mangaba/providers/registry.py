@@ -70,6 +70,13 @@ class ProviderDescriptor:
     )
     # One-line note under the provider title (e.g. "Connects through X's OpenAI-compatible API").
     blurb: str = ""
+    # Provedores SEM chave não têm o que checar numa chave — mas "sem chave" não quer dizer
+    # "sempre pronto". O `local` só serve depois de baixar um modelo; o gateway Mangaba serve
+    # no instante em que o app abre. Antes de isso ser explícito, o manager assumia que
+    # keyless == local e media a prontidão do gateway pelos modelos LOCAIS no disco: o card
+    # mentia nos dois sentidos (✗ num provedor que funciona sem setup, ✓ pelo motivo errado).
+    # Ausente = pronto, que é o normal para quem não precisa de nada.
+    ready: Optional[Callable[[], bool]] = field(default=None, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -117,6 +124,13 @@ def _build_mangaba(profile: dict[str, Any], secrets: Any) -> ProviderClient:
     # Sem chave por definição: o gateway é compartilhado. O endpoint continua editável
     # para quem aponta o app para um gateway próprio (ou para o túnel de testes).
     return MangabaGatewayProvider(base_url=((profile or {}).get("base_url") or "").strip())
+
+
+def _local_pronto() -> bool:
+    """O motor local só responde depois que existe um modelo no disco."""
+    from .local_engine import downloaded_tags
+
+    return bool(downloaded_tags())
 
 
 def _build_local(profile: dict[str, Any], secrets: Any) -> ProviderClient:
@@ -200,6 +214,7 @@ DESCRIPTORS: list[ProviderDescriptor] = [
         fields=[],
         build=_build_local,
         recommended_model="qwen3-4b",
+        ready=_local_pronto,
     ),
     ProviderDescriptor(
         name="openai",

@@ -1571,11 +1571,12 @@ class SessionManager:
                     d.env_key and os.environ.get(d.env_key)
                 )
             else:
-                # Sem chave, "configurado" = pronto de verdade: há modelo local no disco.
-                # É o que faz o card mostrar ✓ sem exigir um Detectar ritual.
-                from ..providers import local_engine
-
-                configured = bool(local_engine.downloaded_tags())
+                # Sem chave, quem decide é o próprio descritor (`ready`): o motor local exige
+                # um modelo no disco, o gateway Mangaba está pronto assim que o app abre.
+                # Este ramo já assumiu que "sem chave" == "é o local" e media a prontidão do
+                # gateway pelos modelos LOCAIS baixados — o card dizia ✗ num provedor que
+                # funciona sem setup nenhum, e ✓ pelo motivo errado.
+                configured = d.ready() if d.ready else True
             values = {
                 f.key: profile.get(f.key)
                 for f in d.fields
@@ -1849,7 +1850,7 @@ class SessionManager:
         if d is None:
             return False
         if not d.needs_key:
-            return True  # keyless
+            return d.ready() if d.ready else True  # keyless: quem sabe é o descritor
         profile = self.secrets.get(f"provider:{name}") or {}
         return bool(profile.get("api_key")) or bool(
             d.env_key and os.environ.get(d.env_key)
@@ -1914,6 +1915,16 @@ class SessionManager:
                 # basta remover os órfãos em vez de traduzir um a um.
                 self._prefs[chave] = limpa
                 mudou = True
+        # A chave-cliente do provedor aposentado fica órfã no cofre: um segredo válido de um
+        # serviço que o app não sabe mais usar, guardado para sempre sem nada que o exiba ou o
+        # apague. A migração que troca o modelo tem de levar o segredo junto.
+        try:
+            if self.secrets and self.secrets.get("provider:mangaba-nordeste"):
+                self.secrets.delete("provider:mangaba-nordeste")
+                mudou = True
+        except Exception:
+            # Cofre indisponível/somente leitura não pode impedir o app de abrir.
+            pass
         if mudou:
             self._save_prefs()
         return mudou

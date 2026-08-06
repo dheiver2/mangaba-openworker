@@ -30,6 +30,7 @@ class _Resp:
         self.status_code = status
         self._linhas = linhas or []
         self.text = json.dumps(payload) if payload is not None else ""
+        self.fechada = False
 
     def json(self) -> Any:
         return self._payload
@@ -40,6 +41,9 @@ class _Resp:
     def read(self) -> None:
         return None
 
+    def close(self) -> None:
+        self.fechada = True
+
     def __enter__(self):
         return self
 
@@ -48,25 +52,33 @@ class _Resp:
 
 
 class _HttpFalso:
-    """Cliente httpx de mentira que grava a chamada e devolve a resposta combinada."""
+    """Cliente httpx de mentira que grava a chamada e devolve a resposta combinada.
+
+    Espelha a forma real que o gateway usa: cabeçalhos fixados NO CLIENTE (pool reaproveitado)
+    e streaming aberto por `build_request` + `send(stream=True)`, não por um `with` dentro do
+    gerador — é isso que faz o erro de HTTP chegar ao laço de retry do OpenAIProvider."""
 
     ultima: dict[str, Any] = {}
+    criados: int = 0
 
-    def __init__(self, resp: _Resp):
+    def __init__(self, resp: _Resp, headers=None):
         self._resp = resp
+        self.headers = dict(headers or {})
+        _HttpFalso.criados += 1
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *a):
-        return False
-
-    def post(self, url, json=None, headers=None):
-        _HttpFalso.ultima = {"url": url, "body": json, "headers": headers}
+    def post(self, url, json=None):
+        _HttpFalso.ultima = {"url": url, "body": json, "headers": self.headers}
         return self._resp
 
-    def stream(self, metodo, url, json=None, headers=None):
-        _HttpFalso.ultima = {"url": url, "body": json, "headers": headers}
+    def build_request(self, metodo, url, json=None):
+        return {"metodo": metodo, "url": url, "body": json}
+
+    def send(self, req, stream=False):
+        _HttpFalso.ultima = {
+            "url": req["url"],
+            "body": req["body"],
+            "headers": self.headers,
+        }
         return self._resp
 
 
@@ -80,7 +92,10 @@ def _fixar(monkeypatch):
         # ordem — o teste troca só o cliente que o gateway constrói.
         import openai._base_client  # noqa: F401
 
-        monkeypatch.setattr(httpx, "Client", lambda **k: _HttpFalso(resp))
+        _HttpFalso.criados = 0
+        monkeypatch.setattr(
+            httpx, "Client", lambda **k: _HttpFalso(resp, headers=k.get("headers"))
+        )
 
     _HttpFalso.ultima = {}
     return aplicar
@@ -351,3 +366,81 @@ def test_todo_elo_do_gateway_faz_tool_calling():
 
     do_gateway = {k: v for k, v in MATRIX.items() if k.startswith("mangaba:")}
     assert all(v.caps.tools for v in do_gateway.values())
+
+
+# -- achados da auditoria (2026-08-06) ------------------------------------------------------
+
+
+def test_cliente_http_e_reaproveitado_entre_chamadas(_fixar):
+    """Um `httpx.Client` novo por chamada refazia o handshake TLS a cada hop do laço
+    agêntico: 278 ms contra 130 ms reaproveitando, medido contra o gateway real. São ~1,5 s
+    desperdiçados num turno de 10 hops — e o provedor OpenAI já mantinha pool justamente por
+    isso."""
+    _fixar(_Resp({"data": _completion(content="oi")}))
+    p = gw.MangabaGatewayProvider()
+    for _ in range(3):
+        p.complete(model="auto", messages=[{"role": "user", "content": "oi"}])
+    assert _HttpFalso.criados == 1, "o cliente deve ser criado uma vez, não uma por chamada"
+
+
+def test_erro_de_http_no_streaming_chega_a_quem_pode_repetir(_fixar):
+    """A requisição do streaming é aberta dentro de `create()`, não dentro do gerador.
+
+    Se ficasse no gerador, `create()` voltaria sem ter tocado a rede, e o laço de
+    param-fix-retry do OpenAIProvider — que envolve exatamente esta chamada — nunca veria
+    erro: um 5xx do gateway só estouraria durante a iteração, longe do único ponto que sabe
+    consertar e repetir."""
+    _fixar(_Resp({"error": "boom"}, status=500))
+    with pytest.raises(RuntimeError, match="500"):
+        gw.MangabaGatewayProvider().complete(
+            model="auto", messages=[{"role": "user", "content": "oi"}], stream=True
+        )
+
+
+def test_streaming_abandonado_no_meio_fecha_a_conexao(_fixar):
+    """Parar no meio de uma resposta é o caso comum. Sem o `finally`, a conexão ficaria
+    pendurada no pool a cada Stop."""
+    resp = _Resp(
+        None,
+        linhas=_sse({"choices": [{"index": 0, "delta": {"content": "1"}}]}),
+    )
+    _fixar(resp)
+    fluxo = gw.MangabaGatewayProvider().stream(
+        model="auto", messages=[{"role": "user", "content": "oi"}]
+    )
+    next(fluxo)  # consome só o primeiro pedaço
+    fluxo.close()
+    assert resp.fechada, "a resposta precisa ser fechada mesmo com o gerador abandonado"
+
+
+def test_provedor_sem_chave_nao_e_medido_pelo_motor_local():
+    """O card do gateway media prontidão pelos modelos LOCAIS baixados, porque o ramo
+    `needs_key=False` assumia que só o `local` era sem chave. O card mentia nos dois
+    sentidos: ✗ num provedor que funciona sem setup, ✓ pelo motivo errado."""
+    from mangaba.providers.registry import get_descriptor
+
+    assert get_descriptor("mangaba").ready is None, "o gateway está pronto ao abrir o app"
+    assert get_descriptor("local").ready is not None, "o local depende de modelo no disco"
+
+
+def test_migracao_apaga_a_chave_orfa_do_provedor_aposentado(tmp_path):
+    """Um segredo válido de um serviço que o app não sabe mais usar, guardado para sempre
+    sem nada que o exiba ou o apague."""
+    from mangaba.server.manager import SessionManager
+
+    class _Cofre:
+        def __init__(self):
+            self.dados = {"provider:mangaba-nordeste": {"api_key": "chave-do-admin"}}
+
+        def get(self, p):
+            return self.dados.get(p)
+
+        def delete(self, p):
+            return self.dados.pop(p, None) is not None
+
+    m = SessionManager(workspace=str(tmp_path / "ws"))
+    cofre = _Cofre()
+    m.secrets = cofre
+    m._prefs = {}
+    assert m._migrar_provedor_nordeste() is True
+    assert "provider:mangaba-nordeste" not in cofre.dados

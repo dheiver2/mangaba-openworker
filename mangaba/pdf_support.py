@@ -29,9 +29,12 @@ logger = logging.getLogger(__name__)
 MAX_EXTRACT_CHARS = 200_000  # match attachments.MAX_TEXT_CHARS
 RASTER_SCALE = 2.0  # ~144 dpi; readable text without giant payloads
 RASTER_MAX_PAGES = 100  # hard ceiling; the user's page threshold gates at attach time
-# OCR é CPU-bound (~0,3 s por página): um escaneado de 100 páginas travaria o turno e
-# encheria a janela sozinho. Teto próprio, bem abaixo do da rasterização.
-OCR_MAX_PAGES = 20
+# OCR é CPU-bound: uma página A4 cheia custou ~4,4 s numa medição de 2026-08-06 (não os
+# ~0,3 s da imagenzinha de teste que eu tinha usado para calibrar). Com 20 páginas isso dá
+# ~90 s — inaceitável mesmo agora que a adaptação roda fora do laço de eventos, porque a
+# pessoa fica esperando. Teto próprio, bem abaixo do da rasterização; o que passar disso é
+# dito na nota, nunca cortado em silêncio.
+OCR_MAX_PAGES = 8
 
 FALLBACK_MODES = ("text", "images")
 
@@ -200,6 +203,19 @@ def rasterize(file_data: str, max_pages: int = RASTER_MAX_PAGES) -> Optional[lis
     return _cached((_digest(file_data), f"images:{max_pages}"), compute)
 
 
+def _aviso_de_corte(file_data: str) -> str:
+    """Diz quantas páginas ficaram de fora. Um teto silencioso é pior do que teto nenhum: o
+    agente leria 8 de 40 páginas e responderia como se tivesse lido o documento inteiro."""
+    info = inspect(file_data)
+    total = info.get("pages") if info.get("ok") else None
+    if isinstance(total, int) and total > OCR_MAX_PAGES:
+        return (
+            f"ATENÇÃO: só as {OCR_MAX_PAGES} primeiras de {total} páginas foram lidas — "
+            f"as demais NÃO estão neste texto"
+        )
+    return f"documento completo ({total} página(s))" if total else "documento completo"
+
+
 def _ocr_das_paginas(file_data: str) -> Optional[str]:
     """Texto de um PDF SEM texto embutido (escaneado): rasteriza e passa OCR local.
 
@@ -278,7 +294,7 @@ def adapt_content(content: list[dict[str, Any]], caps: Any) -> list[dict[str, An
                     "type": "text",
                     "text": (
                         f"[Attached PDF: {name} — sem texto embutido (escaneado); "
-                        f"lido por OCR local, até {OCR_MAX_PAGES} páginas]\n{ocrizado}"
+                        f"lido por OCR local. {_aviso_de_corte(file_data)}]\n{ocrizado}"
                     ),
                 }
             )
