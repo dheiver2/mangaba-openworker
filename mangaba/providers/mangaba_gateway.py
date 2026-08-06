@@ -41,6 +41,11 @@ from .openai_provider import OpenAIProvider
 DEFAULT_BASE_URL = "https://mangaba-chat-gw.ngrok.app"
 CHAT_PATH = "/api/chat"
 MODELS_PATH = "/api/models"
+#: Catálogo completo em formato OpenAI — mais rico que a cadeia: numa sondagem de
+#: 2026-08-06 anunciava 21 modelos contra 14 do `/api/models`, incluindo um tier
+#: Cloudflare inteiro que responde quando pedido explicitamente mas não entra no `auto`.
+V1_MODELS_PATH = "/v1/models"
+HEALTH_PATH = "/health"
 
 #: Pseudo-modelo que entrega a escolha (e o failover) ao gateway.
 AUTO_MODEL = "auto"
@@ -211,16 +216,30 @@ class MangabaGatewayProvider(OpenAIProvider):
 
 def modelos_do_gateway(base_url: Optional[str] = None) -> list[str]:
     """Modelos anunciados pelo gateway, com `auto` na frente. Nunca levanta: alimenta um
-    datalist de sugestões, e ficar sem sugestão é melhor do que quebrar a tela."""
+    datalist de sugestões, e ficar sem sugestão é melhor do que quebrar a tela.
+
+    Preferimos o `/v1/models` (catálogo COMPLETO, formato OpenAI — 21 modelos na sondagem
+    de 2026-08-06, incluindo o tier Cloudflare que não entra na cadeia do `auto`) e caímos
+    para a cadeia do `/api/models` em gateways antigos que ainda não têm a rota nova."""
     import httpx
 
     base = (base_url or "").strip().rstrip("/") or DEFAULT_BASE_URL
+    cabecalhos = {"ngrok-skip-browser-warning": "1"}
     try:
-        resp = httpx.get(
-            base + MODELS_PATH,
-            headers={"ngrok-skip-browser-warning": "1"},
-            timeout=10.0,
-        )
+        resp = httpx.get(base + V1_MODELS_PATH, headers=cabecalhos, timeout=10.0)
+        if resp.status_code < 300:
+            dados = resp.json() or {}
+            ids = [
+                m.get("id")
+                for m in (dados.get("data") or [])
+                if isinstance(m, dict) and isinstance(m.get("id"), str)
+            ]
+            if ids:
+                return list(dict.fromkeys([AUTO_MODEL, *ids]))
+    except Exception:
+        pass
+    try:
+        resp = httpx.get(base + MODELS_PATH, headers=cabecalhos, timeout=10.0)
         if resp.status_code >= 300:
             return [AUTO_MODEL]
         dados = resp.json() or {}
@@ -228,3 +247,29 @@ def modelos_do_gateway(base_url: Optional[str] = None) -> list[str]:
     except Exception:
         return [AUTO_MODEL]
     return list(dict.fromkeys([AUTO_MODEL, *cadeia]))
+
+
+def saude_do_gateway(base_url: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """O `/health` do gateway: estado por provedor upstream + circuit breakers.
+
+    É a resposta para um mistério que custou uma tarde de sondagem: pedir
+    `google/gemini-2.5-flash` devolvia `gpt-oss-120b` em silêncio, e conteúdo multimodal
+    dava 400 — porque o Google estava FORA DO AR no gateway (`ok: false`, `lastOkAt: 0`)
+    e o roteador trocava de provedor sem avisar. Com o /health dá para DIZER isso ao
+    usuário em vez de deixá-lo descobrir pelo sintoma. None quando a rota não existe
+    (gateway antigo) ou não responde — nunca levanta."""
+    import httpx
+
+    base = (base_url or "").strip().rstrip("/") or DEFAULT_BASE_URL
+    try:
+        resp = httpx.get(
+            base + HEALTH_PATH,
+            headers={"ngrok-skip-browser-warning": "1"},
+            timeout=10.0,
+        )
+        if resp.status_code >= 300:
+            return None
+        dados = resp.json()
+        return dados if isinstance(dados, dict) else None
+    except Exception:
+        return None

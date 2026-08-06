@@ -627,8 +627,49 @@ def _verificar_gateway_mangaba(base_url: Optional[str], timeout: float) -> dict[
     if r.status_code >= 300:
         return {"ok": False, "error": f"O gateway Mangaba respondeu HTTP {r.status_code}."}
 
-    aviso = _sonda_tool_calling_gateway(base + CHAT_PATH, cabecalhos)
-    return {"ok": True, "aviso": aviso} if aviso else {"ok": True}
+    avisos: list[str] = []
+    aviso_tools = _sonda_tool_calling_gateway(base + CHAT_PATH, cabecalhos)
+    if aviso_tools:
+        avisos.append(aviso_tools)
+    aviso_saude = _aviso_de_saude_do_gateway(base_url)
+    if aviso_saude:
+        avisos.append(aviso_saude)
+    if avisos:
+        return {"ok": True, "aviso": " ".join(avisos)}
+    return {"ok": True}
+
+
+def _aviso_de_saude_do_gateway(base_url: Optional[str]) -> Optional[str]:
+    """Traduz o `/health` do gateway em um aviso legível — ou None quando está tudo bem.
+
+    A cadeia troca de provedor EM SILÊNCIO quando um upstream cai: pedir um modelo do
+    Google com o Google fora do ar devolve outro modelo, sem erro nenhum. O usuário só
+    percebe pelo sintoma (resposta com cara errada, multimodal falhando). O 'Testar' é o
+    momento certo de contar — em texto, com o nome de quem caiu."""
+    from .mangaba_gateway import saude_do_gateway
+
+    saude = saude_do_gateway(base_url)
+    if not saude:
+        return None  # gateway antigo sem /health — sem conclusão, sem susto
+    fora = [
+        str(p.get("id"))
+        for p in (saude.get("providers") or [])
+        if isinstance(p, dict) and p.get("configured") and not p.get("ok")
+    ]
+    abertos = [
+        str(c.get("id"))
+        for c in (saude.get("circuit") or [])
+        if isinstance(c, dict) and c.get("status") == "open"
+    ]
+    partes: list[str] = []
+    if fora:
+        partes.append(
+            f"Provedores upstream fora do ar agora: {', '.join(sorted(fora))} — pedir um "
+            "modelo deles devolve OUTRO modelo em silêncio."
+        )
+    if abertos:
+        partes.append(f"Modelos temporariamente suspensos: {', '.join(sorted(abertos))}.")
+    return " ".join(partes) or None
 
 
 def _sonda_tool_calling_gateway(url: str, cabecalhos: dict[str, str]) -> Optional[str]:

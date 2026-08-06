@@ -512,3 +512,108 @@ def test_500_nao_dispara_a_retentativa_de_roteamento(monkeypatch):
     with pytest.raises(RuntimeError):
         p.complete(model="auto", messages=[{"role": "user", "content": "oi"}])
     assert chamadas["n"] == 1
+
+
+# -- aproveitando a superfície nova do gateway (sondada em 2026-08-06) ----------------------
+
+
+def test_catalogo_prefere_o_v1_models_completo(monkeypatch):
+    """O `/v1/models` anuncia o catálogo COMPLETO (21 modelos na sondagem, incluindo o tier
+    Cloudflare que responde quando pedido mas não entra na cadeia do `auto`); o
+    `/api/models` só mostra a cadeia (14). Sugerir a lista menor esconde modelos que
+    funcionam."""
+    import httpx
+
+    def _get(url, **k):
+        if url.endswith("/v1/models"):
+            return _Resp(
+                {
+                    "object": "list",
+                    "data": [
+                        {"id": "groq/openai/gpt-oss-120b"},
+                        {"id": "cloudflare/@cf/openai/gpt-oss-20b"},
+                    ],
+                }
+            )
+        raise AssertionError(f"não deveria cair no fallback: {url}")
+
+    monkeypatch.setattr(httpx, "get", _get)
+    assert gw.modelos_do_gateway() == [
+        "auto",
+        "groq/openai/gpt-oss-120b",
+        "cloudflare/@cf/openai/gpt-oss-20b",
+    ]
+
+
+def test_catalogo_cai_para_a_cadeia_em_gateway_antigo(monkeypatch):
+    """Gateways sem a rota nova continuam funcionando — a rota `/v1/models` nem existia
+    quando este provedor foi integrado, e pode sumir de novo."""
+    import httpx
+
+    def _get(url, **k):
+        if url.endswith("/v1/models"):
+            return _Resp({"error": "Rota nao encontrada"}, status=404)
+        return _Resp({"chain": ["groq/x", "nvidia/y"]})
+
+    monkeypatch.setattr(httpx, "get", _get)
+    assert gw.modelos_do_gateway() == ["auto", "groq/x", "nvidia/y"]
+
+
+def test_testar_avisa_quando_um_upstream_esta_fora(monkeypatch):
+    """A cadeia troca de provedor EM SILÊNCIO quando um upstream cai: pedir um modelo do
+    Google com o Google fora devolve outro modelo, sem erro. Foi exatamente assim que o
+    'multimodal devolve 400' ficou sem explicação por uma tarde inteira — o /health tinha
+    a resposta (`google: ok=false`) e ninguém olhava."""
+    from mangaba.providers import registry
+
+    monkeypatch.setattr(
+        registry,
+        "_sonda_tool_calling_gateway",
+        lambda *a, **k: None,
+    )
+    import mangaba.providers.mangaba_gateway as g
+
+    monkeypatch.setattr(
+        g,
+        "saude_do_gateway",
+        lambda base_url=None: {
+            "status": "degraded",
+            "providers": [
+                {"id": "groq", "configured": True, "ok": True},
+                {"id": "google", "configured": True, "ok": False},
+            ],
+            "circuit": [{"id": "nvidia/minimaxai/minimax-m3", "status": "open"}],
+        },
+    )
+    import httpx
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _Resp({"chain": ["groq/x"]}))
+    r = registry.verify_provider_key("mangaba")
+    assert r["ok"] is True
+    assert "google" in r["aviso"]
+    assert "minimax" in r["aviso"]
+
+
+def test_gateway_saudavel_nao_gera_aviso(monkeypatch):
+    import mangaba.providers.mangaba_gateway as g
+    from mangaba.providers.registry import _aviso_de_saude_do_gateway
+
+    monkeypatch.setattr(
+        g,
+        "saude_do_gateway",
+        lambda base_url=None: {
+            "status": "ok",
+            "providers": [{"id": "groq", "configured": True, "ok": True}],
+            "circuit": [],
+        },
+    )
+    assert _aviso_de_saude_do_gateway(None) is None
+
+
+def test_gateway_sem_health_nao_assusta(monkeypatch):
+    """Rota /health ausente (gateway antigo) = sem conclusão, nunca um aviso falso."""
+    import mangaba.providers.mangaba_gateway as g
+    from mangaba.providers.registry import _aviso_de_saude_do_gateway
+
+    monkeypatch.setattr(g, "saude_do_gateway", lambda base_url=None: None)
+    assert _aviso_de_saude_do_gateway(None) is None
