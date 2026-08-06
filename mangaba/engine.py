@@ -1404,17 +1404,29 @@ class TurnEngine:
         ):
             caps = self.provider.capabilities(self.model)
             if not getattr(caps, "vision", False):
-                placeholder = {
-                    "type": "text",
-                    "text": "[image attachment — not viewable by this model]",
-                }
+                # O marcador antigo ("not viewable by this model") era honesto e inútil: o
+                # modelo sabia que havia uma imagem e não tinha o que fazer com ela. O OCR
+                # local (mangaba/ocr.py) tira o texto aqui na máquina, que é o conteúdo de
+                # print de erro, nota fiscal, slide e documento escaneado — justamente o que
+                # aparece numa conversa de trabalho. Sem motor de OCR instalado, a nota
+                # explica como instalar; para descrever CENA continua sendo preciso um
+                # provedor com visão.
+                from . import ocr
+
+                def _sem_visao(p: dict) -> dict:
+                    url = (p.get("image_url") or {}).get("url") or ""
+                    return {
+                        "type": "text",
+                        "text": ocr.nota_para_modelo_sem_visao(url),
+                    }
+
                 out = [
                     (
                         {
                             **msg,
                             "content": [
                                 (
-                                    placeholder
+                                    _sem_visao(p)
                                     if isinstance(p, dict)
                                     and p.get("type") == "image_url"
                                     else p

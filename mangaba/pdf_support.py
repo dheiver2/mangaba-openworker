@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 MAX_EXTRACT_CHARS = 200_000  # match attachments.MAX_TEXT_CHARS
 RASTER_SCALE = 2.0  # ~144 dpi; readable text without giant payloads
 RASTER_MAX_PAGES = 100  # hard ceiling; the user's page threshold gates at attach time
+# OCR é CPU-bound (~0,3 s por página): um escaneado de 100 páginas travaria o turno e
+# encheria a janela sozinho. Teto próprio, bem abaixo do da rasterização.
+OCR_MAX_PAGES = 20
 
 FALLBACK_MODES = ("text", "images")
 
@@ -197,12 +200,39 @@ def rasterize(file_data: str, max_pages: int = RASTER_MAX_PAGES) -> Optional[lis
     return _cached((_digest(file_data), f"images:{max_pages}"), compute)
 
 
+def _ocr_das_paginas(file_data: str) -> Optional[str]:
+    """Texto de um PDF SEM texto embutido (escaneado): rasteriza e passa OCR local.
+
+    Este é o caso que antes acabava em "nenhum texto extraível — use um modelo com visão",
+    o que é um beco sem saída para quem usa os provedores sem chave (Mangaba Local e o
+    gateway), ambos de texto puro. Poucas páginas de propósito: OCR é CPU-bound e um
+    escaneado de 100 páginas encheria a janela e o relógio.
+    """
+    from . import ocr
+
+    if not ocr.disponivel():
+        return None
+    paginas = rasterize(file_data, max_pages=OCR_MAX_PAGES)
+    if not paginas:
+        return None
+    pedacos = []
+    for i, url in enumerate(paginas, 1):
+        texto = ocr.ler_texto(url)
+        if texto:
+            pedacos.append(f"--- página {i} ---\n{texto}")
+    return "\n\n".join(pedacos) or None
+
+
 def adapt_content(content: list[dict[str, Any]], caps: Any) -> list[dict[str, Any]]:
     """Replace `file` parts for a model without native PDF support.
 
     vision + "images" mode → page-image parts; otherwise extracted text. Both paths end
     in a VISIBLE text note when nothing usable comes out — a PDF must never silently
     vanish from the turn.
+
+    Parts `image_url` NÃO são tratadas aqui — quem faz isso é o engine, que já trocava a
+    imagem por um marcador quando o modelo não tem visão (ver `_outbound_messages`). O OCR
+    entrou lá, no lugar do marcador, para haver um só caminho de imagem.
     """
     out: list[dict[str, Any]] = []
     for part in content:
@@ -235,6 +265,20 @@ def adapt_content(content: list[dict[str, Any]], caps: Any) -> list[dict[str, An
                     "text": (
                         f"[Attached PDF: {name} — text extracted locally; "
                         f"this model has no native PDF support]\n{text}"
+                    ),
+                }
+            )
+            continue
+
+        # Sem texto embutido = escaneado. Última tentativa local antes de desistir.
+        ocrizado = _ocr_das_paginas(file_data)
+        if ocrizado:
+            out.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"[Attached PDF: {name} — sem texto embutido (escaneado); "
+                        f"lido por OCR local, até {OCR_MAX_PAGES} páginas]\n{ocrizado}"
                     ),
                 }
             )

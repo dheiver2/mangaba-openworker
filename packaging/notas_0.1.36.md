@@ -53,6 +53,36 @@ Pela mesma razão a janela de contexto declarada para o `auto` é a do **menor e
 (64k), e não a do primeiro da cadeia (o Gemini tem 1M): estourar contexto no meio de uma
 tarefa é pior do que compactar um pouco mais cedo.
 
+## OCR local: lendo imagem e PDF escaneado sem modelo de visão
+
+Como os dois provedores gratuitos são de texto puro, o app ganhou uma saída que não depende
+de chave nenhuma: **OCR rodando na sua máquina**.
+
+- **Imagem anexada** — antes o modelo recebia só `[image attachment — not viewable by this
+  model]`: honesto e inútil. Agora o texto é extraído localmente e entra na conversa. Print
+  de erro, nota fiscal, slide, etiqueta, contrato fotografado — tudo passa a ser legível.
+- **PDF escaneado** — antes terminava em "sem texto extraível, use um modelo com visão", um
+  beco sem saída para quem não tem chave. Agora as páginas são rasterizadas e passam por OCR
+  (até 20 páginas; OCR é pesado de CPU).
+- **Nova ferramenta `ler_imagem`** — o agente lê, por conta própria, uma imagem que já está
+  no disco: um print que ele mesmo tirou, uma pasta de comprovantes a conferir. Read-only e
+  presa à área de trabalho, igual ao `read_file`.
+
+**O que o OCR não faz:** descrever cena. Ele lê *texto*. "Quantas pessoas aparecem na foto?"
+ou "essa cor combina?" continuam exigindo um provedor com visão — e quando não há texto, a
+resposta diz isso em vez de fingir que a imagem estava vazia.
+
+**Instalação:** é um extra, não vem por padrão —
+
+```bash
+pip install 'mangaba[ocr]'
+```
+
+O motor é o RapidOCR sobre onnxruntime: só pip, sem binário de sistema (ao contrário do
+Tesseract), roda offline. Ficou de fora do pacote base porque onnxruntime + opencv passam de
+200 MB, e quem nunca anexa imagem não deve carregar esse peso. Sem o extra instalado, nada
+quebra: a mensagem explica como instalar ou sugere um provedor com visão.
+
 ## Notas técnicas
 
 - O gateway **não** é OpenAI-compatível no transporte: a rota é `POST /api/chat` e a resposta

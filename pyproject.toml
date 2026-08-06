@@ -43,6 +43,13 @@ dev = ["pytest>=8", "pytest-asyncio", "httpx"]
 messaging = ["python-telegram-bot>=21", "slack-bolt>=1.18", "aiohttp>=3.9"]
 # Interactive Cowork browser automation.
 browser = ["playwright>=1.44"]
+# OCR local (mangaba/ocr.py): le texto de imagem e de PDF escaneado SEM modelo de visao --
+# a unica saida para quem usa os provedores sem chave (Mangaba Local e o gateway Mangaba),
+# ambos de texto puro. Extra, e nao dependencia base, porque onnxruntime + opencv passam de
+# 200 MB: quem nunca anexa imagem nao deve carregar esse peso no instalador.
+# RapidOCR foi escolhido por empacotamento -- so pip, sem binario de sistema como o
+# Tesseract, o que mantem em pe o build do Windows feito por cross-compile no Mac.
+ocr = ["rapidocr-onnxruntime>=1.4"]
 
 [project.scripts]
 mangaba = "mangaba.cli:main"

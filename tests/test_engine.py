@@ -437,5 +437,11 @@ def test_outbound_replaces_images_for_non_vision_models(tmp_path):
     )
     parts = engine._outbound_messages()[-1]["content"]
     assert all(p["type"] != "image_url" for p in parts)
-    assert "not viewable" in parts[-1]["text"]
+    # A nota diz que o modelo ativo nao enxerga E o que fazer a respeito. O marcador antigo
+    # ("not viewable by this model") era honesto e inutil: o modelo sabia que havia uma
+    # imagem e nao tinha o que fazer com ela. Hoje o OCR local (mangaba/ocr.py) tenta tirar
+    # o texto aqui na maquina antes de desistir.
+    nota = parts[-1]["text"]
+    assert "não enxerga imagens" in nota
+    assert "OCR" in nota or "visão" in nota
     assert engine.messages[-1]["content"][1]["type"] == "image_url"  # history untouched

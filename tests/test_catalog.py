@@ -24,6 +24,7 @@ CODE_TOOLS = {
     "apply_patch",
     "replace_in_file",
     "read_file",  # numbered/windowed (single-root)
+    "ler_imagem",  # OCR local: os provedores sem chave sao de texto puro (mangaba/ocr.py)
     "git_status",
     "git_diff",
     "git_log",
@@ -36,6 +37,7 @@ CODE_TOOLS = {
 COWORK_TOOLS = {
     "list_files",
     "read_file",  # aisuite (multi-root)
+    "ler_imagem",  # OCR local: os provedores sem chave sao de texto puro (mangaba/ocr.py)
     "read_file_lines",
     "write_file",
     "apply_unified_diff",

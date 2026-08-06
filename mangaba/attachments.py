@@ -56,6 +56,14 @@ def build_user_content(
             if _is_data_image(url) and len(url) <= MAX_IMAGE_CHARS:
                 parts.append({"type": "image_url", "image_url": {"url": url}})
                 added += 1
+                # Carrega o motor de OCR numa thread AGORA. Ele só é usado depois, quando o
+                # modelo ativo não tem visão, mas o primeiro import do onnxruntime custa
+                # ~19 s — e o consumo acontece dentro de `_outbound_messages`, no laço de
+                # eventos do servidor. Pagar ali travaria o streaming de TODAS as sessões;
+                # aqui o custo cabe no intervalo entre anexar e mandar a mensagem.
+                from . import ocr
+
+                ocr.aquecer()
         elif kind == "pdf":
             url = a.get("data_url") or ""
             if _is_data_pdf(url) and len(url) <= MAX_PDF_CHARS:

@@ -22,6 +22,7 @@ import aisuite as ai
 from .agents.base import AgentContext
 from .risk import RiskClass
 from .tools.files import file_tools
+from .tools.imagem import image_tools
 from .tools.git import git_tools
 from .tools.search import search_tools
 from .tools.shell import shell_tools
@@ -63,7 +64,7 @@ def _code_files(context: AgentContext) -> list:
         for t in ai.toolkits.files(root=ws, allow_write=True)
         if getattr(t, "__name__", "") not in replaced
     ]
-    return [*files, *file_tools(ws)]
+    return [*files, *file_tools(ws), *image_tools(ws)]
 
 
 def _files(context: AgentContext) -> list:
@@ -74,11 +75,14 @@ def _files(context: AgentContext) -> list:
     file_kwargs = (
         {"roots": context.roots} if context.roots else {"root": ws, "allow_write": True}
     )
+    # `ler_imagem` entra junto de `files` (e não numa capability própria) porque é leitura
+    # de arquivo como qualquer outra: sem ela, um agente nos provedores sem chave — ambos de
+    # texto puro — enxerga o nome do print na pasta e não tem como olhar dentro.
     return [
         t
         for t in ai.toolkits.files(**file_kwargs)
         if getattr(t, "__name__", "") != "search_files"
-    ]
+    ] + image_tools(ws)
 
 
 def _git(context: AgentContext) -> list:
