@@ -83,6 +83,33 @@ def _obter_motor() -> Any:
         return _motor
 
 
+def empacotado() -> bool:
+    """Estamos rodando dentro do sidecar congelado (PyInstaller) do app de desktop?"""
+    import sys
+
+    return bool(getattr(sys, "frozen", False))
+
+
+def como_instalar() -> str:
+    """A saída que a pessoa tem, escrita para o lugar onde ela de fato está.
+
+    Isto não é firula de texto: o OCR é um EXTRA de pip, e no app de desktop o sidecar é um
+    bundle PyInstaller CONGELADO — não existe `pip` para instalar nada dentro dele. Mandar
+    `pip install 'mangaba[ocr]'` para quem instalou pelo DMG é uma instrução impossível, e
+    quem a segue conclui que o app está quebrado. Instalação por linha de comando só faz
+    sentido em instalação por código-fonte/CLI."""
+    if empacotado():
+        return (
+            "o OCR local não vem embutido neste instalador. Para ler texto de imagem, "
+            "use um provedor com visão (Claude, Gemini ou OpenAI) em Configurações ▸ "
+            "Modelos, ou rode o Mangaba a partir do código-fonte com o extra `ocr`."
+        )
+    return (
+        "o OCR local não está instalado. Rode `pip install 'mangaba[ocr]'` para ler texto "
+        "de imagens sem chave, ou escolha um provedor com visão (Claude, Gemini, OpenAI)."
+    )
+
+
 def aquecer() -> Optional[threading.Thread]:
     """Carrega o motor em segundo plano, sem bloquear quem chamou.
 
@@ -226,12 +253,7 @@ def nota_para_modelo_sem_visao(dado: Any, nome: str = "imagem") -> str:
             + info["texto"]
         )
     if info.get("ocr") == "indisponível":
-        return (
-            cabecalho
-            + "O modelo ativo não enxerga imagens e o OCR local não está instalado. "
-            + "Instale o extra `ocr` (pip install 'mangaba[ocr]') para ler texto de "
-            + "imagens sem chave, ou escolha um provedor com visão (Claude, Gemini, OpenAI).]"
-        )
+        return cabecalho + "O modelo ativo não enxerga imagens e " + como_instalar() + "]"
     return (
         cabecalho
         + "O modelo ativo não enxerga imagens e o OCR local não achou texto — é provável "

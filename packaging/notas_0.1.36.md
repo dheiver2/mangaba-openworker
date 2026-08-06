@@ -72,16 +72,23 @@ de chave nenhuma: **OCR rodando na sua máquina**.
 ou "essa cor combina?" continuam exigindo um provedor com visão — e quando não há texto, a
 resposta diz isso em vez de fingir que a imagem estava vazia.
 
-**Instalação:** é um extra, não vem por padrão —
+**Instalação — e quem consegue instalar.** O OCR é um extra, e **não vem embutido neste
+instalador**: onnxruntime + opencv passam de 200 MB, e quem nunca anexa imagem não deve
+carregar esse peso no download.
+
+Em instalação por código-fonte / CLI:
 
 ```bash
 pip install 'mangaba[ocr]'
 ```
 
+No **app de desktop** (DMG ou instalador Windows) esse comando não se aplica: o sidecar é um
+bundle congelado, sem `pip` dentro. O app sabe disso e escreve a mensagem certa para cada
+caso — no desktop ele sugere trocar para um provedor com visão, em vez de mandar rodar um
+comando impossível. Sem o extra, nada quebra em lugar nenhum.
+
 O motor é o RapidOCR sobre onnxruntime: só pip, sem binário de sistema (ao contrário do
-Tesseract), roda offline. Ficou de fora do pacote base porque onnxruntime + opencv passam de
-200 MB, e quem nunca anexa imagem não deve carregar esse peso. Sem o extra instalado, nada
-quebra: a mensagem explica como instalar ou sugere um provedor com visão.
+Tesseract), roda offline.
 
 ## Notas técnicas
 

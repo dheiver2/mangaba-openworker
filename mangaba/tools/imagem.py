@@ -73,12 +73,7 @@ def image_tools(workspace: str) -> list:
         if not ocr.disponivel():
             # Erro acionável em vez de "não achei texto": as duas coisas levariam o agente a
             # conclusões opostas sobre o conteúdo do arquivo.
-            return {
-                "error": (
-                    "local OCR is not installed — run `pip install 'mangaba[ocr]'`, "
-                    "or switch to a vision-capable provider (Claude, Gemini, OpenAI)."
-                )
-            }
+            return {"error": ocr.como_instalar()}
         try:
             dados = alvo.read_bytes()
         except OSError as exc:

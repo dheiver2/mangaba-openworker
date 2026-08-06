@@ -92,10 +92,37 @@ def test_sem_motor_ler_texto_devolve_none(monkeypatch):
 def test_nota_sem_motor_diz_como_resolver(monkeypatch):
     """Duas saídas concretas, porque o usuário não tem como adivinhar nenhuma delas."""
     monkeypatch.setattr(ocr, "_obter_motor", lambda: None)
+    monkeypatch.setattr(ocr, "empacotado", lambda: False)
     nota = ocr.nota_para_modelo_sem_visao(_png(800, 600), nome="print.png")
     assert "print.png" in nota and "800×600" in nota
     assert "mangaba[ocr]" in nota
     assert "Gemini" in nota or "Claude" in nota
+
+
+def test_no_app_empacotado_nao_manda_rodar_pip(monkeypatch):
+    """O sidecar do desktop é um bundle PyInstaller CONGELADO: não existe `pip` para
+    instalar nada dentro dele. Mandar `pip install 'mangaba[ocr]'` para quem instalou pelo
+    DMG é uma instrução impossível — e quem tenta segui-la conclui que o app está quebrado.
+    Ali a única saída real é trocar de provedor."""
+    monkeypatch.setattr(ocr, "empacotado", lambda: True)
+    saida = ocr.como_instalar()
+    assert "pip install" not in saida
+    assert "Gemini" in saida or "Claude" in saida
+
+
+def test_fora_do_app_empacotado_o_pip_e_a_saida_certa(monkeypatch):
+    monkeypatch.setattr(ocr, "empacotado", lambda: False)
+    assert "pip install" in ocr.como_instalar()
+
+
+def test_ferramenta_usa_a_mesma_orientacao_por_contexto(monkeypatch, tmp_path):
+    """A ferramenta e a nota de anexo não podem divergir: uma dizendo `pip install` e a
+    outra dizendo para trocar de provedor, na mesma instalação, é o tipo de contradição que
+    faz a pessoa parar de confiar na mensagem."""
+    monkeypatch.setattr(ocr, "disponivel", lambda: False)
+    monkeypatch.setattr(ocr, "empacotado", lambda: True)
+    (tmp_path / "a.png").write_bytes(_png(4, 4))
+    assert "pip install" not in _ferramenta(str(tmp_path))("a.png")["error"]
 
 
 def test_none_e_vazio_sao_estados_diferentes(monkeypatch):
@@ -280,6 +307,7 @@ def test_ler_imagem_sem_motor_da_erro_acionavel(tmp_path, monkeypatch):
     """Devolver texto vazio faria o agente concluir que a imagem não tem texto — e seguir
     adiante com a conclusão errada. O erro tem de dizer o que fazer."""
     monkeypatch.setattr(ocr, "disponivel", lambda: False)
+    monkeypatch.setattr(ocr, "empacotado", lambda: False)
     (tmp_path / "a.png").write_bytes(_png(4, 4))
     erro = _ferramenta(str(tmp_path))("a.png")["error"]
     assert "mangaba[ocr]" in erro and ("Gemini" in erro or "Claude" in erro)
