@@ -69,9 +69,15 @@ def _message_chars(msg: Any) -> int:
         return _chars_of(msg)
     content = msg.get("content")
     if isinstance(content, str):
-        # Caminho rápido: texto puro (evita o overhead de json.dumps completo)
-        role_len = len(msg.get("role") or "")
-        return len(content) + role_len + 20
+        # Caminho rápido para texto puro: mede o resto da mensagem de verdade e só EVITA
+        # passar o conteúdo grande pelo json.dumps. A primeira versão disto (v0.1.34)
+        # aproximava tudo por `len(content) + len(role) + 20` e subestimava toda mensagem
+        # com chaves extras — `ts`, `tool_call_id`, `name`, sidecars. Subestimar o contexto
+        # atrasa a compactação, que é exatamente o erro que não se pode cometer aqui: o
+        # barato é compactar cedo demais, o caro é estourar a janela no meio da tarefa.
+        molde = {k: v for k, v in msg.items()}
+        molde["content"] = ""
+        return len(content) + _chars_of(molde)
     if not isinstance(content, list):
         return _chars_of(msg)
     total = _chars_of({k: v for k, v in msg.items() if k != "content"})

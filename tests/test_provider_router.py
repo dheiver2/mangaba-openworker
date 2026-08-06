@@ -30,7 +30,32 @@ def test_base_url_passed_to_sdk(monkeypatch):
     OpenAIProvider(
         api_key="sk-x", base_url="http://localhost:11434/v1"
     )._ensure_client()
-    assert captured == {"api_key": "sk-x", "base_url": "http://localhost:11434/v1"}
+    assert captured["api_key"] == "sk-x"
+    assert captured["base_url"] == "http://localhost:11434/v1"
+
+
+def test_cliente_http_tem_pool_e_paciencia_para_prefill_local(monkeypatch):
+    """O cliente HTTP dedicado existe por dois motivos, e os dois têm de continuar de pé.
+
+    Pool: sem keep-alive, o laço agêntico refaz o handshake TLS a cada hop.
+
+    Paciência: o `read` precisa ser generoso. A v0.1.34 o fixou em 60 s e, sem perceber,
+    cortou o padrão do SDK (600 s) por 10× para TODOS os provedores — inclusive o motor
+    local, onde o prefill frio custa ~5 ms por token (medido em 2026-08-06): 16 k tokens de
+    prefixo levam ~82 s e estourariam o limite no meio de uma resposta que ia bem. Já o
+    `connect` deve seguir curto: gateway fora do ar tem de falhar rápido."""
+    captured: dict = {}
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr("openai.OpenAI", FakeOpenAI)
+    OpenAIProvider(api_key="sk-x")._ensure_client()
+
+    http = captured["http_client"]
+    assert http.timeout.read >= 300, "prefill local grande não pode estourar o timeout"
+    assert http.timeout.connect <= 15, "servidor fora do ar tem de falhar rápido"
 
 
 def test_base_url_omitted_when_none(monkeypatch):

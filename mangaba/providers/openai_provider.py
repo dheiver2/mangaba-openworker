@@ -134,10 +134,22 @@ class OpenAIProvider(ProviderClient):
             if self._base_url:
                 kwargs["base_url"] = self._base_url
             
-            # Cliente HTTP dedicado com pool de conexões persistentes e keep-alive de longa duração
+            # Cliente HTTP dedicado: pool com keep-alive longo, para o laço agêntico não
+            # refazer o handshake TLS a cada hop.
+            #
+            # O `read` é generoso DE PROPÓSITO. A primeira versão disto (v0.1.34) usava 60 s
+            # e, sem perceber, cortou o padrão do SDK (600 s) por 10× para TODOS os
+            # provedores — inclusive o motor local, onde o prefill frio custa ~5 ms por
+            # token: 16 k tokens de prefixo levam ~82 s e estourariam o limite no meio de uma
+            # resposta que estava indo bem. O `connect` curto é o que importa e continua
+            # curto: gateway fora do ar falha rápido, em vez de pendurar a sessão.
             kwargs["http_client"] = httpx.Client(
-                limits=httpx.Limits(max_keepalive_connections=20, max_connections=100, keepalive_expiry=120.0),
-                timeout=httpx.Timeout(60.0, connect=10.0),
+                limits=httpx.Limits(
+                    max_keepalive_connections=20,
+                    max_connections=100,
+                    keepalive_expiry=120.0,
+                ),
+                timeout=httpx.Timeout(600.0, connect=10.0),
             )
             self._client = OpenAI(**kwargs)
         return self._client
