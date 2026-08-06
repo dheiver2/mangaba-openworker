@@ -162,14 +162,38 @@ class _LocalProvider(OpenAIProvider):
             return
         ensure_running(tag)
 
+    @staticmethod
+    def _sem_pensamento(settings: dict) -> dict:
+        """Desliga o modo de pensamento do Qwen3 no laço agêntico.
+
+        O `--jinja` liga o pensamento por padrão, e num turno que só escolhe ferramenta ele
+        é puro custo: medido em 2026-08-06, o MESMO turno gerou 122 tokens com 435 chars de
+        deliberação ("Okay, the user wants me to read the file...") em 3,1 s; com o
+        pensamento desligado, 25 tokens em 0,6 s — **5,2× mais rápido**, com a mesma chamada
+        de ferramenta na saída.
+
+        Isso importa porque a geração é o gargalo do motor local (~30 tok/s): cerca de 78%
+        do que ele gerava por hop era deliberação, e o laço agêntico paga isso a cada passo.
+
+        Vai por `extra_body` porque `chat_template_kwargs` não é campo do SDK da OpenAI — é
+        uma extensão do llama-server, que o repassa ao template do modelo.
+        """
+        corpo = dict(settings.get("extra_body") or {})
+        kwargs = dict(corpo.get("chat_template_kwargs") or {})
+        kwargs.setdefault("enable_thinking", False)
+        corpo["chat_template_kwargs"] = kwargs
+        return {**settings, "extra_body": corpo}
+
     def complete(self, *, model: str, messages, tools=None, **settings):
         self._garantir_modelo(model)
-        return super().complete(model=model, messages=messages, tools=tools, **settings)
+        return super().complete(
+            model=model, messages=messages, tools=tools, **self._sem_pensamento(settings)
+        )
 
     def stream(self, *, model: str, messages, tools=None, **settings):
         self._garantir_modelo(model)
         yield from super().stream(
-            model=model, messages=messages, tools=tools, **settings
+            model=model, messages=messages, tools=tools, **self._sem_pensamento(settings)
         )
 
 

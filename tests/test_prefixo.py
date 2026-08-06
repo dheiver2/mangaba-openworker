@@ -233,3 +233,27 @@ def test_a_janela_declarada_e_a_que_o_motor_sobe():
 
     fonte = inspect.getsource(local_engine)
     assert '"--ctx-size", str(CTX_SIZE)' in fonte
+
+
+def test_motor_local_nao_gasta_geracao_com_deliberacao():
+    """O `--jinja` liga o modo de pensamento do Qwen3, e no laço agêntico ele é puro custo.
+
+    MEDIDO em 2026-08-06, o MESMO turno de escolha de ferramenta:
+      com pensamento:  122 tokens gerados, 435 chars de deliberação, 3,1 s
+      sem pensamento:   25 tokens gerados,   0 chars,               0,6 s   (5,2× mais rápido)
+
+    A geração é o gargalo do motor local (~30 tok/s), e ~78% do que ele gerava por hop era
+    deliberação — paga a cada passo do laço. O ajuste vai por `extra_body` porque
+    `chat_template_kwargs` não é campo do SDK da OpenAI: é extensão do llama-server."""
+    from mangaba.providers.registry import build_provider_client
+
+    cliente = build_provider_client("local", {}, None)
+    ajustado = cliente._sem_pensamento({"temperature": 0})
+    assert ajustado["extra_body"]["chat_template_kwargs"]["enable_thinking"] is False
+    assert ajustado["temperature"] == 0, "não pode atropelar os outros ajustes"
+
+    # Um caller que peça pensamento de propósito (síntese final) continua no comando.
+    explicito = cliente._sem_pensamento(
+        {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}}
+    )
+    assert explicito["extra_body"]["chat_template_kwargs"]["enable_thinking"] is True
