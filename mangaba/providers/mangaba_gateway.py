@@ -91,6 +91,22 @@ class _Completions:
 
     def create(self, **kwargs: Any) -> Any:
         body = _payload(kwargs)
+        try:
+            return self._enviar(body)
+        except RuntimeError as exc:
+            # Failover de roteamento QUEBRADO do próprio gateway. A cadeia dele já anunciou
+            # ids malformados com prefixo duplicado (`nvidia/nvidia/nemotron-...`, visto em
+            # 2026-08-06): quando o `auto` cai num desses elos, o gateway devolve HTTP 400
+            # com o id defeituoso na mensagem — e sem isto o turno MORRIA no meio da tarefa
+            # por um defeito que não é do app nem do usuário. Uma nova tentativa costuma
+            # cair num elo são; se o usuário fixou um modelo e ELE é o quebrado, repetimos
+            # em `auto`, porque uma resposta de outro modelo é melhor que turno morto.
+            if not _erro_de_roteamento(exc):
+                raise
+            corpo2 = {k: v for k, v in body.items() if k != "model"}
+            return self._enviar(corpo2)
+
+    def _enviar(self, body: dict[str, Any]) -> Any:
         http = self._cliente()
         if body.get("stream"):
             # A requisição é ABERTA aqui, não dentro do gerador. Se ficasse lá, o
@@ -140,6 +156,25 @@ class _Completions:
             # Fecha mesmo se quem consome abandonar o gerador no meio (Parar no meio de uma
             # resposta é o caso comum) — senão a conexão fica pendurada no pool.
             resp.close()
+
+
+def _erro_de_roteamento(exc: Exception) -> bool:
+    """O 400 veio do roteamento da cadeia (id de modelo inválido), e não do NOSSO corpo?
+
+    A distinção importa: repetir um corpo malformado só duplica o erro, mas repetir quando o
+    gateway escolheu um elo defeituoso resolve. A mensagem do gateway carrega o id que ele
+    tentou (`{"error":"nvidia/nvidia/... 400: ..."}`), então 400 + cara de id de modelo na
+    mensagem = roteamento."""
+    texto = str(exc)
+    if "HTTP 400" not in texto:
+        return False
+    baixo = texto.lower()
+    return (
+        "model" in baixo
+        or "não encontrado" in baixo
+        or "not found" in baixo
+        or "/" in texto.split("400", 1)[-1]  # ids de modelo têm barra (org/nome)
+    )
 
 
 def _raise_for_status(resp: Any) -> None:

@@ -89,13 +89,17 @@ def test_labels_dos_modelos_locais(tmp_path, monkeypatch):
 
 def test_capabilities_local_e_agentico():
     """A razão de o motor existir: llama-server --jinja dá tool calling nativo ao Qwen3.
-    Sem paralelismo — uma chamada por vez mantém o load previsível numa máquina só."""
+
+    Paralelismo LIGADO desde 2026-08-06: o template do Qwen3 emite vários <tool_call> num
+    turno só, e cada hop economizado poupa uma geração inteira a ~30 tok/s. A justificativa
+    antiga ("uma chamada por vez mantém o load previsível") confundia PEDIR com EXECUTAR —
+    o engine já executa as chamadas em sequência de qualquer jeito."""
     from mangaba.providers.capabilities import capabilities_for
 
     caps = capabilities_for("local:qwen3-14b")
     assert caps.tools is True
     assert caps.streaming is True
-    assert caps.parallel_tool_calls is False
+    assert caps.parallel_tool_calls is True
 
 
 def test_descriptor_local_sem_chave():

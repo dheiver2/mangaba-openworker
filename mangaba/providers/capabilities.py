@@ -23,10 +23,14 @@ def capabilities_for(model: str) -> ModelCapabilities:
     name = model.split(":", 1)[-1].lower()  # strip a provider prefix if present
 
     # Motor local (llama-server --jinja): tool calling nativo nos Qwen3; sem visão nos
-    # GGUF de texto e sem paralelismo (uma chamada por vez mantém o load previsível).
+    # GGUF de texto. Paralelismo LIGADO (2026-08-06): o template do Qwen3 emite vários
+    # <tool_call> num turno só, e cada hop economizado poupa uma geração inteira a
+    # ~30 tok/s — "ler três arquivos" custava três voltas ao modelo. O engine executa as
+    # chamadas em sequência de qualquer jeito, então o load continua previsível; o que
+    # muda é o modelo poder PEDIR o lote de uma vez.
     if provider == "local":
         return ModelCapabilities(
-            tools=True, vision=False, parallel_tool_calls=False, streaming=True
+            tools=True, vision=False, parallel_tool_calls=True, streaming=True
         )
 
     # Claude / Gemini (both native): tools + vision + parallel tool calls + streaming. The

@@ -444,3 +444,71 @@ def test_migracao_apaga_a_chave_orfa_do_provedor_aposentado(tmp_path):
     m._prefs = {}
     assert m._migrar_provedor_nordeste() is True
     assert "provider:mangaba-nordeste" not in cofre.dados
+
+
+# -- blindagem contra o roteamento quebrado da cadeia (plano nota-10, item N.1) -------------
+
+
+def test_400_de_roteamento_reintenta_sem_model(monkeypatch):
+    """A cadeia do gateway já anunciou ids malformados (`nvidia/nvidia/nemotron-...`): quando
+    o `auto` cai num elo desses, vem HTTP 400 com o id defeituoso na mensagem e o turno
+    MORRIA no meio da tarefa — aconteceu numa bateria real em 2026-08-06. A nova tentativa
+    sem `model` deixa a cadeia escolher outro elo."""
+    chamadas: list[dict] = []
+
+    p = gw.MangabaGatewayProvider()
+    comps = p._ensure_client().chat.completions
+
+    def _enviar(body):
+        chamadas.append(dict(body))
+        if len(chamadas) == 1:
+            raise RuntimeError(
+                'Gateway Mangaba HTTP 400: {"error":"nvidia/nvidia/nemotron-3-super-120b'
+                ' 400: model not found"}'
+            )
+        from openai.types.chat import ChatCompletion
+
+        return ChatCompletion.construct(**_completion(content="salvo pela retentativa"))
+
+    monkeypatch.setattr(comps, "_enviar", _enviar)
+    t = p.complete(
+        model="groq/openai/gpt-oss-120b", messages=[{"role": "user", "content": "oi"}]
+    )
+    assert t.text == "salvo pela retentativa"
+    assert len(chamadas) == 2
+    assert "model" in chamadas[0], "a 1ª tentativa respeita o modelo pedido"
+    assert "model" not in chamadas[1], "a 2ª entrega a escolha à cadeia (auto)"
+
+
+def test_400_que_nao_e_de_roteamento_nao_reintenta(monkeypatch):
+    """Repetir um corpo malformado só duplica o erro — e mascara o defeito de quem chamou."""
+    chamadas = {"n": 0}
+    p = gw.MangabaGatewayProvider()
+    comps = p._ensure_client().chat.completions
+
+    def _enviar(body):
+        chamadas["n"] += 1
+        raise RuntimeError(
+            'Gateway Mangaba HTTP 400: {"error":"messages must be an array"}'
+        )
+
+    monkeypatch.setattr(comps, "_enviar", _enviar)
+    with pytest.raises(RuntimeError):
+        p.complete(model="auto", messages=[{"role": "user", "content": "oi"}])
+    assert chamadas["n"] == 1
+
+
+def test_500_nao_dispara_a_retentativa_de_roteamento(monkeypatch):
+    """5xx é indisponibilidade, não roteamento — tem tratamento próprio rio acima."""
+    chamadas = {"n": 0}
+    p = gw.MangabaGatewayProvider()
+    comps = p._ensure_client().chat.completions
+
+    def _enviar(body):
+        chamadas["n"] += 1
+        raise RuntimeError("Gateway Mangaba HTTP 500: internal")
+
+    monkeypatch.setattr(comps, "_enviar", _enviar)
+    with pytest.raises(RuntimeError):
+        p.complete(model="auto", messages=[{"role": "user", "content": "oi"}])
+    assert chamadas["n"] == 1
