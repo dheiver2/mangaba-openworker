@@ -333,7 +333,11 @@ def ensure_running(tag: Optional[str] = None, wait_s: float = 120.0) -> bool:
             "--jinja",  # tool calling nativo — a razão de o motor existir
             "--ctx-size", "16384",
             "-ngl", "99",  # tudo que couber na GPU (Metal no macOS); CPU ignora
-            "-fa",  # Flash Attention para prefill ultrarrápido
+            # Flash Attention. O VALOR é obrigatório: o llama-server novo declara
+            # `-fa [on|off|auto]`, e um `-fa` solto engole o argumento seguinte como valor —
+            # o motor morria no boot com `unknown value for --flash-attn: '-b'` e o provedor
+            # Local ficava permanentemente fora do ar, sem que nada na tela dissesse por quê.
+            "-fa", "on",
             "-b", "2048",  # Batch size maior para reduzir TTFT
             "-ub", "1024",  # Micro batch size otimizado
             "--cache-reuse", "256",  # Reuso de cache de prompt entre turnos

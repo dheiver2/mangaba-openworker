@@ -84,3 +84,24 @@ def test_chat_e_o_mais_enxuto_e_cowork_o_mais_gordo():
     assert tamanhos["negocio"] < tamanhos["code"], (
         "`negocio` foi criada para ser mais enxuta que a família de código"
     )
+
+
+def test_motor_local_passa_valor_para_o_flash_attention():
+    """O `-fa` do llama-server EXIGE valor (`on|off|auto`) nas versões atuais.
+
+    Um `-fa` solto engole o argumento seguinte como se fosse o valor, e o motor morre no
+    boot com `unknown value for --flash-attn: '-b'`. O efeito é brutal e mudo: o provedor
+    Mangaba Local — o único que roda sem internet — simplesmente nunca sobe, e nada na tela
+    diz por quê. Foi enviado assim da v0.1.34 à v0.1.37.
+
+    O teste lê a linha de comando montada, e não o processo: subir o motor de verdade num
+    teste custaria dezenas de segundos e dependeria da máquina ter modelo baixado."""
+    import inspect
+
+    from mangaba.providers import local_engine
+
+    fonte = inspect.getsource(local_engine)
+    assert '"-fa",' in fonte, "a flag saiu — se foi de propósito, apague este teste"
+    assert '"-fa", "on"' in fonte or '"-fa", "auto"' in fonte or '"-fa", "off"' in fonte, (
+        "`-fa` sem valor engole o próximo argumento e o motor local não sobe"
+    )
