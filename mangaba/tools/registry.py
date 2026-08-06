@@ -14,6 +14,27 @@ from typing import Any, Callable, Optional
 from aisuite.utils.tools import Tools
 
 
+def enxugar_schema(obj: Any) -> Any:
+    """Tira do schema o que não carrega informação: `"description": ""` e `"default": null`.
+
+    O gerador de schema da aisuite emite uma `description` vazia para todo parâmetro sem
+    docstring própria, e um `default: null` para todo opcional — em 61 ferramentas isso vira
+    lixo repetido que o modelo lê em TODO turno. Medido em 2026-08-06: ~4% do prefixo (263
+    tokens no cowork), e no motor local o prefill frio custa ~5 ms por token, então são ~1,3 s
+    de espera por prefixo novo. É a única poda sem risco nenhum — não remove capacidade, não
+    muda semântica, só apaga campos que não dizem nada.
+    """
+    if isinstance(obj, dict):
+        return {
+            k: enxugar_schema(v)
+            for k, v in obj.items()
+            if not (k == "description" and v == "") and not (k == "default" and v is None)
+        }
+    if isinstance(obj, list):
+        return [enxugar_schema(x) for x in obj]
+    return obj
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -42,7 +63,9 @@ class ToolRegistry:
         resolved_schema = (
             schema or getattr(func, "__mangaba_schema__", None) or _schema_for(func)
         )
-        spec = ToolSpec(name=name, schema=resolved_schema, func=func, metadata=meta)
+        spec = ToolSpec(
+            name=name, schema=enxugar_schema(resolved_schema), func=func, metadata=meta
+        )
         self._tools[name] = spec
         return spec
 
