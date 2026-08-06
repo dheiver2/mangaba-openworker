@@ -37,6 +37,22 @@ Suas preferências são migradas sozinhas ao abrir o app: o modelo padrão passa
 modelo com prefixo desconhecido seria roteado para o provedor **padrão** (OpenAI), e a sua
 mensagem sairia cobrada na chave da OpenAI, ou falharia sem explicação.
 
+### O que este provedor **não** faz: imagem e PDF nativo
+
+Sondamos os 14 modelos da cadeia antes de publicar. Todos fazem **tool calling** — é isso
+que sustenta usar o gateway como agente de verdade. Mas **nenhum** aceita imagem: pedindo o
+Gemini explicitamente e mandando conteúdo multimodal, a resposta é `HTTP 400`, porque o
+gateway **troca o modelo em silêncio** (a mesma chamada voltou respondida pelo GPT-OSS-120B).
+
+Ou seja, escolher um modelo na lista é **melhor esforço, não garantia**. Por isso nenhuma
+entrada do gateway declara visão no catálogo — declarar faria o app anexar a imagem numa
+conversa que ia falhar, e você veria o erro cru sem entender o motivo. Para trabalhar com
+imagem, use o **Mangaba Local** ou um provedor com chave própria (Claude, Gemini, OpenAI).
+
+Pela mesma razão a janela de contexto declarada para o `auto` é a do **menor elo plausível**
+(64k), e não a do primeiro da cadeia (o Gemini tem 1M): estourar contexto no meio de uma
+tarefa é pior do que compactar um pouco mais cedo.
+
 ## Notas técnicas
 
 - O gateway **não** é OpenAI-compatível no transporte: a rota é `POST /api/chat` e a resposta

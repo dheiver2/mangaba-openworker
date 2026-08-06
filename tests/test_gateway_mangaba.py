@@ -321,3 +321,33 @@ def test_migracao_nao_mexe_em_quem_nao_usava(tmp_path):
     m._prefs = {"default_model": "anthropic:claude-opus-5", "models": ["local:qwen3-4b"]}
     assert m._migrar_provedor_nordeste() is False
     assert m._prefs == {"default_model": "anthropic:claude-opus-5", "models": ["local:qwen3-4b"]}
+
+
+def test_nenhum_modelo_do_gateway_declara_visao():
+    """MEDIDO em 2026-08-06, não presumido: o gateway TROCA o modelo em silêncio.
+
+    Pedindo `google/gemini-2.5-flash` explicitamente, a resposta voltou como
+    `openai/gpt-oss-120b` — e mandar `content` multimodal devolveu HTTP 400
+    ("messages[0].content must be a string"). Ou seja, escolher modelo aqui é melhor
+    esforço, não garantia.
+
+    Se alguém declarar `vision=True` numa entrada `mangaba:`, o app passa a anexar imagem
+    numa conversa que vai receber 400 — e o usuário vê o erro cru, sem entender por quê.
+    Para imagem existe o provedor local ou um provedor com chave própria."""
+    from mangaba.providers.matrix import MATRIX
+
+    do_gateway = {k: v for k, v in MATRIX.items() if k.startswith("mangaba:")}
+    assert do_gateway, "o gateway precisa continuar no catálogo"
+    assert not [k for k, v in do_gateway.items() if v.caps.vision or v.caps.pdf]
+
+
+def test_todo_elo_do_gateway_faz_tool_calling():
+    """A cadeia inteira foi sondada em 2026-08-06 e os 14 elos devolveram `tool_calls`.
+
+    Isto é o que sustenta declarar `tools=True` no `auto`: como o gateway pode trocar o
+    modelo no meio, basta UM elo sem tool calling para o agente virar um chat que inventa
+    o resultado da ferramenta. O catálogo só pode prometer o que vale para todos."""
+    from mangaba.providers.matrix import MATRIX
+
+    do_gateway = {k: v for k, v in MATRIX.items() if k.startswith("mangaba:")}
+    assert all(v.caps.tools for v in do_gateway.values())

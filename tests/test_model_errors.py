@@ -126,7 +126,7 @@ def test_janela_do_gateway_e_a_do_menor_elo_da_cadeia():
     from mangaba.providers.matrix import model_context_windows
 
     janelas = model_context_windows()
-    assert janelas["mangaba:auto"] == 128_000
+    assert janelas["mangaba:auto"] == 65_536
     especificos = [v for k, v in janelas.items() if k.startswith("mangaba:") and k != "mangaba:auto"]
     assert especificos, "os modelos nomeados da cadeia precisam continuar no catálogo"
     assert janelas["mangaba:auto"] <= min(especificos), (

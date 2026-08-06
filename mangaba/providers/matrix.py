@@ -89,12 +89,21 @@ MATRIX: dict[str, ModelEntry] = {
     # resposta, `role:"tool"` aceito na volta e `tool_calls` também no streaming.
     #
     # `auto` é o recomendado: omite `model` do corpo e o gateway percorre a própria cadeia
-    # de fallback (GET /api/models → chain). A janela declarada é a do MENOR elo plausível
-    # da cadeia, de propósito — quem escolhe `auto` não sabe em qual modelo vai cair, e
-    # estourar o contexto é pior do que compactar cedo demais.
-    "mangaba:auto": ModelEntry("Automático · Mangaba AI", _AGENTIC, 128_000),
+    # de fallback (GET /api/models → chain).
+    #
+    # NENHUM elo declara visão, e isso é MEDIDO (2026-08-06), não presumido: pedir o
+    # gemini-2.5-flash explicitamente e mandar `content` multimodal devolve HTTP 400
+    # ("messages[0].content must be a string"), porque o gateway TROCA o modelo em silêncio
+    # — a mesma chamada respondeu como gpt-oss-120b. Ou seja, escolher um modelo aqui é
+    # melhor esforço, não garantia. Declarar visão numa entrada `mangaba:` faria o app
+    # anexar imagem e receber 400; por isso todas são texto puro.
+    #
+    # Pelo mesmo motivo a janela é a do MENOR elo plausível, e não a do primeiro da cadeia
+    # (o Gemini tem 1M): quem escolhe `auto` não sabe onde vai cair, e estourar contexto é
+    # pior do que compactar cedo demais.
+    "mangaba:auto": ModelEntry("Automático · Mangaba AI", _AGENTIC, 65_536),
     "mangaba:google/gemini-2.5-flash": ModelEntry(
-        "Gemini 2.5 Flash · via Mangaba", _AGENTIC_VISION, 1_048_576
+        "Gemini 2.5 Flash · via Mangaba", _AGENTIC, 131_072
     ),
     "mangaba:groq/openai/gpt-oss-120b": ModelEntry(
         "GPT-OSS 120B · via Mangaba", _AGENTIC, 131_072
