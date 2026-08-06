@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+
+from mangaba.connectors.integration_tools import _playwright_instalado
 from fastapi.testclient import TestClient
 
 from mangaba.providers import (
@@ -671,6 +673,10 @@ def test_ws_session_persisted_while_parked_on_approval(tmp_path):
             pass
 
 
+@pytest.mark.skipif(
+    not _playwright_instalado(),
+    reason="a automação de navegador exige o extra `mangaba[browser]`; sem Playwright as ferramentas não são registradas — de propósito, para não custarem ~671 tokens de prefixo em todo turno sem poderem funcionar",
+)
 def test_ws_browser_tool_audit_round_trip(tmp_path):
     client = _client(tmp_path, [_tool("browser_close", {}), _text("closed")])
     with client.websocket_connect("/ws/session/browser-audit?agent=cowork") as ws:

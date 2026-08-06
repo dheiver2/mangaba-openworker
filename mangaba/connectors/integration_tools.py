@@ -544,6 +544,18 @@ def _qbo_base(profile: dict[str, Any]) -> str:
     return f"https://{host}/v3/company/{profile['realm_id']}"
 
 
+def _playwright_instalado() -> bool:
+    """O Playwright pode ser importado? Só o import — subir o navegador é caro e acontece na
+    primeira chamada de verdade. Nunca levanta: ausência é o caso NORMAL (extra opcional, e
+    fora do app empacotado)."""
+    from importlib.util import find_spec
+
+    try:
+        return find_spec("playwright") is not None
+    except Exception:
+        return False
+
+
 def make_integration_tools(
     secrets: SecretStore,
     *,
@@ -551,7 +563,17 @@ def make_integration_tools(
     enabled_tools: Optional[set[str]] = None,
     roots: Optional[list[Any]] = None,
 ) -> list[Callable[..., Any]]:
-    tools: list[Callable[..., Any]] = make_browser_automation_tools()
+    # A automação de navegador é movida a Playwright, que é um EXTRA (mangaba[browser]) e
+    # NÃO vai no app empacotado. Sem ele, as 10 ferramentas não têm como funcionar — cada
+    # chamada devolve "instale o playwright" — mas os schemas delas continuavam ocupando
+    # ~736 tokens do prefixo em TODO turno, medido no cowork em 2026-08-06. Num prefill
+    # local a ~7 ms/token isso é ~5 s de espera por sessão, gastos com ferramentas mortas.
+    #
+    # `browser_read_url` fica de fora deste gate de propósito: ele busca texto por HTTP e
+    # funciona sem Playwright nenhum.
+    tools: list[Callable[..., Any]] = (
+        make_browser_automation_tools() if _playwright_instalado() else []
+    )
     # Email needs the session roots: attachment downloads land in the primary scratch
     # and outgoing attachments must resolve inside a granted directory.
     tools.extend(make_email_tools(secrets, roots=roots))

@@ -34,7 +34,10 @@ TETOS = {
     "chat": 3_200,
     "negocio": 5_400,
     "code": 6_300,
-    "cowork": 8_200,
+    # Apertado de 8.200 para 7.400 em 2026-08-06, quando as 10 ferramentas de automação de
+    # navegador saíram do prefixo de quem não tem Playwright (−671 tokens). Tetos que ficam
+    # frouxos depois de uma economia deixam a gordura voltar sem ninguém notar.
+    "cowork": 7_400,
 }
 
 
@@ -152,3 +155,38 @@ def test_motor_local_sobe_com_um_slot():
     from mangaba.providers import local_engine
 
     assert '"--parallel", "1"' in inspect.getsource(local_engine)
+
+
+def test_ferramentas_de_navegador_so_existem_com_playwright():
+    """A automação de navegador é movida a Playwright — um EXTRA (`mangaba[browser]`) que
+    NÃO vai no app empacotado. Sem ele as 10 ferramentas não têm como funcionar: cada
+    chamada devolve "instale o playwright". Mesmo assim os schemas delas ficavam no prefixo
+    de TODO turno, ~671 tokens medidos no cowork — cerca de 5 s de prefill local por sessão,
+    gastos com ferramentas mortas.
+
+    `browser_read_url` fica FORA do gate de propósito: busca texto por HTTP e funciona sem
+    Playwright nenhum."""
+    from mangaba.connectors.integration_tools import (
+        _playwright_instalado,
+        make_integration_tools,
+    )
+    from mangaba.secrets import SecretStore
+
+    nomes = {
+        t.__name__
+        for t in make_integration_tools(SecretStore(), enabled_connectors={"browser"})
+    }
+    automacao = {
+        "browser_open_url",
+        "browser_click",
+        "browser_type",
+        "browser_screenshot",
+        "browser_close",
+    }
+    if _playwright_instalado():
+        assert automacao <= nomes, "com Playwright, as ferramentas de automação existem"
+    else:
+        assert not (automacao & nomes), (
+            "sem Playwright elas não podem funcionar — não podem custar tokens do prefixo"
+        )
+        assert "browser_read_url" in nomes, "ler URL por HTTP não depende de Playwright"

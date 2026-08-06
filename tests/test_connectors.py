@@ -20,6 +20,7 @@ from mangaba.connectors import (
     parse_target,
 )
 from mangaba.connectors.base import SendResult
+from mangaba.connectors.integration_tools import _playwright_instalado
 from mangaba.secrets import SecretStore
 
 
@@ -212,6 +213,10 @@ class _StubProvider:
         yield StreamChunk(turn=self.complete())
 
 
+@pytest.mark.skipif(
+    not _playwright_instalado(),
+    reason="a automação de navegador exige o extra `mangaba[browser]`; sem Playwright as ferramentas não são registradas — de propósito, para não custarem ~671 tokens de prefixo em todo turno sem poderem funcionar",
+)
 def test_engine_connector_tools_are_cowork_scoped(tmp_path):
     from mangaba.agent import build_engine
     from mangaba.agents import chat_agent, code_agent, cowork_agent, myhelper_agent
