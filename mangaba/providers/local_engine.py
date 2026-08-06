@@ -91,6 +91,14 @@ _bootstrap: dict[str, Any] = {"phase": "idle", "progress": 0.0, "error": None}
 _pull: dict[str, Any] = {"phase": "idle", "tag": None, "progress": 0.0, "error": None}
 
 _proc: Optional[subprocess.Popen] = None
+#: Janela de contexto servida pelo motor, em tokens. É exportada porque a COMPACTAÇÃO
+#: precisa dela: o catálogo de modelos (providers/matrix.py) não tem entradas `local:*` — os
+#: tags variam com o que a pessoa baixou —, então sem isto o cálculo caía no padrão de
+#: 128.000 e a compactação só dispararia em 102.400 tokens, seis vezes DEPOIS de o motor já
+#: ter estourado. Declarar janela maior que a servida é o erro caro: a tarefa morre no meio
+#: com "exceeds context size" em vez de compactar e seguir.
+CTX_SIZE = 16384
+
 _active_tag: Optional[str] = None
 
 _ULTIMO_AUTOSTART = 0.0
@@ -331,7 +339,7 @@ def ensure_running(tag: Optional[str] = None, wait_s: float = 120.0) -> bool:
             "--host", "127.0.0.1",
             "--port", str(DEFAULT_PORT),
             "--jinja",  # tool calling nativo — a razão de o motor existir
-            "--ctx-size", "16384",
+            "--ctx-size", str(CTX_SIZE),
             # UM slot. O llama-server sobe 4 por padrão, e cada um reserva a janela inteira:
             # eram 65.536 tokens de cache KV reservados numa máquina de 16 GB para usar
             # 16.384. O app é de sessão única — não há concorrência para justificar isso, e a

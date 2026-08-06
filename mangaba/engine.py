@@ -666,6 +666,14 @@ class TurnEngine:
             from .providers.matrix import model_context_windows
 
             cfg["context_window"] = model_context_windows().get(self.model)
+        # O motor local não tem entrada no catálogo (os tags dependem do que foi baixado), e
+        # sem janela o cálculo cai no padrão de 128.000 — a compactação só dispararia em
+        # 102.400 tokens contra os 16.384 que o llama-server realmente serve. A sessão
+        # estouraria seis vezes antes de alguém pensar em compactar.
+        if not cfg.get("context_window") and str(self.model).startswith("local:"):
+            from .providers.local_engine import CTX_SIZE
+
+            cfg["context_window"] = CTX_SIZE
         cfg.setdefault("threshold_pct", _compaction.DEFAULT_THRESHOLD_PCT)
         cfg.setdefault("cap_tokens", _compaction.DEFAULT_CAP_TOKENS)
         return cfg

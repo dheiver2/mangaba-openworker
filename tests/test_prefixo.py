@@ -190,3 +190,46 @@ def test_ferramentas_de_navegador_so_existem_com_playwright():
             "sem Playwright elas não podem funcionar — não podem custar tokens do prefixo"
         )
         assert "browser_read_url" in nomes, "ler URL por HTTP não depende de Playwright"
+
+
+def test_compactacao_conhece_a_janela_real_do_motor_local():
+    """Sem isto, uma sessão local estourava a janela SEIS VEZES antes de compactar.
+
+    O catálogo de modelos não tem entradas `local:*` — os tags dependem do que a pessoa
+    baixou —, então `context_window` vinha None e o cálculo caía no padrão de 128.000: a
+    compactação só dispararia em 102.400 tokens, contra os 16.384 que o llama-server serve.
+    O sintoma para o usuário não é lentidão, é a tarefa morrendo no meio com "exceeds
+    context size".
+
+    A direção do erro importa: declarar janela MENOR que a servida custa um resumo a mais;
+    declarar MAIOR mata a tarefa."""
+    import tempfile
+
+    from mangaba import compaction
+    from mangaba.providers.local_engine import CTX_SIZE
+    from mangaba.server.manager import SessionManager
+
+    m = SessionManager(workspace=tempfile.mkdtemp())
+    m.model = "local:qwen3-4b"
+    eng = m.get_engine("__janela__", agent="negocio")
+    cfg = eng._compaction_config()
+
+    assert cfg["context_window"] == CTX_SIZE
+    gatilho = compaction.trigger_tokens(
+        cfg["context_window"],
+        threshold_pct=float(cfg["threshold_pct"]),
+        cap_tokens=int(cfg["cap_tokens"]),
+    )
+    assert gatilho < CTX_SIZE, "compactar DEPOIS de estourar a janela não serve para nada"
+
+
+def test_a_janela_declarada_e_a_que_o_motor_sobe():
+    """`CTX_SIZE` alimenta o argumento `--ctx-size` E o cálculo da compactação. Se alguém
+    mudar o argumento sem mudar a constante, os dois divergem em silêncio — e a divergência
+    só aparece como tarefa morrendo no meio, muito longe da causa."""
+    import inspect
+
+    from mangaba.providers import local_engine
+
+    fonte = inspect.getsource(local_engine)
+    assert '"--ctx-size", str(CTX_SIZE)' in fonte
