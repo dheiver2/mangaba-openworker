@@ -11,6 +11,7 @@ from typing import Any, Callable, Optional
 
 from .agents import Agent, AgentContext, code_agent
 from .automation import scheduling_tools
+from .brief import BriefStore, brief_block, brief_tools
 from .selfwake import selfwake_tools
 from .subscriptions import subscription_tools
 from .config import load_config
@@ -23,7 +24,10 @@ from .connectors import (
 )
 from .engine import Approver, TurnEngine
 from .environment import environment_context
+from .feedback import distill_feedback
 from .memory import MemoryStore, Scope, format_memories, memory_tools
+from .memory.recall import recall_block, recall_memories
+from .plan import Plan, plan_tools
 from .permissions import Mode, PermissionEngine
 from .project import load_agents_md
 from .roots import RootDir, normalize_roots, render_context
@@ -33,9 +37,13 @@ from .secrets import SecretStore, state_dir
 from .skills import SkillLoader, save_skill_tool, skill_catalog_text, skill_tools
 from .tools import ToolRegistry
 from .tools.ask import ask_user_tool
+from .tools.context import Scratchpad, context_tools
 from .tools.directories import request_directory_tool
+from .tools.delegate import delegate_tools
 from .tools.plan import propose_plan_tool
+from .tools.retry import ToolRetryPolicy
 from .tools.subagent import explorer_tools
+from .tools.verify import VerifyTracker, verify_tools
 from .web import make_web_fetch_tool, make_web_search_tool
 from .workspace_trust import WorkspaceTrustStore
 from .tools.shell import LocalExecutor
@@ -138,6 +146,87 @@ def _skill_dirs(workspace: Optional[Path]) -> list[Path]:
     return dirs
 
 
+def _last_user_text(messages: list[dict]) -> str:
+    """The plain text of the latest user message (strips source/display sidecars)."""
+    for msg in reversed(messages):
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content")
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            text = " ".join(
+                p.get("text", "")
+                for p in content
+                if isinstance(p, dict) and p.get("type") == "text"
+            )
+            if text.strip():
+                return text.strip()
+    return ""
+
+
+def _memory_recall_tool(store: MemoryStore, workspace: Optional[str]) -> Any:
+    """Capability #2 — `memory_recall`: top-k relevance-ranked memories for a query, instead
+    of the whole store. Reads across global + workspace scopes."""
+    import aisuite as ai
+
+    def memory_recall(query: str, k: int = 5) -> dict[str, Any]:
+        """Recall the most relevant memories for `query` (top-k, relevance-ranked) across the
+        global and workspace scopes. Use for a specific fact or preference instead of reading
+        the whole known-memories list."""
+        hits = recall_memories(
+            store, query, k=max(1, min(int(k), 10))
+        )
+        if not hits:
+            return {"recalled": []}
+        return {
+            "recalled": [
+                {"id": m.id, "scope": m.scope.value, "content": m.content} for m in hits
+            ]
+        }
+
+    return ai.tool(
+        memory_recall,
+        metadata=ai.ToolMetadata(
+            name="memory_recall",
+            category="memory",
+            risk_level="low",
+            capabilities=["remember"],
+            requires_approval=False,
+        ),
+    )
+
+
+def _model_window(model: str) -> int:
+    """The model's context window for the context meter (falls back to the compaction
+    default for unknown models)."""
+    try:
+        from .providers.matrix import model_context_windows
+
+        return model_context_windows().get(model) or _compaction_default_window()
+    except Exception:
+        return _compaction_default_window()
+
+
+def _compaction_default_window() -> int:
+    from .compaction import DEFAULT_CONTEXT_WINDOW
+
+    return DEFAULT_CONTEXT_WINDOW
+
+
+def _engine_meter(box: list) -> int:
+    """Token estimate of the live engine's outbound view (context meter)."""
+    from .compaction import estimate_tokens
+
+    eng = box[0] if box else None
+    if eng is None:
+        return 0
+    try:
+        return int(estimate_tokens(eng._outbound_messages()))
+    except Exception:
+        return 0
+
+
 def build_engine(
     *,
     agent: Agent,
@@ -167,6 +256,14 @@ def build_engine(
     connector_filter: Optional[set[str]] = None,
     # A set (static snapshot) or a zero-arg callable (live, re-evaluated per load_skill).
     skill_filter: Optional[set[str] | Callable[[], set[str]]] = None,
+    # Capability #6: transient-failure failover targets (see TurnEngine.fallback_models) and
+    # an optional per-step model router (current_model, stage) -> model.
+    fallback_models: Optional[list[str]] = None,
+    model_router: Optional[Callable[[str, str], str]] = None,
+    # Capability #10: per-workspace living brief + auto session summaries. Defaults to a
+    # BriefStore under the state dir when the surface has a workspace.
+    brief_store: Optional[BriefStore] = None,
+    learning_enabled: bool = True,
 ) -> TurnEngine:
     ws = Path(workspace).expanduser().resolve() if workspace else None
     if agent.needs_workspace and ws is None:
@@ -279,6 +376,52 @@ def build_engine(
     if wake_store is not None and session_id and agent.family == "knowledge":
         registry.register_all(selfwake_tools(wake_store, session_id))
 
+    # Capability #4 — first-class Plan (steps + dependencies). Every surface with a workspace
+    # can maintain one; the engine's done-gate prefers it over the flat todo.
+    plan = Plan()
+    registry.register_all(plan_tools(plan))
+
+    # Capability #5 — tool auto-retry policy for transient failures (rate-limit/timeout/
+    # transport). The engine consults it when a running tool raises.
+    retry_policy = ToolRetryPolicy(max_retries=2)
+
+    # Capability #1 — structured verification (run_verify + tracker) for delivery surfaces.
+    # The engine nudges once per run of consecutive failures (verify → fix → retest).
+    verify_tracker = VerifyTracker()
+    if agent.family in ("code", "business") and executor is not None:
+        registry.register_all(verify_tools(executor, tracker=verify_tracker))
+
+    # Capability #3 — general-purpose subagents (researcher/writer/verifier) + fan-out, for
+    # surfaces that can spawn bounded sub-tasks. Complements the read-only `explore`.
+    if agent.family in ("code", "knowledge", "business") and ws is not None:
+        registry.register_all(
+            delegate_tools(
+                workspace=ws,
+                provider=provider,
+                model=model,
+                model_settings=model_settings,
+            )
+        )
+
+    # Capability #9 — context self-management: context meter + TTL'd scratchpad.
+    scratchpad = Scratchpad()
+    registry.register_all(
+        context_tools(
+            context_window=lambda: _model_window(model),
+            # Meter reads the LIVE engine's outbound view via the late-bound box (the tool
+            # only runs after construction, so the closure resolves then).
+            meter=lambda: _engine_meter(_engine_box),
+            scratchpad=scratchpad,
+        )
+    )
+
+    # Capability #10 — per-workspace living brief (objective / decisions / open threads).
+    brief_store = brief_store or (
+        BriefStore(state_dir() / "briefs") if ws is not None else None
+    )
+    if brief_store is not None:
+        registry.register_all(brief_tools(brief_store, str(ws)))
+
     instructions = f"{agent.system_prompt}\n\n{_NARRATION_GUIDANCE}"
     if ws is not None:
         instructions = f"{instructions}\n\n{environment_context(ws)}"
@@ -290,6 +433,9 @@ def build_engine(
         registry.register_all(
             memory_tools(memory_store, workspace=str(ws) if ws else None)
         )
+        # Capability #2 — selective recall: on-demand relevance-ranked memories, so the agent
+        # doesn't have to rely on the (bloated) blanket block for deep lookups.
+        registry.register(_memory_recall_tool(memory_store, str(ws) if ws else None))
         instructions = f"{instructions}\n\n{_MEMORY_GUIDANCE}"
         remembered = memory_store.list(scope=Scope.GLOBAL)
         if ws is not None:
@@ -379,6 +525,26 @@ def build_engine(
                     f'Note: the skill "{name}" has been disabled by the user — stop '
                     "following its instructions from here on."
                 )
+        # Capability #10 — living brief injected per turn so the agent always knows where the
+        # project stands (objective / decisions / open threads / last session summary).
+        if brief_store is not None and ws is not None:
+            brief = brief_store.get(str(ws))
+            if brief.objective or brief.decisions or brief.open_threads or brief.last_summary:
+                parts.append(brief_block(brief))
+        # Capability #2 — per-turn selective memory recall: instead of the whole store, inject
+        # the top-k memories relevant to the current (latest) user message.
+        if memory_store is not None and eng is not None:
+            query = _last_user_text(eng.messages)
+            if query:
+                hits = recall_memories(
+                    memory_store,
+                    query,
+                    k=3,
+                    workspace=str(ws) if ws else None,
+                )
+                block = recall_block(hits, query=query)
+                if block:
+                    parts.append(block)
         return "\n\n".join(parts)
 
     engine = TurnEngine(
@@ -405,13 +571,32 @@ def build_engine(
     engine.todo = todo  # type: ignore[attr-defined]
     engine.agent_name = agent.name  # type: ignore[attr-defined]
     engine.roots = root_list  # type: ignore[attr-defined]  # shared list; Slice C mutates in place
+    # Capability #4/#5/#1/#6/#9/#10 — engine attrs the loop consults for the new capabilities.
+    engine.plan = plan  # type: ignore[attr-defined]
+    engine.retry_policy = retry_policy  # type: ignore[attr-defined]
+    engine.verify_tracker = verify_tracker  # type: ignore[attr-defined]
+    engine.scratchpad = scratchpad  # type: ignore[attr-defined]
+    engine.fallback_models = list(fallback_models or [])  # type: ignore[attr-defined]
+    engine.model_router = model_router  # type: ignore[attr-defined]
+    # Capability #7 — automatic feedback distillation at turn end (learning from corrections).
+    if learning_enabled and memory_store is not None:
+
+        def _learn() -> None:
+            distill_feedback(
+                memory_store,
+                engine.messages,
+                workspace=str(ws) if ws else None,
+                session_id=session_id or None,
+            )
+
+        engine.learning_hook = _learn  # type: ignore[attr-defined]
+    _engine_box.append(engine)  # late-bind for the countermand + context meter
     engine.audit_context = {
         "session_id": session_id or "",
         "agent": agent.name,
         "workspace": str(ws) if ws else "",
     }
     engine.skill_loader = skill_loader  # type: ignore[attr-defined]
-    _engine_box.append(engine)  # late-bind for the countermand (see context_provider)
     return engine
 
 

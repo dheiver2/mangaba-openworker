@@ -74,6 +74,16 @@ class TurnEngine:
         question_asker: Optional[
             Callable[[dict[str, Any]], "Awaitable[dict[str, Any]]"]
         ] = None,
+        # Failover (agentic-capability #6): when the primary model raises a TRANSIENT provider
+        # error (rate-limit / quota / transport), the engine retries the SAME turn on the next
+        # model in `fallback_models`, appending a notice so the transcript shows where it
+        # happened. Permanent/model errors never fail over.
+        fallback_models: Optional[list[str]] = None,
+        # Per-step model router (agentic-capability #6): a callable(current_model, stage) →
+        # model, letting a caller route "summarize" to a cheaper model without a new session.
+        # The engine consults it for the compaction summarizer and (via the manager) at
+        # turn start. Optional.
+        model_router: Optional[Callable[[str, str], str]] = None,
         # Called (thread-safe, best-effort) when the user stops the turn — e.g. the
         # executor's kill for a running shell command.
         interrupt_hooks: Optional[list[Callable[[], None]]] = None,
@@ -137,6 +147,17 @@ class TurnEngine:
         # TOOL_FINISHED event can carry the note to the tool card (§25).
         self._standing_notes: dict[str, str] = {}
         self._interrupt_hooks: list[Callable[[], None]] = list(interrupt_hooks or [])
+        self.fallback_models: list[str] = list(fallback_models or [])
+        self.model_router: Optional[Callable[[str, str], str]] = model_router
+        self._failover_index = 0
+        self.verify_tracker: Optional[Any] = None  # set by build_engine (capability #1)
+        self.plan: Optional[Any] = None  # Plan object (capability #4), set by build_engine
+        self._verification_nudged = False  # one nudge per run of consecutive failures
+        self.scratchpad: Optional[Any] = None  # capability #9, set by build_engine
+        self.retry_policy: Optional[Any] = None  # capability #5, set by build_engine
+        # Capability #7 — best-effort post-turn learning (feedback distillation). Called at
+        # the completed TURN_END; failures must never break the turn.
+        self.learning_hook: Optional[Callable[[], None]] = None
 
     # -- external controls ------------------------------------------------------
     def request_interrupt(self) -> None:
@@ -173,6 +194,111 @@ class TurnEngine:
         self, text: str, source: Optional[dict[str, Any]] = None
     ) -> None:
         self._steering.append((text, source))
+
+    def _tool_results_by_call(self) -> dict[str, str]:
+        """Map tool_call_id → content for tool results, from the persisted thread."""
+        out: dict[str, str] = {}
+        for msg in self.messages:
+            if msg.get("role") == "tool" and msg.get("tool_call_id"):
+                content = msg.get("content")
+                out[msg["tool_call_id"]] = (
+                    content if isinstance(content, str) else json.dumps(content)
+                )
+        return out
+
+    def _loaded_skill_names(self) -> set[str]:
+        """Skills whose `load_skill` call returned a non-error result in THIS conversation —
+        i.e. their instructions are actively steering the model."""
+        results = self._tool_results_by_call()
+        loaded: set[str] = set()
+        for msg in self.messages:
+            if msg.get("role") != "assistant" or not msg.get("tool_calls"):
+                continue
+            for tc in msg["tool_calls"]:
+                fn = tc.get("function") or {}
+                if fn.get("name") != "load_skill":
+                    continue
+                try:
+                    name = str(json.loads(fn.get("arguments") or "{}").get("name", ""))
+                except Exception:
+                    continue
+                result = results.get(tc.get("id", ""), "")
+                if name and '"instructions"' in result and "unknown skill" not in result:
+                    loaded.add(name)
+        return loaded
+
+    def _skill_restriction_for(self, tool_name: str) -> Optional[str]:
+        """The deny-reason when an active skill's `allowed_tools` forbids `tool_name`, else
+        None. Only skills declaring a NON-empty allowed_tools list restrict; the union of the
+        active skills' allowed sets is the permitted surface."""
+        loader = getattr(self, "skill_loader", None)
+        if loader is None:
+            return None
+        active = self._loaded_skill_names()
+        if not active:
+            return None
+        permits: set[str] = set()
+        restrictor: Optional[str] = None
+        for name in sorted(active):
+            skill = loader.get(name)
+            if skill is None or not skill.allowed_tools:
+                continue  # a skill without an allowlist imposes nothing
+            restrictor = name
+            permits.update(skill.allowed_tools)
+        if restrictor is None or tool_name in permits:
+            return None
+        return (
+            f"tool '{tool_name}' is not allowed by skill '{restrictor}' "
+            f"(allowed: {', '.join(sorted(permits))})"
+        )
+
+    def _maybe_failover(self, exc: Exception) -> bool:
+        """Retry the same turn on the next fallback model when `exc` is a TRANSIENT provider
+        error. Returns True when a fallback was applied (the loop should `continue`)."""
+        from .tools.retry import classify_error
+
+        if classify_error(exc) != "transient":
+            return False
+        if self._failover_index >= len(self.fallback_models):
+            return False
+        target = self.fallback_models[self._failover_index]
+        self._failover_index += 1
+        previous = self.model
+        self.switch_model(target)
+        self._append_notice(
+            "model_switch",
+            f"Model failed with a transient provider error → switched {previous} → {target} and retried",
+        )
+        return True
+
+    def _maybe_nudge_verification(self) -> None:
+        """Capability #1: one nudge per run of consecutive verify failures — the model must
+        fix and re-run instead of declaring done with a red check."""
+        if self._verification_nudged:
+            return
+        tracker = self.verify_tracker
+        if tracker is None or not getattr(tracker, "runs", None):
+            return
+        from .tools.verify import verification_nudge_text
+
+        text = verification_nudge_text(tracker, threshold=2)
+        if text is None:
+            return
+        self._verification_nudged = True
+        self.queue_steering(text)
+
+    def _maybe_nudge_plan(self) -> None:
+        """Capability #4: done-gate for a first-class Plan — unblocked open steps must be
+        closed (or cancelled with an explanation) before the agent ends the turn."""
+        plan = getattr(self, "plan", None)
+        if plan is None or not getattr(plan, "steps", None):
+            return
+        from .plan import plan_nudge_text
+
+        text = plan_nudge_text(plan)
+        if text is None:
+            return
+        self.queue_steering(text)
 
     def _maybe_nudge_unfinished(self) -> None:
         """Gate de 'definição de pronto': o modelo tenta encerrar (sem tool_calls), mas a lista
@@ -450,6 +576,12 @@ class TurnEngine:
                         self._append_notice("compacted", notice)
                         yield Event(EventType.COMPACTED, {"text": notice})
                         continue
+                # Failover (#6): a TRANSIENT provider error (rate-limit/quota/transport) with a
+                # fallback model left → retry the same turn on the next model. The partial the
+                # user watched arrive is dropped from history (transport failures rarely carry
+                # meaningful text) and the switch is recorded so the transcript stays honest.
+                if not self._cancel.is_set() and self._maybe_failover(exc):
+                    continue
                 # Same contract as the stop path below: the partial the user watched
                 # arrive survives the failure.
                 if streamed or streamed_reasoning:
@@ -495,6 +627,11 @@ class TurnEngine:
                 # explicar — em vez de declarar pronto no instante em que para de chamar
                 # ferramentas. Uma cutucada só por turno (o flag evita laço se ele insistir).
                 self._maybe_nudge_unfinished()
+                # Capabilities #1 e #4: a verificação ainda vermelha e o plano com passos
+                # desbloqueados também bloqueiam um encerramento prematuro — cada gate
+                # cutuca uma única vez, via a mesma fila de steering.
+                self._maybe_nudge_verification()
+                self._maybe_nudge_plan()
                 if self._steering:
                     self._inject_steering()
                     continue
@@ -503,6 +640,7 @@ class TurnEngine:
                 # seguinte abre com a visão já compactada e o cache quente, em vez de
                 # começar com um "Compactando…" de vários segundos + prefill frio.
                 self._schedule_post_turn_compaction()
+                self._run_learning_hook()
                 yield Event(
                     EventType.TURN_END,
                     {"status": "completed", "iterations": iterations},
@@ -582,6 +720,16 @@ class TurnEngine:
             self._post_turn_task = asyncio.get_running_loop().create_task(_go())
         except RuntimeError:
             pass  # sem loop rodando (caller síncrono exótico) — segue sem proatividade
+
+    def _run_learning_hook(self) -> None:
+        """Capability #7 — best-effort post-turn learning. Never raises into the loop."""
+        hook = getattr(self, "learning_hook", None)
+        if hook is None:
+            return
+        try:
+            hook()
+        except Exception:
+            pass
 
     async def _compact_now(
         self, *, force: bool = False, ask_on_failure: bool = True
@@ -819,6 +967,21 @@ class TurnEngine:
         spec = self.registry.get(tool_call.name)
         metadata = spec.metadata if spec else None
 
+        # Capability #8 — skill tool-sandbox enforcement. A loaded skill that declares
+        # `allowed_tools` restricts the session to that tool set while it's active: calls to
+        # anything else are denied up-front (no approval prompt), with a reason naming the
+        # restricting skill. Skills without an allowed_tools list impose no restriction.
+        restriction = self._skill_restriction_for(tool_call.name)
+        if restriction is not None:
+            self.messages.append(_tool_error_message(tool_call, restriction))
+            yield Event(
+                EventType.TOOL_FINISHED,
+                {"name": tool_call.name, "status": "denied", "reason": restriction},
+            )
+            self._audit(tool_call, stage="finished", status="denied", reason=restriction)
+            yield False
+            return
+
         decision = self.permissions.evaluate(
             tool_call.name, tool_call.arguments, metadata
         )
@@ -920,7 +1083,19 @@ class TurnEngine:
         yield True
 
     def _execute_sync(self, tool_call: ToolCall) -> tuple[Any, str]:
-        """Execute one authorized call (runs in a worker thread)."""
+        """Execute one authorized call (runs in a worker thread). Capability #5: when a
+        running tool raises a transient error (rate-limit, timeout, transport) and the
+        session's retry policy allows this tool, retry with backoff in-thread before
+        surfacing — so the agent doesn't burn a model iteration on "run that again"."""
+        policy = getattr(self, "retry_policy", None)
+        if policy is not None and getattr(policy, "allowed", lambda _: True)(tool_call.name):
+            from .tools.retry import retry_execute
+
+            def _run() -> Any:
+                return self.registry.execute(tool_call.name, tool_call.arguments)
+
+            result, status, _attempts = retry_execute(_run)
+            return result, status
         try:
             return self.registry.execute(tool_call.name, tool_call.arguments), "ok"
         except Exception as exc:
