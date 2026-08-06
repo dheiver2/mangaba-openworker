@@ -1,12 +1,12 @@
 """Pré-aquecimento do cache de prompt na abertura da sessão.
 
 A medição que motiva isto: nos modelos em CPU o gargalo da PRIMEIRA resposta é o prefill do
-prefixo (system + tools) — ~23 s no Nordeste-30B, ~3,6 s no Qwen3-4B local para ~3k tokens.
+prefixo (system + tools) — ~3,6 s no Qwen3-4B local para ~3k tokens, e muito pior em CPU.
 Uma vez prefillado, o mesmo prefixo responde em ~0,6 s (cache quente). O `_warm_engine` paga
 esse prefill em background quando a sessão nasce, para a 1ª mensagem real cair no cache.
 
 Estes testes prendem duas coisas que, se quebrarem, matam o ganho em silêncio: (1) o
-aquecimento só dispara onde o prefill domina (local/Nordeste), nunca queimando tokens de
+aquecimento só dispara onde o prefill domina (o motor local), nunca queimando tokens de
 nuvem; (2) quando dispara, manda EXATAMENTE o prefixo que a 1ª mensagem real vai mandar —
 mesmo system, mesmas tools — senão o cache não casa e o aquecimento não serve para nada.
 """
@@ -61,13 +61,15 @@ def test_aquece_modelo_local_com_o_prefixo_da_sessao():
     assert kw["max_tokens"] == 1, "pede só 1 token — o custo é o prefill, não a geração"
 
 
-def test_aquece_nordeste():
+def test_nao_aquece_o_gateway_mangaba():
+    """O gateway Mangaba é nuvem: ele roteia para provedores em GPU, onde o prefill não
+    domina. Aquecer ali gastaria cota COMPARTILHADA (é o mesmo gateway para todo mundo que
+    instala o app) para economizar um tempo que não existe."""
     m = _mgr()
-    eng, chamadas = _fake_engine("mangaba-nordeste:Mangaba-Nordeste-30B")
-    t = m._warm_engine(eng)
-    assert t is not None
-    t.join(timeout=5)
-    assert len(chamadas) == 1
+    for modelo in ("mangaba:auto", "mangaba:groq/openai/gpt-oss-120b"):
+        eng, chamadas = _fake_engine(modelo)
+        assert m._warm_engine(eng) is None, f"{modelo} não deveria ser aquecido"
+        assert chamadas == []
 
 
 def test_nao_aquece_provedor_de_nuvem():

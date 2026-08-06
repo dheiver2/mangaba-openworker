@@ -25,7 +25,7 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   local: mangabaLocal,
   // Mesma marca do provedor local: os dois são Mangaba, um roda aqui e o outro no
   // gateway da Mangaba AI — quem olha a galeria tem de reconhecer os dois como nossos.
-  "mangaba-nordeste": mangabaLocal,
+  mangaba: mangabaLocal,
   anthropic,
   openai,
   gemini,
@@ -45,7 +45,9 @@ export const PROVIDER_ORDER = [
   // Local primeiro: é a única opção que um usuário recém-instalado usa sem criar conta
   // em lugar nenhum nem cadastrar cartão.
   "local",
-  "mangaba-nordeste",
+  // Gateway compartilhado da Mangaba AI: também não pede chave nem cadastro, então fica
+  // logo depois do local, antes de qualquer provedor que exija cartão.
+  "mangaba",
   "anthropic",
   "openai",
   "gemini",

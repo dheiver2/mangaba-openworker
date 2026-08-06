@@ -22,6 +22,8 @@ from typing import Any, Callable, Optional
 from .anthropic_provider import AnthropicProvider
 from .base import ProviderClient
 from .gemini_provider import GeminiProvider
+from .mangaba_gateway import DEFAULT_BASE_URL as MANGABA_GATEWAY_URL
+from .mangaba_gateway import MangabaGatewayProvider
 from .openai_provider import OpenAIProvider
 
 
@@ -109,6 +111,12 @@ def _build_gemini(profile: dict[str, Any], secrets: Any) -> ProviderClient:
     # Same deferred-key contract as anthropic (GeminiProvider/resolve_api_key).
     api_key = ((profile or {}).get("api_key") or "").strip() or None
     return GeminiProvider(api_key=api_key, secrets=secrets)
+
+
+def _build_mangaba(profile: dict[str, Any], secrets: Any) -> ProviderClient:
+    # Sem chave por definição: o gateway é compartilhado. O endpoint continua editável
+    # para quem aponta o app para um gateway próprio (ou para o túnel de testes).
+    return MangabaGatewayProvider(base_url=((profile or {}).get("base_url") or "").strip())
 
 
 def _build_local(profile: dict[str, Any], secrets: Any) -> ProviderClient:
@@ -262,17 +270,32 @@ DESCRIPTORS: list[ProviderDescriptor] = [
         env_key="ZAI_API_KEY",
         endpoint_help="Prefilled with Z AI's international endpoint. China mainland: https://open.bigmodel.cn/api/paas/v4",
     ),
-    _compat(
-        "mangaba-nordeste",
-        "Mangaba Nordeste (Mangaba AI)",
-        base_url="https://mangaba-iprojectti.ngrok.app/v1",
-        recommended_model="Mangaba-Nordeste-30B",
-        env_key="MANGABA_NORDESTE_API_KEY",
-        endpoint_help=(
-            "Provedor agêntico da Mangaba AI servido no Brasil (Nossa Telecom/AL). "
-            "Verificado agêntico pleno em 2026-08-05 (tools, streaming, parallel). "
-            "Gere chaves-cliente no Swagger (/docs → /admin/keys)."
+    # Substituiu o "Mangaba Nordeste" em 2026-08-06: aquele exigia uma chave-cliente gerada
+    # à mão no Swagger do gateway, ou seja, ninguém que só instalava o app conseguia usar.
+    # Este é o gateway compartilhado, sem chave — ver providers/mangaba_gateway.py.
+    ProviderDescriptor(
+        name="mangaba",
+        title="Mangaba (nuvem)",
+        needs_key=False,
+        blurb=(
+            "IA na nuvem da Mangaba AI, sem chave e sem cadastro — o mesmo gateway "
+            "para todo mundo que instala o app. Com tool calling e streaming."
         ),
+        fields=[
+            ProviderField(
+                "base_url",
+                "Endpoint",
+                required=False,
+                default=MANGABA_GATEWAY_URL,
+                placeholder=MANGABA_GATEWAY_URL,
+                help=(
+                    "Gateway compartilhado da Mangaba AI. O modelo `auto` deixa o próprio "
+                    "gateway escolher — e cair para o próximo da cadeia se um provedor falhar."
+                ),
+            ),
+        ],
+        build=_build_mangaba,
+        recommended_model="auto",
     ),
     _compat(
         "deepseek",
@@ -424,6 +447,12 @@ def verify_provider_key(
             "ok": True,
             "note": "O motor local está iniciando — o modelo ficará pronto em instantes.",
         }
+    if name == "mangaba":
+        # Gateway sem chave: "verificar" é provar que o túnel responde E que ele executa
+        # ferramenta. Um gateway que aceita `tools` e nunca devolve `tool_calls` faz o
+        # modelo INVENTAR o resultado da ferramenta — foi o que aconteceu com o gateway
+        # anterior deste projeto, e este é o único momento em que alguém está olhando.
+        return _verificar_gateway_mangaba(base_url, timeout)
     try:
         if name == "anthropic":
             resp = httpx.get(
@@ -458,31 +487,42 @@ def verify_provider_key(
         }
 
     if resp.status_code < 300:
-        if name == "mangaba-nordeste":
-            # Gateway próprio da organização: chave válida NÃO garante agente. O gateway
-            # anterior deste projeto aceitava o parâmetro `tools` e nunca devolvia
-            # `tool_calls` — e o modelo, em vez de falhar, INVENTAVA o resultado da
-            # ferramenta. Testar aqui é o único momento em que a pessoa está olhando.
-            aviso = _sonda_tool_calling(base_url or "", key, resp)
-            if aviso:
-                return {"ok": True, "aviso": aviso}
         return {"ok": True}
     if resp.status_code in (401, 403):
         return {"ok": False, "error": "Invalid API key."}
     return {"ok": False, "error": f"{d.title} returned HTTP {resp.status_code}."}
 
 
-def _sonda_tool_calling(base_url: str, key: str, resp_models: Any) -> Optional[str]:
+def _verificar_gateway_mangaba(base_url: Optional[str], timeout: float) -> dict[str, Any]:
+    """Verificação do gateway compartilhado: o túnel responde e executa ferramenta?
+
+    Duas provas, porque uma sem a outra engana. `GET /api/models` prova alcance; a chamada
+    com `tools` prova agenticidade. Um gateway que aceita `tools` e nunca devolve
+    `tool_calls` faz o modelo inventar o resultado da ferramenta em vez de falhar — este é
+    o único momento em que alguém está olhando a tela para ver o aviso.
+    """
+    import httpx
+
+    from .mangaba_gateway import CHAT_PATH, DEFAULT_BASE_URL, MODELS_PATH
+
+    base = (base_url or "").strip().rstrip("/") or DEFAULT_BASE_URL
+    cabecalhos = {"ngrok-skip-browser-warning": "1"}
+    try:
+        r = httpx.get(base + MODELS_PATH, headers=cabecalhos, timeout=timeout)
+    except Exception as exc:
+        return {"ok": False, "error": f"Não deu para alcançar o gateway Mangaba ({exc.__class__.__name__})."}
+    if r.status_code >= 300:
+        return {"ok": False, "error": f"O gateway Mangaba respondeu HTTP {r.status_code}."}
+
+    aviso = _sonda_tool_calling_gateway(base + CHAT_PATH, cabecalhos)
+    return {"ok": True, "aviso": aviso} if aviso else {"ok": True}
+
+
+def _sonda_tool_calling_gateway(url: str, cabecalhos: dict[str, str]) -> Optional[str]:
     """Uma chamada barata que prova se o gateway executa ferramenta. Devolve o aviso a
     mostrar, ou None quando está tudo certo. Nunca levanta: é um extra da verificação."""
     import httpx
 
-    try:
-        modelos = [m["id"] for m in (resp_models.json().get("data") or []) if m.get("id")]
-    except Exception:
-        modelos = []
-    if not modelos or not base_url:
-        return None
     ferramenta = {
         "type": "function",
         "function": {
@@ -497,28 +537,28 @@ def _sonda_tool_calling(base_url: str, key: str, resp_models: Any) -> Optional[s
     }
     try:
         r = httpx.post(
-            base_url.rstrip("/") + "/chat/completions",
-            headers={"Authorization": f"Bearer {key}"} if key else {},
+            url,
+            headers=cabecalhos,
             json={
-                "model": modelos[0],
                 "messages": [
                     {"role": "user", "content": "Qual o clima em Maceió? Use a ferramenta."}
                 ],
                 "tools": [ferramenta],
                 "tool_choice": "auto",
             },
-            timeout=45,
+            timeout=60,
         )
         if r.status_code >= 300:
             return None  # sem conclusão: não vale assustar por um erro transitório
-        msg = (r.json().get("choices") or [{}])[0].get("message", {}) or {}
+        corpo = r.json()
+        corpo = corpo.get("data") if isinstance(corpo.get("data"), dict) else corpo
+        msg = (corpo.get("choices") or [{}])[0].get("message", {}) or {}
         if msg.get("tool_calls"):
             return None
         return (
-            "Chave válida, mas este gateway não devolveu uma chamada de ferramenta no "
-            "teste. Modelos assim conversam, porém não leem arquivos, não rodam comandos "
-            "e não usam conectores — e alguns chegam a inventar o resultado. Confirme com "
-            "o administrador se o gateway suporta tool calling."
+            "O gateway respondeu, mas não devolveu uma chamada de ferramenta no teste. "
+            "Modelos assim conversam, porém não leem arquivos, não rodam comandos e não "
+            "usam conectores — e alguns chegam a inventar o resultado."
         )
     except Exception:
         return None

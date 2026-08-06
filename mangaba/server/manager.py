@@ -193,6 +193,7 @@ class SessionManager:
         self._data_base = base
         # Desktop/UI prefs (default model, onboarding state) — not secrets; a plain JSON file.
         self._prefs = self._load_prefs()
+        self._migrar_provedor_nordeste()
         if self._prefs.get("default_model"):
             self.model = self._prefs["default_model"]
         # Seed the PDF-fallback module global from prefs so engines see the user's
@@ -550,9 +551,9 @@ class SessionManager:
         esquema de ferramentas), em background, no instante em que a sessão nasce.
 
         Por quê: nos modelos em CPU o custo da PRIMEIRA resposta é o prefill do prefixo —
-        medido em ~23 s no Nordeste-30B e ~3,6 s no Qwen3-4B local para ~3k tokens de
-        sistema+tools. Uma vez prefillado, o mesmo prefixo responde em ~0,6 s (cache quente,
-        ~38× mais rápido). Este disparo paga esse prefill ANTES de a pessoa mandar a mensagem
+        medido em ~3,6 s no Qwen3-4B local para ~3k tokens de sistema+tools (e em dezenas de
+        segundos num gateway de CPU). Uma vez prefillado, o mesmo prefixo responde em ~0,1 s
+        (cache quente). Este disparo paga esse prefill ANTES de a pessoa mandar a mensagem
         — escondido atrás do "abrindo sessão" —, então a 1ª mensagem real reaproveita o cache
         em vez de esperar do zero.
 
@@ -561,7 +562,9 @@ class SessionManager:
         sessão segue — só volta a pagar o prefill frio na 1ª mensagem, como antes. Devolve a
         thread (ou None se pulou) para os testes conseguirem sincronizar.
         """
-        if self._model_provider(engine.model) not in ("local", "mangaba-nordeste"):
+        # O gateway Mangaba (nuvem) NÃO entra: ele roteia para provedores rápidos em GPU,
+        # onde o prefill não domina — aquecer ali só gastaria cota compartilhada à toa.
+        if self._model_provider(engine.model) not in ("local",):
             return None
         # A visão OUTBOUND completa (histórico + compactação aplicada), não só o system: numa
         # sessão retomada o prefixo frio é o histórico inteiro, e após compactar é a visão
@@ -1662,36 +1665,6 @@ class SessionManager:
         "mistral": ["mistral-large-latest", "mistral-small-latest"],
     }
 
-    def _modelos_do_gateway(self, name: str) -> list[str]:
-        """Modelos que o gateway da organização serve, perguntados a ele.
-
-        Diferente dos vendors públicos, aqui não dá para embutir uma lista: o catálogo é
-        de quem administra o gateway e muda sem nos avisar. Melhor esforço — se não
-        responder, o usuário ainda pode digitar o id do modelo à mão."""
-        perfil = self.secrets.get(f"provider:{name}") or {}
-        base = (perfil.get("base_url") or "").strip()
-        if not base:
-            d = get_descriptor(name)
-            base = next(
-                (f.default for f in (d.fields if d else []) if f.key == "base_url"), ""
-            )
-        if not base:
-            return []
-        chave = (perfil.get("api_key") or "").strip()
-        try:
-            import httpx
-
-            resp = httpx.get(
-                base.rstrip("/") + "/models",
-                headers={"Authorization": f"Bearer {chave}"} if chave else {},
-                timeout=6.0,
-            )
-            if resp.status_code >= 300:
-                return []
-            return [m["id"] for m in (resp.json().get("data") or []) if m.get("id")]
-        except Exception:
-            return []
-
     def _suggested_models(self, name: str) -> list[str]:
         """Bare model-name suggestions for the 'add model' form (datalist), per provider —
         the curated matrix, topped up with the compat-vendor extras the matrix doesn't
@@ -1701,8 +1674,11 @@ class SessionManager:
             from ..providers import local_engine
 
             return local_engine.downloaded_tags()
-        if name == "mangaba-nordeste":
-            return self._modelos_do_gateway(name)
+        if name == "mangaba":
+            from ..providers.mangaba_gateway import modelos_do_gateway
+
+            perfil = (self.secrets.get("provider:mangaba") or {}) if self.secrets else {}
+            return modelos_do_gateway(perfil.get("base_url"))
         from ..providers.matrix import models_for_provider
 
         return list(
@@ -1909,6 +1885,38 @@ class SessionManager:
             self._prefs.pop("dm_session", None)
         self._save_prefs()
         return {"ok": True, "dm_session": self.dm_session()}
+
+    #: Prefixo do provedor aposentado em 2026-08-06 e o seu substituto sem chave.
+    _NORDESTE = "mangaba-nordeste:"
+    _NORDESTE_SUBSTITUTO = "mangaba:auto"
+
+    def _migrar_provedor_nordeste(self) -> bool:
+        """Aponta quem estava no `mangaba-nordeste` para o gateway Mangaba sem chave.
+
+        Sem isto o estrago é silencioso e feio: `mangaba-nordeste:` deixou de ser um
+        provedor conhecido, e o roteador manda todo modelo com prefixo desconhecido para o
+        provedor PADRÃO (OpenAI). Ou seja, o modelo preferido de alguém viraria uma chamada
+        cobrada na chave da OpenAI — ou um erro de "sem chave" sem explicação nenhuma.
+
+        Devolve True quando mexeu em alguma coisa (para o teste, e para saber se salva)."""
+        mudou = False
+        atual = self._prefs.get("default_model")
+        if isinstance(atual, str) and atual.startswith(self._NORDESTE):
+            self._prefs["default_model"] = self._NORDESTE_SUBSTITUTO
+            mudou = True
+        for chave in ("models", "hidden_models"):
+            lista = self._prefs.get(chave)
+            if not isinstance(lista, list):
+                continue
+            limpa = [m for m in lista if not (isinstance(m, str) and m.startswith(self._NORDESTE))]
+            if limpa != lista:
+                # `models` são ids escolhidos à mão; o substituto já vem do catálogo, então
+                # basta remover os órfãos em vez de traduzir um a um.
+                self._prefs[chave] = limpa
+                mudou = True
+        if mudou:
+            self._save_prefs()
+        return mudou
 
     def _curated_models(self) -> list[str]:
         """The models offered in the composer's selector: every curated-matrix model

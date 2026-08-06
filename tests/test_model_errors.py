@@ -105,7 +105,7 @@ def test_estouro_de_contexto_vira_mensagem_acionavel():
         "exceeds the available context size (8192 tokens), try increasing it', "
         "'type': 'exceed_context_size_error', 'n_prompt_tokens': 12187, 'n_ctx': 8192}}"
     )
-    msg = friendly_model_error("mangaba-nordeste:Mangaba-Nordeste-30B", exc)
+    msg = friendly_model_error("mangaba:auto", exc)
     assert msg is not None
     assert "12187" in msg and "8192" in msg
     # as três saídas que a pessoa tem, e a que o admin tem
@@ -114,14 +114,24 @@ def test_estouro_de_contexto_vira_mensagem_acionavel():
     assert "--ctx-size" in msg
 
 
-def test_janela_do_gateway_e_a_medida_nao_a_anunciada():
-    """A janela declarada tem de ser SEMPRE a medida. Este número já valeu 8.192 —
-    o gateway anunciava 32768 mas servia 8192, porque no llama-server o `-c` é dividido
-    entre os slots de `--parallel`. Depois de o administrador corrigir (-c 131072 ÷ 4
-    slots), a medição confirmou 32.768: prompt de 10k passa, que antes era recusado."""
+def test_janela_do_gateway_e_a_do_menor_elo_da_cadeia():
+    """A janela declarada tem de ser SEMPRE a que se pode garantir. Aqui a lição custou
+    uma release: o gateway anterior anunciava 32768 e servia 8192, porque no llama-server
+    o `-c` é dividido entre os slots de `--parallel`.
+
+    No gateway atual o risco mudou de forma, não de natureza: `auto` não escolhe o modelo,
+    a cadeia de fallback escolhe — então a janela anunciada é a do MENOR elo plausível,
+    nunca a do maior. Se alguém subir `mangaba:auto` para 1M (a janela do Gemini, o 1º da
+    cadeia), uma sessão que caiu para um elo de 128k estoura sem aviso."""
     from mangaba.providers.matrix import model_context_windows
 
-    assert model_context_windows()["mangaba-nordeste:Mangaba-Nordeste-30B"] == 32_768
+    janelas = model_context_windows()
+    assert janelas["mangaba:auto"] == 128_000
+    especificos = [v for k, v in janelas.items() if k.startswith("mangaba:") and k != "mangaba:auto"]
+    assert especificos, "os modelos nomeados da cadeia precisam continuar no catálogo"
+    assert janelas["mangaba:auto"] <= min(especificos), (
+        "auto não pode prometer mais contexto do que o pior elo em que ele pode cair"
+    )
 
 
 def test_verificador_mede_a_janela_em_vez_de_confiar_no_anuncio():
@@ -146,7 +156,7 @@ def test_429_de_ritmo_e_diferente_de_429_de_credito():
     from mangaba.providers.errors import friendly_model_error
 
     ritmo = friendly_model_error(
-        "mangaba-nordeste:X",
+        "mangaba:auto",
         Exception(
             "Error code: 429 - {'error': {'message': 'Rate limit exceeded: 30 requests "
             "per minute', 'type': 'rate_limit_exceeded'}}"
@@ -156,7 +166,7 @@ def test_429_de_ritmo_e_diferente_de_429_de_credito():
     assert "rpm" in ritmo  # o que pedir ao administrador
 
     credito = friendly_model_error(
-        "mangaba-nordeste:X",
+        "mangaba:auto",
         Exception("Error code: 429 - {'error': {'code': 'insufficient_quota'}}"),
     )
     assert credito and "quota" in credito.lower()

@@ -96,8 +96,8 @@ def test_verify_unexpected_status(monkeypatch):
     assert "500" in res["error"]
 
 
-def test_gateway_da_organizacao_avisa_quando_nao_executa_ferramenta(monkeypatch):
-    """Chave válida NÃO garante agente. O gateway anterior deste projeto aceitava o
+def test_gateway_mangaba_avisa_quando_nao_executa_ferramenta(monkeypatch):
+    """Alcançar o gateway NÃO garante agente. O gateway anterior deste projeto aceitava o
     parâmetro `tools` e nunca devolvia `tool_calls` — e o modelo, em vez de falhar,
     INVENTAVA o resultado (pedimos uma listagem de arquivos e ele escreveu uma saída de
     `ls` que nunca rodou). O 'Testar' é o único momento em que a pessoa está olhando."""
@@ -107,72 +107,99 @@ def test_gateway_da_organizacao_avisa_quando_nao_executa_ferramenta(monkeypatch)
         status_code = 200
 
         def json(self):
-            return {"data": [{"id": "mangaba-chat"}]}
+            return {"default": "google/gemini-2.5-flash", "chain": ["google/gemini-2.5-flash"]}
 
     class RespSemToolCalls:
         status_code = 200
 
         def json(self):
-            # aceita `tools`, responde texto — o caso perigoso
-            return {"choices": [{"message": {"content": "O clima em Maceió é ensolarado."}}]}
+            # aceita `tools`, responde texto — o caso perigoso. Já no embrulho do gateway.
+            return {
+                "provider": "groq",
+                "data": {"choices": [{"message": {"content": "Em Maceió faz sol."}}]},
+            }
 
     monkeypatch.setattr(httpx, "get", lambda *a, **k: RespModelos())
     monkeypatch.setattr(httpx, "post", lambda *a, **k: RespSemToolCalls())
 
-    res = verify_provider_key(
-        "mangaba-nordeste", api_key="chave-do-admin", base_url="https://gw.exemplo/v1"
-    )
-    assert res["ok"] is True, "a chave é válida — não é erro"
+    res = verify_provider_key("mangaba")
+    assert res["ok"] is True, "o gateway respondeu — não é erro"
     assert "aviso" in res, "mas o usuário precisa saber que não é agente"
-    assert "inventar" in res["aviso"] or "ferramenta" in res["aviso"]
+    assert "ferramenta" in res["aviso"]
 
 
-def test_gateway_da_organizacao_sem_aviso_quando_executa_ferramenta(monkeypatch):
+def test_gateway_mangaba_sem_aviso_quando_executa_ferramenta(monkeypatch):
     import httpx
 
     class RespModelos:
         status_code = 200
 
         def json(self):
-            return {"data": [{"id": "mangaba-chat"}]}
+            return {"chain": ["google/gemini-2.5-flash"]}
 
     class RespComToolCalls:
         status_code = 200
 
         def json(self):
             return {
-                "choices": [
-                    {
-                        "message": {
-                            "tool_calls": [
-                                {
-                                    "id": "c1",
-                                    "function": {
-                                        "name": "obter_clima",
-                                        "arguments": '{"cidade":"Maceió"}',
-                                    },
-                                }
-                            ]
+                "provider": "groq",
+                "data": {
+                    "choices": [
+                        {
+                            "message": {
+                                "tool_calls": [
+                                    {
+                                        "id": "c1",
+                                        "function": {
+                                            "name": "obter_clima",
+                                            "arguments": '{"cidade":"Maceió"}',
+                                        },
+                                    }
+                                ]
+                            }
                         }
-                    }
-                ]
+                    ]
+                },
             }
 
     monkeypatch.setattr(httpx, "get", lambda *a, **k: RespModelos())
     monkeypatch.setattr(httpx, "post", lambda *a, **k: RespComToolCalls())
 
-    res = verify_provider_key(
-        "mangaba-nordeste", api_key="chave-do-admin", base_url="https://gw.exemplo/v1"
-    )
+    res = verify_provider_key("mangaba")
     assert res["ok"] is True and "aviso" not in res
 
 
-def test_descriptor_do_gateway_pede_chave_e_aponta_para_o_admin():
+def test_gateway_mangaba_fora_do_ar_e_erro_nao_excecao(monkeypatch):
+    """Túnel ngrok cai. Isso vira {ok: False} com texto legível, nunca um 500 na API."""
+    import httpx
+
+    def _boom(*a, **k):
+        raise httpx.ConnectError("tunnel down")
+
+    monkeypatch.setattr(httpx, "get", _boom)
+    res = verify_provider_key("mangaba")
+    assert res["ok"] is False and "gateway" in res["error"].lower()
+
+
+def test_descriptor_do_gateway_nao_pede_chave():
+    """A razão de existir deste provedor: quem instala o app usa IA na nuvem sem gerar
+    chave nenhuma. Se `needs_key` voltar a ser True, o provedor perdeu o propósito."""
     from mangaba.providers.registry import get_descriptor
 
-    d = get_descriptor("mangaba-nordeste")
-    assert d is not None and d.needs_key is True
+    d = get_descriptor("mangaba")
+    assert d is not None and d.needs_key is False
+    assert d.env_key is None, "não há chave de ambiente para um provedor sem chave"
     campos = {f.key: f for f in d.fields}
-    assert campos["api_key"].secret is True
-    # a chave vem do administrador, não de um cadastro num site
-    assert "/admin/keys" in campos["base_url"].help  # a chave sai do Swagger do gateway
+    assert "api_key" not in campos, "nenhum campo de chave na tela"
+    # o endpoint continua editável (gateway próprio / túnel de teste), mas nunca obrigatório
+    assert campos["base_url"].required is False and campos["base_url"].default
+    assert d.recommended_model == "auto"
+
+
+def test_provedor_mangaba_nordeste_saiu_de_cena():
+    """Trocado pelo gateway sem chave em 2026-08-06. Se o nome voltar, alguém restaurou
+    um provedor que ninguém que só instala o app conseguia usar."""
+    from mangaba.providers.registry import get_descriptor, provider_names
+
+    assert get_descriptor("mangaba-nordeste") is None
+    assert "mangaba-nordeste" not in provider_names()

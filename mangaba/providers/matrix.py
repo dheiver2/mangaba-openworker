@@ -82,22 +82,31 @@ MATRIX: dict[str, ModelEntry] = {
         "Gemini 2.5 Flash · Google", _AGENTIC_VISION, 1_048_576
     ),
     # -- direct OpenAI-compatible vendors ----------------------------------------
-    # Mangaba-Nordeste-30B (Mangaba AI, servido no Brasil — Nossa Telecom/AL, CPU):
-    # verificado agêntico pleno pelo verificar_provedor.py em 2026-08-05 (tools,
-    # role:tool, SSE, tool_calls no streaming e paralelo). Sem visão (GGUF de texto).
+    # Gateway Mangaba (nuvem compartilhada, SEM chave — providers/mangaba_gateway.py).
+    # Substituiu o Mangaba-Nordeste-30B em 2026-08-06: aquele exigia uma chave-cliente
+    # gerada à mão no Swagger, então quem só instalava o app não conseguia usá-lo.
+    # Verificado agêntico pleno contra o gateway real: `tools` no corpo, `tool_calls` na
+    # resposta, `role:"tool"` aceito na volta e `tool_calls` também no streaming.
     #
-    # Janela 32.768, MEDIDA em 2026-08-05 (prompt de 10k passa; antes o mesmo prompt
-    # batia em n_ctx=8192). O anúncio do /v1/models e o servidor finalmente concordam.
-    #
-    # A pegadinha que causou a divergência, registrada porque volta a morder: no
-    # llama-server o `-c` é dividido ENTRE OS SLOTS de `--parallel`. Com -c 32768 e
-    # --parallel 4, cada requisição via 8.192. O admin subiu para -c 131072 (÷ 4 =
-    # 32.768/slot). Ao ler `-c` de um gateway, sempre divida pelo número de slots.
-    #
-    # Latência: MoE de 30B em CPU. Prompts na casa de 20k tokens levam minutos —
-    # cabem na janela, mas testam a paciência.
-    "mangaba-nordeste:Mangaba-Nordeste-30B": ModelEntry(
-        "Mangaba-Nordeste-30B · Mangaba AI", _AGENTIC, 32_768
+    # `auto` é o recomendado: omite `model` do corpo e o gateway percorre a própria cadeia
+    # de fallback (GET /api/models → chain). A janela declarada é a do MENOR elo plausível
+    # da cadeia, de propósito — quem escolhe `auto` não sabe em qual modelo vai cair, e
+    # estourar o contexto é pior do que compactar cedo demais.
+    "mangaba:auto": ModelEntry("Automático · Mangaba AI", _AGENTIC, 128_000),
+    "mangaba:google/gemini-2.5-flash": ModelEntry(
+        "Gemini 2.5 Flash · via Mangaba", _AGENTIC_VISION, 1_048_576
+    ),
+    "mangaba:groq/openai/gpt-oss-120b": ModelEntry(
+        "GPT-OSS 120B · via Mangaba", _AGENTIC, 131_072
+    ),
+    "mangaba:groq/openai/gpt-oss-20b": ModelEntry(
+        "GPT-OSS 20B · via Mangaba", _AGENTIC, 131_072
+    ),
+    "mangaba:groq/qwen/qwen3.6-27b": ModelEntry(
+        "Qwen3.6 27B · via Mangaba", _AGENTIC, 131_072
+    ),
+    "mangaba:groq/llama-3.3-70b-versatile": ModelEntry(
+        "Llama 3.3 70B · via Mangaba", _AGENTIC, 131_072
     ),
     # Muse Spark (Meta Model API, public preview 2026-07-09): multimodal + tools via
     # their OpenAI-compat surface. Vision yes; PDFs unverified over compat — falls

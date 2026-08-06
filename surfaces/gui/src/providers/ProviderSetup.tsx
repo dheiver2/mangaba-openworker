@@ -421,10 +421,11 @@ export function ProviderCards({
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5">
               <span className="text-[13px] font-semibold leading-tight truncate">{p.title}</span>
-              {/* O Local é o único caminho sem chave e sem custo — o selo o faz saltar na
-                  galeria (ele já vem primeiro, por providerRank), para o recém-instalado
-                  reconhecer de cara a opção grátis e privada. */}
-              {p.name === "local" && (
+              {/* Os dois caminhos sem chave e sem custo: o Local (roda aqui, privado) e o
+                  gateway Mangaba (nuvem compartilhada). O selo os faz saltar na galeria —
+                  ambos já vêm primeiro, por providerRank —, para o recém-instalado
+                  reconhecer de cara o que dá para usar sem cadastrar cartão. */}
+              {(p.name === "local" || p.name === "mangaba") && (
                 <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-ok bg-okSoft rounded px-1.5 py-0.5">
                   Grátis
                 </span>
