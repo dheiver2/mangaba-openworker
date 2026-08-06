@@ -130,7 +130,9 @@ export function FluxosView({
 }: {
   // Um fluxo pronto abre uma conversa com o prompt já preenchido (mesmo contrato do
   // startNewSession + prefill das skills). Um incompleto leva para o ajuste que falta.
-  onIniciarFluxo: (prompt: string) => void;
+  // `agente` é a família enxuta que o fluxo local inicia ("negocio") ou "cowork" para os
+  // que usam conector/MCP — quem chama decide a persona da nova sessão a partir disso.
+  onIniciarFluxo: (prompt: string, agente: string) => void;
   onAbrirConfig: (destino: "modelos" | "skills" | "mcp" | "conectores" | "automacoes") => void;
 }) {
   const [problemas, setProblemas] = useState<Problema[] | null>(null);
@@ -155,7 +157,7 @@ export function FluxosView({
 
   const usar = (f: Fluxo) => {
     if (f.pronto) {
-      onIniciarFluxo(f.prompt);
+      onIniciarFluxo(f.prompt, f.agente);
       return;
     }
     // Leva para o primeiro ajuste pendente — o destino depende do tipo da peça.

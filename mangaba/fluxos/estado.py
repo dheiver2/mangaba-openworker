@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from .identidade import conector_equivalente, mcps_equivalentes
+
 
 def _estado_peca(pronta: bool, rotulo: str, tipo: str, acao: str = "") -> dict[str, Any]:
     return {"rotulo": rotulo, "tipo": tipo, "pronta": pronta, "acao": acao}
@@ -45,13 +47,23 @@ def resolver_fluxo(
         pecas.append(_estado_peca(ativa, nome, "skill", acao))
 
     for nome in fluxo.get("mcps", []):
-        conectado = nome in mcps_conectados
+        # O mesmo serviço pode estar conectado pela via nativa: se o conector equivalente já
+        # está ligado, a peça está satisfeita — a sessão terá as tools daquele serviço de todo
+        # jeito. Sem isto, quem conectou o Linear nativo veria o fluxo de MCP "faltando".
+        equiv = conector_equivalente(nome)
+        conectado = nome in mcps_conectados or (
+            equiv is not None and equiv in conectores_conectados
+        )
         rotulo = (rotulo_mcp(nome) if rotulo_mcp else None) or mcps_conhecidos.get(nome, nome)
         acao = "" if conectado else ("conectar_mcp" if nome in mcps_conhecidos else "instalar_mcp")
         pecas.append(_estado_peca(conectado, rotulo, "mcp", acao))
 
     for nome in fluxo.get("conectores", []):
-        conectado = nome in conectores_conectados
+        # Simétrico: um servidor MCP equivalente conectado satisfaz a peça de conector nativo,
+        # para não pedir a MESMA conta duas vezes (nem criar conexão duplicada).
+        conectado = nome in conectores_conectados or bool(
+            mcps_equivalentes(nome) & mcps_conectados
+        )
         rotulo = conectores_conhecidos.get(nome, nome)
         pecas.append(
             _estado_peca(conectado, rotulo, "conector", "" if conectado else "conectar_conector")
@@ -73,6 +85,23 @@ def resolver_fluxo(
         )
     )
 
+    # Família de agente que o fluxo inicia. Um fluxo LOCAL (sem MCP e sem conector) roda na
+    # família enxuta "negocio" (~20 ferramentas) em vez da Cowork padrão (~47) — no modelo
+    # local em CPU isso corta o prefill da primeira mensagem em milhares de tokens, que é o
+    # que a pessoa sente como "demora". Fluxo que usa conector/MCP precisa da máquina de
+    # integração e continua em Cowork; não dá para servir os dois com a mesma família porque
+    # `connectors=True` já arrasta os 11 tools de navegador + e-mail.
+    #
+    # Um fluxo AGENDADO também sai de "negocio": quem cria o agendamento é o próprio agente,
+    # chamando `create_scheduled_task` na conversa em que a pessoa ativa o fluxo — e essa tool
+    # só é concedida à família "knowledge" (Cowork), nunca a "business" (negocio). Rotear um
+    # fluxo agendado para negocio deixaria a peça `criar_automacao` impossível de cumprir: o
+    # agente veria a instrução de agendar e não teria a ferramenta. A regra de roteamento aqui
+    # e o gating em agent.py precisam concordar; o teste de invariante prende isso.
+    usa_externo = bool(fluxo.get("mcps") or fluxo.get("conectores"))
+    precisa_agenda = bool(fluxo.get("agendado"))
+    agente = "negocio" if not usa_externo and not precisa_agenda else "cowork"
+
     faltando = [p for p in pecas if not p["pronta"]]
     # A automação não conta como impedimento: o fluxo roda sob demanda enquanto ela não
     # existe. Dizer "falta 1" por causa dela assustaria sem motivo.
@@ -83,6 +112,7 @@ def resolver_fluxo(
         "pecas": pecas,
         "pronto": not bloqueios,
         "faltam": len(bloqueios),
+        "agente": agente,
     }
 
 

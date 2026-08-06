@@ -287,6 +287,70 @@ def test_task_engine_has_no_scheduling_tools(tmp_path, monkeypatch):
     assert "write_file" in names  # the deliverable tools are still there
 
 
+@pytest.mark.asyncio
+async def test_scheduled_run_injects_mcp_tools(tmp_path, monkeypatch):
+    """Regressão: a run agendada headless precisa receber as ferramentas de MCP/conector-backed,
+    igual à sessão ao vivo. Antes, `_run_scheduled_task` nunca chamava `prepare_mcp_tools` nem
+    passava `extra_tools` — um fluxo agendado que depende de Granola/Intercom (ou de conector
+    MCP-backed como jira/monday) rodava SEM as tools e falhava em silêncio. Este teste prende a
+    fiação: o que `prepare_mcp_tools` devolve tem de chegar ao engine da run."""
+    from mangaba.providers import (
+        AssistantTurn as _AT,
+        ModelCapabilities,
+        ProviderClient,
+    )
+    from mangaba.server.manager import SessionManager
+
+    class _Provider(ProviderClient):
+        def complete(self, *, model, messages, tools=None, **settings):
+            return _AT(text="ok", finish_reason="stop")
+
+        def capabilities(self, model):
+            return ModelCapabilities()
+
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    manager = SessionManager(data_dir=tmp_path / "data", provider=_Provider())
+    task = _task(workspace=str(ws), agent="cowork")
+    manager.task_store.save(task)
+
+    # Uma tool MCP "de mentira" que só é registrável se `extra_tools` for de fato repassado.
+    def mcp__fake__ping() -> str:
+        """ferramenta de teste"""
+        return "pong"
+
+    sentinela = []
+    prep_chamado = {}
+
+    async def _fake_prepare(session_id, *, workspace=None, agent="code"):
+        prep_chamado["session_id"] = session_id
+        prep_chamado["workspace"] = workspace
+        prep_chamado["agent"] = agent
+        return [mcp__fake__ping]
+
+    captura = {}
+    real_build = manager._build_task_engine
+
+    def _spy_build(task, *, session_id, extra_tools=None):
+        captura["extra_tools"] = extra_tools
+        return real_build(task, session_id=session_id, extra_tools=extra_tools)
+
+    monkeypatch.setattr(manager, "prepare_mcp_tools", _fake_prepare)
+    monkeypatch.setattr(manager, "_build_task_engine", _spy_build)
+
+    run = await manager._run_scheduled_task(task, trigger="manual")
+
+    # A preparação rodou com o workspace e o agente da task…
+    assert prep_chamado["workspace"] == str(ws)
+    assert prep_chamado["agent"] == "cowork"
+    # …e o que ela devolveu chegou ao build do engine (o elo que faltava).
+    assert captura["extra_tools"] == [mcp__fake__ping]
+    # E a tool MCP existe de fato no engine da run headless.
+    engine = manager._engines[run.session_id]
+    assert "mcp__fake__ping" in set(engine.registry.names())
+
+
 async def test_manual_run_prepare_and_finalize(tmp_path, monkeypatch):
     from mangaba.providers import AssistantTurn, ModelCapabilities, ProviderClient
     from mangaba.server.manager import SessionManager

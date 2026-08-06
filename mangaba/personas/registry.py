@@ -22,6 +22,7 @@ from ..agents.base import Agent
 from ..agents.chat import chat_agent
 from ..agents.code import CODE_CAPABILITIES, code_agent
 from ..agents.cowork import COWORK_CAPABILITIES, cowork_agent
+from ..agents.negocio import NEGOCIO_CAPABILITIES, negocio_agent
 from .manifest import PersonaManifest, load_manifest_file
 
 DEFAULT_PERSONA_ID = "cowork"
@@ -152,6 +153,21 @@ class PersonaRegistry:
             "knowledge",
             [],
             workspace="none",
+            default_surfaced=False,
+        )
+        # Negócio: família enxuta que os fluxos LOCAIS iniciam para cortar o prefill do modelo
+        # em CPU (~11 ferramentas vs ~47 de Cowork). Fora do picker — é destino de fluxo, não
+        # uma persona que a pessoa escolhe à mão.
+        self._register_builder(
+            "negocio",
+            "Negócio",
+            "sparkle",
+            "Fluxos de negócio que rodam só na máquina — enxuto e rápido",
+            negocio_agent,
+            True,
+            "business",
+            NEGOCIO_CAPABILITIES,
+            workspace="deliverable",
             default_surfaced=False,
         )
         # Markdown-backed built-ins (Ops, …) — dogfood the manifest path.

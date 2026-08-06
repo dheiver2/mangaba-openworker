@@ -319,6 +319,10 @@ export type Fluxo = {
   faltam: number;
   problema_id: string;
   problema: string;
+  // Família de agente que o fluxo inicia: "negocio" (enxuta, fluxos locais) ou "cowork"
+  // (com conector/MCP). Menos ferramentas → prefill menor → primeira resposta mais rápida
+  // no modelo local.
+  agente: string;
 };
 export type Problema = {
   id: string;

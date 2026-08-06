@@ -25,6 +25,7 @@ const PROBLEMAS: Problema[] = [
         faltam: 0,
         problema_id: "cobrar-atrasados",
         problema: "Cobrar quem está atrasado",
+        agente: "negocio",
         pecas: [
           { rotulo: "cobranca-inadimplencia", tipo: "skill", pronta: true, acao: "" },
           { rotulo: "Modelo", tipo: "modelo", pronta: true, acao: "" },
@@ -43,6 +44,7 @@ const PROBLEMAS: Problema[] = [
         faltam: 1,
         problema_id: "cobrar-atrasados",
         problema: "Cobrar quem está atrasado",
+        agente: "cowork",
         pecas: [
           { rotulo: "cobranca-inadimplencia", tipo: "skill", pronta: true, acao: "" },
           { rotulo: "HubSpot", tipo: "mcp", pronta: false, acao: "conectar_mcp" },
@@ -75,8 +77,10 @@ describe("tela de fluxos por problema", () => {
     render(<FluxosView onIniciarFluxo={iniciar} onAbrirConfig={() => {}} />);
     await waitFor(() => expect(screen.getByText("Da planilha, quando eu pedir")).toBeTruthy());
     fireEvent.click(screen.getByText("Usar agora"));
+    // Fluxo local abre na família enxuta "negocio" (menos ferramentas → prefill menor).
     expect(iniciar).toHaveBeenCalledWith(
       "Leia a planilha de contas a receber e escreva as cobranças.",
+      "negocio",
     );
   });
 

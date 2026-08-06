@@ -79,12 +79,18 @@ export function SettingsView({
   initialTab,
   onOpenPersona,
   onCreateSkill,
+  onOpenIntegrations,
+  onOpenScheduled,
 }: {
   initialTab?: SetTab;
   onOpenPersona?: (id: string) => void;
   // Skills doorway (SKILLS-SPEC §5.2): start a new conversation with the description
   // prefilled — the worker builds the skill and proposes it via save_skill.
   onCreateSkill?: (description: string) => void;
+  // Conectores/MCP e Automações são surfaces próprias; o subnav só ROTEIA para elas (não
+  // as embute) para o usuário achá-las onde procura "configurações", sem duplicar telas.
+  onOpenIntegrations?: () => void;
+  onOpenScheduled?: () => void;
 }) {
   // Personas is flag-gated (hidden for launch) — filter the tab AND coerce a stale
   // deep-link to it (openSettings("personas") callers) so the page never opens on a
@@ -115,6 +121,34 @@ export function SettingsView({
             </button>
           );
         })}
+
+        {/* Conectores e Automações vivem em surfaces próprias. Quem procura "configurações"
+            para ligar o Gmail espera achá-las aqui — estas linhas ROTEIAM para lá (o chevron
+            sinaliza que saem do Settings), em vez de duplicar as telas dentro dele. */}
+        {(onOpenIntegrations || onOpenScheduled) && (
+          <div className="mt-3 pt-3 border-t border-line">
+            {onOpenIntegrations && (
+              <button
+                className="w-full text-left px-2.5 py-2 rounded-lg text-[13px] flex items-center gap-2 text-muted hover:bg-paper hover:text-ink"
+                onClick={onOpenIntegrations}
+                data-testid="set-goto-integrations"
+              >
+                <Icon name="plug" size={15} /> Conectores e MCP
+                <span className="ml-auto text-faint text-[14px]">›</span>
+              </button>
+            )}
+            {onOpenScheduled && (
+              <button
+                className="w-full text-left px-2.5 py-2 rounded-lg text-[13px] flex items-center gap-2 text-muted hover:bg-paper hover:text-ink"
+                onClick={onOpenScheduled}
+                data-testid="set-goto-scheduled"
+              >
+                <Icon name="clock" size={15} /> Automações
+                <span className="ml-auto text-faint text-[14px]">›</span>
+              </button>
+            )}
+          </div>
+        )}
       </nav>
 
       <div className="flex-1 min-w-0 overflow-y-auto hairline-scroll">

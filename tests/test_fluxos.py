@@ -178,6 +178,157 @@ def test_toda_peca_referenciada_existe_de_verdade():
             assert c in con_reais, f"{f['id']}: conector inexistente {c!r}"
 
 
+def test_fluxo_local_inicia_na_familia_enxuta():
+    """A causa da lentidão sentida no modelo local é o prefill do esquema de ferramentas: a
+    família Cowork padrão manda ~47 ferramentas, e cada uma custa tokens antes da primeira
+    palavra sair. Um fluxo que só lê arquivo e escreve entregável não usa navegador, e-mail,
+    agendamento nem mensageria — então roda na família 'negocio' (~20 ferramentas). Já um
+    fluxo com conector/MCP precisa da máquina de integração e fica em 'cowork'. Esta regra é
+    o que transforma a economia em algo real; se ela inverter, a lentidão volta."""
+    for f in FLUXOS.values():
+        r = resolver_fluxo(f, **CTX_TUDO_PRONTO)
+        # Local E sem agendamento → família enxuta. Peça externa OU agendamento (que precisa de
+        # create_scheduled_task, exclusivo de Cowork) → Cowork.
+        enxuto = not (f["mcps"] or f["conectores"] or f["agendado"])
+        esperado = "negocio" if enxuto else "cowork"
+        assert r["agente"] == esperado, (
+            f"{f['id']}: esperava iniciar em {esperado!r}, veio {r['agente']!r}"
+        )
+
+
+def test_fluxo_agendado_nunca_roteia_para_negocio():
+    """Armadilha que já mordeu: 'posts-da-semana' é local E agendado, e roteava para 'negocio'
+    — família enxuta que NÃO tem create_scheduled_task. Quem cria o agendamento é o agente na
+    conversa de ativação, então um fluxo agendado numa família sem a ferramenta deixa a peça
+    'criar_automacao' impossível de cumprir. Todo fluxo com `agendado` precisa nascer numa
+    família que saiba se agendar."""
+    for f in FLUXOS.values():
+        r = resolver_fluxo(f, **CTX_TUDO_PRONTO)
+        if f["agendado"]:
+            assert r["agente"] != "negocio", (
+                f"{f['id']}: fluxo agendado roteado para 'negocio', que não tem "
+                "create_scheduled_task — a automação nunca seria criada"
+            )
+
+
+def test_familia_de_cada_fluxo_tem_as_ferramentas_que_o_fluxo_exige():
+    """A trava de verdade: em vez de reafirmar a regra de roteamento, confere contra a MÁQUINA.
+    Constrói o engine da família que cada fluxo aponta e exige que a capacidade necessária
+    esteja lá — agendamento para fluxos agendados. Se alguém mexer no gating de agent.py ou no
+    roteamento de estado.py e os dois divergirem, isto quebra o CI em vez de chegar ao usuário
+    como uma automação que 'roda' mas nunca se agenda."""
+    import tempfile
+
+    from mangaba.server.manager import SessionManager
+
+    m = SessionManager(workspace=tempfile.mkdtemp())
+    # Cache de nomes de ferramentas por família — construir engine é caro, uma vez por família.
+    tools_por_agente: dict[str, set[str]] = {}
+
+    def tools_de(agente: str) -> set[str]:
+        if agente not in tools_por_agente:
+            eng = m.get_engine(f"__inv__{agente}", agent=agente)
+            tools_por_agente[agente] = {
+                s["function"]["name"] for s in eng.registry.schemas()
+            }
+        return tools_por_agente[agente]
+
+    for f in FLUXOS.values():
+        r = resolver_fluxo(f, **CTX_TUDO_PRONTO)
+        if f["agendado"]:
+            assert "create_scheduled_task" in tools_de(r["agente"]), (
+                f"{f['id']}: fluxo agendado nasce em {r['agente']!r}, que não expõe "
+                "create_scheduled_task — não teria como se agendar"
+            )
+
+
+def test_familia_negocio_existe_e_e_mais_enxuta_que_cowork():
+    """A família que os fluxos locais apontam precisa existir de verdade e ser realmente
+    menor — senão o ponteiro 'negocio' cairia no default e não economizaria nada."""
+    from mangaba.personas.registry import PersonaRegistry
+
+    reg = PersonaRegistry()
+    neg = reg.get("negocio")
+    assert neg is not None, "família 'negocio' não registrada"
+    assert neg.family == "business"
+    assert neg.default_surfaced is False, (
+        "'negocio' é destino de fluxo, não persona de escolher à mão — fora do picker"
+    )
+
+
+def test_mapa_de_identidade_so_referencia_servicos_reais():
+    """O mapa conector⇄MCP é curado à mão — um rename em qualquer catálogo o deixaria apontando
+    para um serviço que não existe, e o cruzamento silenciosamente pararia de creditar. Esta
+    trava roda contra as fontes reais: se um nome sumir, quebra o CI, não a experiência."""
+    import tempfile
+
+    from mangaba.fluxos.identidade import SERVICOS_DUPLOS
+    from mangaba.mcp import catalog as mcp_cat
+    from mangaba.server.manager import SessionManager
+
+    con_reais = {c["name"] for c in SessionManager(workspace=tempfile.mkdtemp()).list_connectors()}
+    mcps_reais = {i["name"] for i in mcp_cat.listar()}
+    for servico, (conector, mcps) in SERVICOS_DUPLOS.items():
+        assert conector in con_reais, f"{servico}: conector {conector!r} não existe mais"
+        for mcp in mcps:
+            assert mcp in mcps_reais, f"{servico}: mcp {mcp!r} não existe mais"
+
+
+def test_github_nao_e_confundido_com_o_mcp_git_generico():
+    """A armadilha de uma heurística de prefixo: 'github'/'gitlab' NÃO são o MCP 'git' (que é
+    git genérico, não a API do GitHub). O mapa curado tem de deixá-los de fora — creditá-los
+    marcaria um fluxo do GitHub como pronto com a coisa errada conectada."""
+    from mangaba.fluxos.identidade import conector_equivalente, mcps_equivalentes
+
+    assert mcps_equivalentes("github") == frozenset()
+    assert mcps_equivalentes("gitlab") == frozenset()
+    assert conector_equivalente("git") is None
+
+
+def test_mcp_equivalente_conectado_satisfaz_peca_de_conector():
+    """O coração do I2: um fluxo pede o conector nativo, mas a pessoa já tem o MCP do mesmo
+    serviço conectado. Não pode pedir a mesma conta de novo."""
+    fluxo = {"conectores": ["linear"], "mcps": [], "skills": [], "agendado": None, "modelo": "qualquer"}
+    ctx = {
+        **CTX_TUDO_PRONTO,
+        "conectores_conectados": set(),  # o conector nativo NÃO está ligado…
+        "mcps_conectados": {"linear"},  # …mas o MCP equivalente está.
+        "mcps_conhecidos": {"linear": "Linear"},
+    }
+    r = resolver_fluxo(fluxo, **ctx)
+    con = next(p for p in r["pecas"] if p["tipo"] == "conector")
+    assert con["pronta"] is True and r["pronto"] is True
+
+
+def test_conector_equivalente_conectado_satisfaz_peca_de_mcp():
+    """Simétrico: fluxo pede o MCP, mas a pessoa tem o conector nativo do mesmo serviço."""
+    fluxo = {"conectores": [], "mcps": ["hubspot_mcp"], "skills": [], "agendado": None, "modelo": "qualquer"}
+    ctx = {
+        **CTX_TUDO_PRONTO,
+        "mcps_conectados": set(),  # o MCP NÃO está ligado…
+        "conectores_conectados": {"hubspot"},  # …mas o conector nativo está.
+        "mcps_conhecidos": {"hubspot_mcp": "HubSpot"},
+    }
+    r = resolver_fluxo(fluxo, **ctx)
+    mcp = next(p for p in r["pecas"] if p["tipo"] == "mcp")
+    assert mcp["pronta"] is True and r["pronto"] is True
+
+
+def test_servico_sem_equivalente_nao_ganha_credito_cruzado():
+    """Garantia de que o crédito cruzado é ESTRITO: Intercom só existe como MCP. Ter um
+    conector qualquer conectado não pode marcar a peça de Intercom como pronta."""
+    fluxo = {"conectores": [], "mcps": ["intercom_mcp"], "skills": [], "agendado": None, "modelo": "qualquer"}
+    ctx = {
+        **CTX_TUDO_PRONTO,
+        "mcps_conectados": set(),
+        "conectores_conectados": {"gmail", "slack", "hubspot"},
+        "mcps_conhecidos": {"intercom_mcp": "Intercom"},
+    }
+    r = resolver_fluxo(fluxo, **ctx)
+    mcp = next(p for p in r["pecas"] if p["tipo"] == "mcp")
+    assert mcp["pronta"] is False
+
+
 def test_prefere_conector_nativo_quando_existe():
     """Regra de escolha da auditoria: quando um serviço tem conector NATIVO (OAuth
     gerenciado, mais fácil), o fluxo usa o conector — não o MCP do mesmo serviço, que

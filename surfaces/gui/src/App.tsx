@@ -1349,13 +1349,15 @@ export function App() {
       />
       {surface === "fluxos" ? (
         <FluxosView
-          onIniciarFluxo={(prompt) => {
+          onIniciarFluxo={(prompt, agente) => {
             // Fluxo pronto = conversa nova com o prompt já preenchido. Diferente do Skills
             // (que roda dentro de Settings, com o Composer já montado), aqui saímos da
             // surface "fluxos" — o Composer só monta DEPOIS do setSurface("session") do
             // startNewSession. Um prefill disparado no mesmo tick chega antes do Composer
             // existir e se perde. O rAF garante que ele já montou quando o prefill sai.
-            startNewSession();
+            // O fluxo escolhe a família: "negocio" (enxuta) para fluxos locais, "cowork"
+            // para os que usam conector/MCP — menos ferramentas, primeira resposta mais rápida.
+            startNewSession(agente);
             requestAnimationFrame(() => prefillComposer(prompt));
           }}
           onAbrirConfig={(destino) => {
@@ -1378,6 +1380,10 @@ export function App() {
           key={settingsTab}
           initialTab={settingsTab}
           onOpenPersona={(id) => openPersona(id, "settings")}
+          // Conectores/MCP e Automações moram em surfaces próprias, mas quem procura
+          // "configurações" espera achá-las aqui — o subnav do Settings roteia para elas.
+          onOpenIntegrations={() => setSurface("integrations")}
+          onOpenScheduled={() => setSurface("scheduled")}
           onCreateSkill={(description) => {
             // The Skills doorway (SKILLS-SPEC §5.2): creation is a conversation. Fresh
             // session, description in the composer — the user reads and hits send. With

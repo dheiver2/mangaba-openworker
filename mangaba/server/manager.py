@@ -462,7 +462,7 @@ class SessionManager:
             # Knowledge surfaces (Cowork, Ops, …) start "orphan": no folder picked →
             # auto-provision a per-conversation scratch directory (generalizes MyHelper's
             # auto-workspace). Code-family surfaces still require a real repo; Chat needs none.
-            if ag.family == "knowledge":
+            if ag.family in ("knowledge", "business"):
                 ws = self._provision_scratch(session_id)
             else:
                 return None
@@ -2882,7 +2882,9 @@ class SessionManager:
         for tool in task.name_allowed_tools():
             engine.permissions.allow_tool_for_session(tool)
 
-    def _build_task_engine(self, task, *, session_id: str) -> TurnEngine:
+    def _build_task_engine(
+        self, task, *, session_id: str, extra_tools: Optional[list[Any]] = None
+    ) -> TurnEngine:
         ag = get_agent(task.agent)
         Path(task.workspace).mkdir(parents=True, exist_ok=True)
         engine = build_engine(
@@ -2893,6 +2895,11 @@ class SessionManager:
             approver=self._scheduled_approver(task, session_id),
             provider=self.provider,
             memory_store=self.memory_store,
+            # MCP + connector-backed tools for the headless run. Without this a scheduled fluxo
+            # that depends on an MCP server (Granola, Intercom, jira/monday-backed connectors)
+            # would run TOOL-LESS and fail silently — the live WS path passes these, the
+            # scheduler path used to drop them. Prepared by the async caller.
+            extra_tools=extra_tools,
             secrets=self.secrets,
             # No scheduling tools inside a scheduled run: the executing agent's job is to DO the
             # task, and instructions that mention timing ("every day at 5:32pm…") otherwise tempt
@@ -3312,7 +3319,16 @@ class SessionManager:
         # Each run is a real, persisted conversation thread: it runs the instructions under its
         # own session id, then saves the transcript. The user can reopen that session and ask a
         # follow-up — the scheduled agent is no longer fire-and-forget.
-        engine = self._build_task_engine(task, session_id=run.session_id)
+        # Connect the task's MCP servers and connector-backed tools BEFORE building — same
+        # surface the live session gets (prepare_mcp_tools is a no-op once the engine is
+        # registered, so it must run before the _engines assignment below). Without it a
+        # headless run of an MCP-dependent fluxo executes without its tools.
+        mcp_tools = await self.prepare_mcp_tools(
+            run.session_id, workspace=task.workspace, agent=task.agent
+        )
+        engine = self._build_task_engine(
+            task, session_id=run.session_id, extra_tools=mcp_tools
+        )
         # Register the live engine up-front: a parked approval persists the session
         # mid-run (durable suspend), and resolving from the Inbox must find this engine.
         self._engines[run.session_id] = engine
