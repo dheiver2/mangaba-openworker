@@ -163,6 +163,21 @@ class _LocalProvider(OpenAIProvider):
         ensure_running(tag)
 
     @staticmethod
+    def _e_despacho(messages) -> bool:
+        """Estamos no MEIO do laço, despachando ferramenta — ou abrindo um turno novo?
+
+        A última mensagem conta a história: se é um resultado de ferramenta, o modelo já
+        planejou neste turno e agora só encadeia o próximo passo. Se é do usuário, o turno
+        está começando e é ali que vale pensar — é onde mora a aritmética, a leitura do
+        pedido e a escolha da estratégia.
+        """
+        for m in reversed(list(messages or [])):
+            papel = m.get("role") if isinstance(m, dict) else None
+            if papel in ("user", "tool"):
+                return papel == "tool"
+        return False
+
+    @staticmethod
     def _sem_pensamento(settings: dict) -> dict:
         """Desliga o modo de pensamento do Qwen3 no laço agêntico.
 
@@ -184,16 +199,42 @@ class _LocalProvider(OpenAIProvider):
         corpo["chat_template_kwargs"] = kwargs
         return {**settings, "extra_body": corpo}
 
+    def _ajustes(self, messages, settings: dict) -> dict:
+        """Pensamento desligado em TODO turno agêntico.
+
+        Tentei o pensamento seletivo (ligado ao abrir o turno, desligado nos hops) achando
+        que recuperaria a tarefa de aritmética que a fase A.1 perdeu. A bateria REJEITOU a
+        hipótese, e com folga:
+
+            A.1 · sem pensamento em nada:   3/4 |  96 s | mediana 25 s
+            A.2 · pensamento na abertura:   0/3 | interrompida | tarefa de shell em 166 s
+                                                                 (era 15 s na A.1)
+
+        Não foi só mais lento: foi menos correto. A leitura mais provável é que deliberar
+        antes de agir leva o modelo a inventar um plano elaborado que ele não consegue
+        executar, em vez de dar o primeiro passo óbvio e olhar o resultado.
+
+        O parâmetro `messages` fica na assinatura de propósito: a decisão É por turno, e a
+        próxima tentativa (pensar só no turno que sintetiza a entrega) precisa dele.
+        """
+        return self._sem_pensamento(settings)
+
     def complete(self, *, model: str, messages, tools=None, **settings):
         self._garantir_modelo(model)
         return super().complete(
-            model=model, messages=messages, tools=tools, **self._sem_pensamento(settings)
+            model=model,
+            messages=messages,
+            tools=tools,
+            **self._ajustes(messages, settings),
         )
 
     def stream(self, *, model: str, messages, tools=None, **settings):
         self._garantir_modelo(model)
         yield from super().stream(
-            model=model, messages=messages, tools=tools, **self._sem_pensamento(settings)
+            model=model,
+            messages=messages,
+            tools=tools,
+            **self._ajustes(messages, settings),
         )
 
 

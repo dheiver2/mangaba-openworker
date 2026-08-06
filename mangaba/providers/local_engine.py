@@ -331,6 +331,12 @@ def ensure_running(tag: Optional[str] = None, wait_s: float = 120.0) -> bool:
         if _proc is None or _proc.poll() is not None:
             _kill_stale_process()
         stop()
+        # Esperar a porta LIBERAR antes de subir o novo. `stop()` espera o processo morrer,
+        # mas o socket ainda pode ficar preso alguns instantes — e aí o processo novo morre
+        # no arranque com "couldn't bind HTTP server socket", deixando o provedor local fora
+        # do ar em silêncio. Isso ficou perigoso quando a troca de modelo passou a reiniciar
+        # o motor: o caminho mais comum de reinício era justamente o que mais corria o risco.
+        _esperar_porta_livre()
         path = model_path(tag)
         assert path is not None
         cmd = [
@@ -414,6 +420,23 @@ def _kill_stale_process() -> None:
         pass
     finally:
         pf.unlink(missing_ok=True)
+
+
+def _esperar_porta_livre(timeout: float = 10.0) -> bool:
+    """Espera a porta do motor aceitar um bind novo. Devolve False no estouro — quem chama
+    segue assim mesmo, porque falhar a subida com mensagem clara é melhor do que travar."""
+    import socket
+
+    limite = time.time() + timeout
+    while time.time() < limite:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("127.0.0.1", DEFAULT_PORT))
+                return True
+            except OSError:
+                time.sleep(0.25)
+    return False
 
 
 def stop() -> None:
