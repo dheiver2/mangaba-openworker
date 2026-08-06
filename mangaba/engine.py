@@ -120,6 +120,11 @@ class TurnEngine:
         self._cancel = asyncio.Event()
         # Each pending steering message: (text, optional MessageSource sidecar dict).
         self._steering: list[tuple[str, Optional[dict[str, Any]]]] = []
+        # Orquestração de entrega (por turno, resetados em _loop): o gate de "definição de
+        # pronto" cutuca UMA vez se o modelo tenta encerrar com tarefas pendentes; o aviso de
+        # fechamento cutuca UMA vez ao se aproximar do teto de iterações. Ambos via steering.
+        self._done_nudged = False
+        self._wrapup_warned = False
         # tool_call.id → the standing rule that auto-allowed it ("tool → target"), so the
         # TOOL_FINISHED event can carry the note to the tool card (§25).
         self._standing_notes: dict[str, str] = {}
@@ -160,6 +165,34 @@ class TurnEngine:
         self, text: str, source: Optional[dict[str, Any]] = None
     ) -> None:
         self._steering.append((text, source))
+
+    def _maybe_nudge_unfinished(self) -> None:
+        """Gate de 'definição de pronto': o modelo tenta encerrar (sem tool_calls), mas a lista
+        de Progresso ainda tem itens abertos. Enfileira UMA cutucada de verificação por turno —
+        depois disso, deixa encerrar (o flag evita laço se ele insistir que está pronto).
+
+        Só age quando há uma lista de tarefas de verdade com pendências. Sessão sem `todo`
+        (callers diretos) ou com tudo `done` passa reto — nada a cobrar."""
+        if self._done_nudged:
+            return
+        todo = getattr(self, "todo", None)
+        items = list(getattr(todo, "items", []) or [])
+        pendentes = [
+            i.get("content", "?")
+            for i in items
+            if i.get("status") in ("pending", "in_progress")
+        ]
+        if not pendentes:
+            return
+        self._done_nudged = True
+        lista = "; ".join(pendentes[:6])
+        self.queue_steering(
+            "Antes de encerrar: a lista de Progresso ainda tem tarefas abertas — "
+            f"{lista}. Conclua o que falta e verifique o resultado (o arquivo prometido "
+            "existe? os números batem? o teste/execução passou?). Se alguma tarefa não se "
+            "aplica mais, marque-a como concluída no todo e diga por quê no resumo final. "
+            "Só então entregue."
+        )
 
     # -- main loop --------------------------------------------------------------
     async def run(
@@ -315,6 +348,9 @@ class TurnEngine:
         iterations = 0
         # O estol é POR TURNO: mensagem nova muda o histórico, então vale tentar de novo.
         self._compaction_stalled = False
+        # As cutucadas de orquestração valem por turno — zeram a cada nova mensagem do usuário.
+        self._done_nudged = False
+        self._wrapup_warned = False
         while True:
             if iterations >= self.max_iterations:
                 yield Event(
@@ -322,6 +358,21 @@ class TurnEngine:
                     {"status": "max_iterations_exceeded", "iterations": iterations},
                 )
                 return
+            # Aviso de fechamento (1.3): a ~2 rodadas do teto, avisa o modelo UMA vez para
+            # finalizar e entregar o que tem — em vez de ser cortado no meio da entrega sem
+            # aviso. A steering é injetada após a rodada de ferramentas corrente (adiante).
+            if (
+                not self._wrapup_warned
+                and self.max_iterations - iterations <= 2
+                and iterations >= 1
+            ):
+                self._wrapup_warned = True
+                self.queue_steering(
+                    "⚠️ Você está a poucas rodadas do limite de passos deste turno. "
+                    "Finalize AGORA: conclua ou salve o que já tem, entregue o artefato e "
+                    "um resumo curto do que ficou pronto e do que faltou — não comece nada "
+                    "que não caiba em uma ou duas rodadas."
+                )
             iterations += 1
 
             # Auto-compaction checkpoint (OPE-27): between tool turns and before a new
@@ -414,6 +465,11 @@ class TurnEngine:
             yield Event(EventType.ASSISTANT_MESSAGE, payload)
 
             if not turn.tool_calls:
+                # Gate de "definição de pronto" (1.1): se o modelo tenta encerrar com tarefas
+                # ainda pendentes na lista de Progresso, cutuca UMA vez para concluir ou
+                # explicar — em vez de declarar pronto no instante em que para de chamar
+                # ferramentas. Uma cutucada só por turno (o flag evita laço se ele insistir).
+                self._maybe_nudge_unfinished()
                 if self._steering:
                     self._inject_steering()
                     continue

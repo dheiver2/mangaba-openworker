@@ -246,9 +246,14 @@ def build_engine(
     # passes its shared router; this fallback covers the TUI / direct build_engine() callers.
     # Resolved here (not at engine construction) because the explorer subagent captures it.
     provider = provider or ProviderRouter(secrets, default_provider="openai")
-    # Code-family personas can fan broad research out to read-only explorer subagents, keeping
-    # their own context for the actual change.
-    if agent.family == "code" and ws is not None:
+    # Personas com área de trabalho podem espalhar pesquisa ampla em subagentes read-only,
+    # preservando o próprio contexto para o entregável. Antes só a família `code` tinha isto —
+    # mas são justamente as famílias de ENTREGA (knowledge/cowork, business/negocio) que mais
+    # sofrem sem decompor: dossiês, análises e propostas leem muita fonte, e sem subagente toda
+    # essa leitura queima o contexto principal (e é a primeira baixa da compactação). O explore
+    # é read-only (roda em modo plano, sem approver), então dar a mais famílias não abre risco
+    # de escrita — só destrava paralelizar a leitura.
+    if agent.family in ("code", "knowledge", "business") and ws is not None:
         registry.register_all(
             explorer_tools(
                 workspace=ws,
