@@ -332,6 +332,15 @@ def ensure_running(tag: Optional[str] = None, wait_s: float = 120.0) -> bool:
             "--port", str(DEFAULT_PORT),
             "--jinja",  # tool calling nativo — a razão de o motor existir
             "--ctx-size", "16384",
+            # UM slot. O llama-server sobe 4 por padrão, e cada um reserva a janela inteira:
+            # eram 65.536 tokens de cache KV reservados numa máquina de 16 GB para usar
+            # 16.384. O app é de sessão única — não há concorrência para justificar isso, e a
+            # pressão de memória aparecia como variância de 2× no mesmo prefill (medido em
+            # 2026-08-06: 110,8 s e 214,5 s para os MESMOS ~7.000 tokens).
+            #
+            # Cuidado registrado porque volta a morder: no llama-server o `-c` é dividido
+            # entre os slots. Com `--parallel 1` a janela pedida é a janela servida.
+            "--parallel", "1",
             "-ngl", "99",  # tudo que couber na GPU (Metal no macOS); CPU ignora
             # Flash Attention. O VALOR é obrigatório: o llama-server novo declara
             # `-fa [on|off|auto]`, e um `-fa` solto engole o argumento seguinte como valor —

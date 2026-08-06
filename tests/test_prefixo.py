@@ -105,3 +105,50 @@ def test_motor_local_passa_valor_para_o_flash_attention():
     assert '"-fa", "on"' in fonte or '"-fa", "auto"' in fonte or '"-fa", "off"' in fonte, (
         "`-fa` sem valor engole o próximo argumento e o motor local não sobe"
     )
+
+
+def test_provedor_local_carrega_o_modelo_que_foi_pedido(monkeypatch):
+    """O seletor de modelo local era decorativo — e o padrão silencioso era o pior caso.
+
+    O llama.cpp serve UM modelo por processo. Nada ligava o nome escolhido ao motor:
+    `ensure_running()` sem tag cai em `tags[-1]`, o ÚLTIMO modelo baixado. Numa máquina com
+    `qwen3-4b` e `qwen3-14b` no disco, escolher "qwen3-4b" na interface e receber respostas
+    do 14B era o comportamento normal.
+
+    O custo disso foi MEDIDO em 2026-08-06, no mesmo prompt de ~9.400 tokens:
+    27–29 ms/token no 14B (9,3 GB numa máquina de 16 GB) contra 8,56 ms/token no 4B —
+    3,2× mais lento, silenciosamente, por um padrão que ninguém escolheu."""
+    from mangaba.providers import local_engine
+    from mangaba.providers.registry import build_provider_client
+
+    pedidos: list[str] = []
+    monkeypatch.setattr(local_engine, "active_tag", lambda: "qwen3-14b")
+    monkeypatch.setattr(local_engine, "downloaded_tags", lambda: ["qwen3-4b", "qwen3-14b"])
+    monkeypatch.setattr(
+        local_engine, "ensure_running", lambda tag=None, **k: pedidos.append(tag) or True
+    )
+
+    cliente = build_provider_client("local", {}, None)
+    cliente._garantir_modelo("qwen3-4b")
+    assert pedidos == ["qwen3-4b"], "o modelo pedido tem de chegar ao motor"
+
+    # Trocar de modelo reinicia o servidor (~15 s de load): só quando de fato muda.
+    pedidos.clear()
+    cliente._garantir_modelo("qwen3-14b")
+    assert pedidos == [], "não reiniciar o motor quando o modelo pedido já é o ativo"
+
+    # Um modelo que não está no disco não pode derrubar o turno nem reiniciar o motor.
+    cliente._garantir_modelo("modelo-inexistente")
+    assert pedidos == []
+
+
+def test_motor_local_sobe_com_um_slot():
+    """O llama-server sobe 4 slots por padrão, e CADA um reserva a janela inteira: eram
+    65.536 tokens de cache KV reservados para usar 16.384, numa máquina de 16 GB. A pressão
+    de memória aparecia como variância de 2× no mesmo prefill (110,8 s e 214,5 s para os
+    mesmos ~7.000 tokens, medido em 2026-08-06). O app é de sessão única."""
+    import inspect
+
+    from mangaba.providers import local_engine
+
+    assert '"--parallel", "1"' in inspect.getsource(local_engine)

@@ -137,7 +137,40 @@ def _build_local(profile: dict[str, Any], secrets: Any) -> ProviderClient:
     # O llama-server não pede chave, mas o SDK exige uma string não vazia — marcador.
     from .local_engine import DEFAULT_HOST
 
-    return OpenAIProvider(api_key="local", base_url=DEFAULT_HOST + "/v1")
+    return _LocalProvider(api_key="local", base_url=DEFAULT_HOST + "/v1")
+
+
+class _LocalProvider(OpenAIProvider):
+    """Garante que o motor esteja servindo o modelo QUE FOI PEDIDO, e não outro qualquer.
+
+    O llama.cpp serve UM modelo por processo. Sem esta ponte, o nome escolhido no seletor
+    nunca chegava ao motor: `ensure_running()` sem tag cai em `tags[-1]`, o ÚLTIMO modelo
+    baixado. Numa máquina com `qwen3-4b` e `qwen3-14b` no disco, escolher "qwen3-4b" na
+    interface e receber respostas do 14B era o comportamento normal — e o 14B (9,3 GB) numa
+    máquina de 16 GB prefilla a ~26 ms/token, contra ~5 ms/token do 4B. Ou seja: o seletor
+    de modelo local era decorativo, e o padrão silencioso era o pior caso de desempenho.
+
+    Trocar de modelo reinicia o servidor (~15 s de load), então só trocamos quando o
+    modelo pedido de fato difere do ativo.
+    """
+
+    def _garantir_modelo(self, model: str) -> None:
+        from .local_engine import active_tag, downloaded_tags, ensure_running
+
+        tag = (model or "").strip()
+        if not tag or tag == active_tag() or tag not in downloaded_tags():
+            return
+        ensure_running(tag)
+
+    def complete(self, *, model: str, messages, tools=None, **settings):
+        self._garantir_modelo(model)
+        return super().complete(model=model, messages=messages, tools=tools, **settings)
+
+    def stream(self, *, model: str, messages, tools=None, **settings):
+        self._garantir_modelo(model)
+        yield from super().stream(
+            model=model, messages=messages, tools=tools, **settings
+        )
 
 
 
