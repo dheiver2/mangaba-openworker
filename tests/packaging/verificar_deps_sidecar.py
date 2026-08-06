@@ -38,7 +38,16 @@ import urllib.request
 # Extras opcionais: importados dentro de funções, nunca no topo de um módulo que
 # o servidor carrega. Faltar é aceitável — o conector correspondente fica
 # indisponível, mas o app sobe.
-OPCIONAIS = {"playwright", "slack_bolt", "slack_sdk", "telegram"}
+# rapidocr_onnxruntime: extra `ocr` (mangaba/ocr.py). Decisao do dono de NAO embarcar --
+# onnxruntime + opencv passam de 200 MB no instalador. Sem ele o app sobe normalmente e a
+# mensagem orienta a trocar para um provedor com visao.
+OPCIONAIS = {
+    "playwright",
+    "slack_bolt",
+    "slack_sdk",
+    "telegram",
+    "rapidocr_onnxruntime",
+}
 
 # Nome do import -> diretório em site-packages, quando diferem.
 APELIDOS = {"yaml": "yaml", "google": "google"}

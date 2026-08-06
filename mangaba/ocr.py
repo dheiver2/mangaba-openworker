@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import io
 import logging
 import threading
 from typing import Any, Optional
@@ -235,9 +234,9 @@ def descrever_imagem(dado: Any) -> dict[str, Any]:
 def nota_para_modelo_sem_visao(dado: Any, nome: str = "imagem") -> str:
     """A nota de texto que entra no lugar da imagem quando o modelo ativo não tem visão.
 
-    Antes desta função a parte `image_url` seguia intacta para um provedor de texto puro e
-    virava um `HTTP 400` cru na cara do usuário. Uma imagem nunca pode sumir do turno em
-    silêncio — nem derrubá-lo."""
+    Antes desta função o engine trocava a imagem por "[image attachment — not viewable by
+    this model]": honesto e inútil, porque o modelo ficava sabendo que havia uma imagem sem
+    ter o que fazer com ela. Uma imagem nunca pode sumir do turno em silêncio."""
     info = descrever_imagem(dado)
     dimensao = (
         f"{info.get('largura')}×{info.get('altura')}"
