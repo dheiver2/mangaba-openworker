@@ -230,7 +230,7 @@ def build_auth(
     *,
     interactive: bool = True,
 ) -> OAuthClientProvider:
-    """The httpx auth for one OAuth MCP server (pass as streamablehttp_client(auth=…)).
+    """The httpx auth for one OAuth MCP server (pass to create_mcp_http_client(auth=…)).
 
     `interactive=False` still uses stored tokens and silent refresh, but the moment
     the SDK wants a browser authorization it raises InteractiveAuthRequired instead

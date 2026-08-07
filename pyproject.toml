@@ -20,7 +20,11 @@ dependencies = [
     "docstring_parser",
     "pyyaml>=6",  # persona manifest frontmatter (YAML)
     "pydantic>=2",
-    "mcp>=1.1",  # MCP client (stdio + streamable-http); we use our own async layer on it
+    # MCP client (stdio + streamable-http); we use our own async layer on it. Piso na 2.0:
+    # a 2.0 renomeou streamablehttp_client -> streamable_http_client e passou o httpx client
+    # por fora (create_mcp_http_client), e o nome antigo sumiu — client.py usa a API nova,
+    # entao resolver uma 1.x quebraria logo no import.
+    "mcp>=2.0",
     "httpx>=0.27",  # sync outbound senders for messaging connectors (send_message tool)
     "websockets>=13",  # managed Slack relay client transport (relay_client.py)
     "ddgs>=9",  # keyless default web-search provider (DuckDuckGo); Tavily/Brave use httpx

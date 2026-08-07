@@ -19,7 +19,8 @@ from typing import Any, Optional
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.shared._httpx_utils import create_mcp_http_client
 
 from .config import MCPServerDef
 
@@ -109,9 +110,13 @@ class MCPManager:
                             self._secrets,
                             interactive=interactive,
                         )
-                    read, write, *_ = await stack.enter_async_context(
-                        streamablehttp_client(
-                            server.url, headers=server.headers or None, auth=auth
+                    http_client = create_mcp_http_client(
+                        headers=server.headers or None, auth=auth
+                    )
+                    await stack.enter_async_context(http_client)
+                    read, write = await stack.enter_async_context(
+                        streamable_http_client(
+                            server.url, http_client=http_client
                         )
                     )
                 else:
