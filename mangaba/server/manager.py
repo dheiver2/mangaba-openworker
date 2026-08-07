@@ -38,9 +38,12 @@ from ..audit import AuditStore
 from ..config import load_config, workspace_allowed_commands
 from ..conversations import ConversationStore, title_from
 from ..engine import ApprovalOutcome, Approver, TurnEngine
+from ..events import EventType
 from ..roots import RootDir
 from ..workspace_trust import WorkspaceTrustStore
 from ..automation import Schedule, ScheduledTask, Scheduler, TaskRun, TaskStore
+from ..fluxos.store import FluxoStore
+from ..fluxos.validacao import Inventario
 from ..connectors import (
     Gateway,
     MessageSource,
@@ -219,6 +222,9 @@ class SessionManager:
         # Automation: scheduled tasks store + the tick scheduler (started in the lifespan).
         # The scheduler also resumes self-wake'd sessions each tick (extra_tick).
         self.task_store = TaskStore(base / "automation.db")
+        # Fluxos criados na máquina (`criar_fluxo`). Ficam ao lado dos de fábrica na tela;
+        # acrescentar fluxo deixa de exigir editar Python e publicar release.
+        self.fluxo_store = FluxoStore(base / "fluxos.json")
         self.scheduler = Scheduler(
             self.task_store, self._run_scheduled_task, extra_tick=self.resume_due_wakes
         )
@@ -491,6 +497,8 @@ class SessionManager:
             extra_tools=extra_tools,
             secrets=self.secrets,
             task_store=self.task_store,
+            fluxo_store=self.fluxo_store,
+            fluxo_inventario=self.inventario_de_fluxo,
             wake_store=self.wakes,
             session_id=session_id,
             audit_sink=self.audit_store.append,
@@ -533,6 +541,11 @@ class SessionManager:
             from ..compaction import CompactionState
 
             engine.compaction_state = CompactionState.from_dict(record.compaction)
+        # O plano sobrevive ao restart junto da sessão: sem isto, um trabalho longo perdia os
+        # passos já concluídos e o done-gate voltava a cobrar tudo de novo.
+        plano_salvo = getattr(record, "plan", None) if record is not None else None
+        if plano_salvo and getattr(engine, "plan", None) is not None:
+            engine.plan.replace(plano_salvo)
         engine.compaction_settings = self.compaction_settings
         self._engines[session_id] = engine
         if is_new_session:
@@ -1801,8 +1814,15 @@ class SessionManager:
 
         from ..providers import local_engine
 
+        # Os fluxos criados aqui entram na MESMA resolução dos de fábrica: a prontidão é
+        # conferida contra a máquina do mesmo jeito, e a tela não os trata diferente.
+        problemas = listar_problemas()
+        proprio = self.fluxo_store.problema()
+        if proprio is not None:
+            problemas.append(proprio)
+
         return resolver_problemas(
-            listar_problemas(),
+            problemas,
             skills_instaladas=instaladas,
             skills_desativadas=desativadas,
             mcps_conectados=conectados,
@@ -1812,6 +1832,24 @@ class SessionManager:
             modelo_pronto=self.algum_provedor_pronto(),
             modelo_local_pronto=bool(local_engine.downloaded_tags()),
             rotulo_mcp=lambda n: rotulos.get(n, ""),
+        )
+
+    def inventario_de_fluxo(self) -> Inventario:
+        """O que a máquina tem HOJE — a fonte contra a qual `criar_fluxo` confere as peças.
+
+        Chamado na hora da validação, não na construção do engine: entre uma coisa e outra a
+        pessoa pode ter instalado uma skill ou conectado uma conta, e validar contra uma foto
+        velha recusaria uma peça que já existe.
+        """
+        from ..mcp import catalog as mcp_catalog
+
+        return Inventario(
+            skills={r["name"] for r in self.skill_store.rows()},
+            # Catálogo + cadastrados: o fluxo pode declarar um MCP que a pessoa ainda vai
+            # conectar — a peça aparece como pendente no cartão, que é o comportamento certo.
+            mcps={i["name"] for i in mcp_catalog.listar()}
+            | {m["name"] for m in self.list_mcp()},
+            conectores={c["name"] for c in self.list_connectors()},
         )
 
     def algum_provedor_pronto(self) -> bool:
@@ -3415,19 +3453,37 @@ class SessionManager:
         # The first turn is the task itself. The framing matters: instructions often restate the
         # schedule ("every day at 5:32pm…"), so make explicit that the schedule already fired and
         # the job now is to execute, not to (re)schedule.
+        # Retomada entre execuções: se a execução anterior deixou o plano aberto (teto de
+        # rodadas, aprovação que não veio), este disparo continua de onde parou em vez de
+        # refazer tudo. Sem isto, um trabalho que não cabe numa execução nunca termina.
+        _semear_plano(engine, task.plan)
         opening = (
             f"⏰ Scheduled run — {task.title}\n\n"
             "This automation is due now: carry out the task below immediately and produce the "
             "result. The schedule already exists — do not create or modify any scheduled tasks.\n\n"
             f"{task.instructions}"
+            f"{_retomada_do_plano(task.plan)}"
         )
+        # O veredito do turno importa: o engine PARA ao bater o teto de rodadas (ou ao ser
+        # interrompido) e diz isso em TURN_END. Descartar os eventos gravava "ok" numa run
+        # truncada — e, como o aviso de fechamento em T-2 faz o modelo escrever um resumo
+        # caprichado do trabalho pela metade, o resultado salvo PARECE uma entrega. A TUI e a
+        # GUI já tratam esse status; só o caminho headless não tratava. Fora do `try` porque
+        # o `finally` o consulta: uma exceção antes da atribuição o deixaria sem valor.
+        veredito = ""
         try:
             async for _event in engine.run(opening):
-                pass
+                if _event.type is EventType.TURN_END:
+                    veredito = str((_event.data or {}).get("status") or "")
+                elif _event.type is EventType.INTERRUPTED:
+                    veredito = "interrupted"
             run.result_text = _last_assistant_text(engine.messages)
             run.artifacts = _recent_files(task.workspace, since=run.started_at)
-            run.status = "ok"
-            if task.notify_on_completion:
+            run.status, run.error = _veredito_da_run(veredito)
+            # Só avisa "terminou" quando terminou de verdade. Uma run parcial aparece no
+            # histórico da automação com o motivo — anunciá-la como pronta é a mentira que
+            # esta correção existe para evitar.
+            if task.notify_on_completion and run.status == "ok":
                 await self._notify_task_done(task, run)
         except Exception as exc:
             run.status, run.error = "error", str(exc)
@@ -3440,8 +3496,38 @@ class SessionManager:
                 self._engines[run.session_id] = engine
             except Exception:
                 pass
+            # O plano volta para a TAREFA, não só para a sessão do disparo — é o que a
+            # próxima execução lê. Plano fechado é gravado como vazio para a rodada seguinte
+            # não herdar passos de um trabalho que já acabou.
+            try:
+                task.plan = _plano_pendente(engine)
+                self.task_store.save(task)
+            except Exception:
+                pass
+            # Aprendizado no caminho onde ninguém está olhando. `distill_feedback` só aprende
+            # de correção do usuário — e aqui não há usuário —, então uma automação errava do
+            # mesmo jeito indefinidamente. O sinal usado é o veredito da execução, não texto.
+            try:
+                self._aprender_da_run(task, run, veredito)
+            except Exception:
+                pass
             self.task_store.add_run(run)
         return run
+
+    def _aprender_da_run(self, task, run: TaskRun, veredito: str) -> None:
+        if self.memory_store is None or run.status == "ok":
+            return
+        from ..feedback import distill_run
+
+        motivo = veredito if run.status == "partial" else "erro"
+        distill_run(
+            self.memory_store,
+            task_id=task.id,
+            titulo=task.title,
+            motivo=motivo,
+            workspace=task.workspace,
+            detalhe=run.error or "",
+        )
 
     async def _notify_task_done(self, task, run: TaskRun) -> None:
         summary = (run.result_text or "").strip()[:280]
@@ -3664,6 +3750,7 @@ class SessionManager:
                     if getattr(engine, "compaction_state", None)
                     else {}
                 ),
+                plan=_plan_steps_of(engine),
             )
         )
 
@@ -4263,6 +4350,72 @@ def _epoch() -> float:
     import time
 
     return time.time()
+
+
+# Motivos pelos quais um turno headless termina SEM ter terminado o trabalho. O texto vai para
+# `run.error` e aparece no histórico da automação, então diz o que fazer a respeito.
+_TURNOS_PARCIAIS = {
+    "max_iterations_exceeded": (
+        "a execução parou no teto de rodadas do turno — a entrega ficou pela metade. "
+        "Divida as instruções em passos menores ou aumente max_iterations na configuração."
+    ),
+    "interrupted": "a execução foi interrompida antes de concluir.",
+}
+
+
+def _semear_plano(engine: TurnEngine, steps: list[dict[str, Any]]) -> None:
+    """Carrega um plano herdado no engine recém-construído (retomada entre execuções)."""
+    plan = getattr(engine, "plan", None)
+    if plan is not None and steps:
+        plan.replace(steps)
+
+
+def _plano_pendente(engine: TurnEngine) -> list[dict[str, Any]]:
+    """Os passos a carregar para a próxima execução — vazio quando nada ficou em aberto."""
+    steps = _plan_steps_of(engine)
+    if not any(s.get("status") in ("pending", "in_progress", "blocked") for s in steps):
+        return []
+    return steps
+
+
+def _retomada_do_plano(steps: list[dict[str, Any]]) -> str:
+    """Bloco anexado à abertura de uma execução que herda plano em aberto.
+
+    O plano é semeado no engine de qualquer jeito, mas semear sozinho não basta: o modelo
+    abre o turno sem ter visto `plan_write` acontecer e recomeçaria a tarefa do início,
+    passando por cima de passos já concluídos. Dizer o que já está feito é o que transforma
+    a retomada em continuação.
+    """
+    abertos = [s for s in steps if s.get("status") in ("pending", "in_progress", "blocked")]
+    if not abertos:
+        return ""
+    feitos = [s for s in steps if s.get("status") == "done"]
+    linhas = "\n".join(
+        f"- {s.get('id')}: {s.get('description')} [{s.get('status')}]" for s in abertos
+    )
+    return (
+        "\n\n---\nA execução anterior desta automação não terminou. O plano dela foi "
+        f"restaurado ({len(feitos)} passo(s) já concluído(s)) e está disponível em "
+        "`plan_write`/`plan_step_status`. NÃO refaça o que já está `done` — continue pelos "
+        f"passos em aberto:\n{linhas}"
+    )
+
+
+def _plan_steps_of(engine: TurnEngine) -> list[dict[str, Any]]:
+    """Os passos do plano vivo, no formato serializável de `Plan.summary()`."""
+    plan = getattr(engine, "plan", None)
+    if plan is None or not getattr(plan, "steps", None):
+        return []
+    return plan.summary()["steps"]
+
+
+def _veredito_da_run(status_do_turno: str) -> tuple[str, Optional[str]]:
+    """Traduz o `status` do TURN_END no status da run. `("ok", None)` só quando o modelo
+    encerrou por vontade própria — qualquer outra saída é entrega parcial, não sucesso."""
+    motivo = _TURNOS_PARCIAIS.get(status_do_turno)
+    if motivo is not None:
+        return "partial", motivo
+    return "ok", None
 
 
 # A Slack message ts looks like "1700000001.000001" (epoch seconds + microseconds). Other

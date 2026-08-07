@@ -12,6 +12,8 @@ from typing import Any, Callable, Optional
 from .agents import Agent, AgentContext, code_agent
 from .automation import scheduling_tools
 from .brief import BriefStore, brief_block, brief_tools
+from .capacidades import familia_tem
+from .fluxos.tools import fluxo_tools
 from .selfwake import selfwake_tools
 from .subscriptions import subscription_tools
 from .config import load_config
@@ -243,6 +245,10 @@ def build_engine(
     extra_tools: Optional[list[Any]] = None,
     secrets: Optional[SecretStore] = None,
     task_store: Optional[Any] = None,
+    # Armazém dos fluxos criados na máquina + inventário de peças para validá-los. Vem do
+    # manager; quando ausente, `criar_fluxo` simplesmente não é registrada.
+    fluxo_store: Optional[Any] = None,
+    fluxo_inventario: Optional[Any] = None,
     wake_store: Optional[Any] = None,
     session_id: Optional[str] = None,
     audit_sink: Optional[Any] = None,
@@ -350,7 +356,7 @@ def build_engine(
     # essa leitura queima o contexto principal (e é a primeira baixa da compactação). O explore
     # é read-only (roda em modo plano, sem approver), então dar a mais famílias não abre risco
     # de escrita — só destrava paralelizar a leitura.
-    if agent.family in ("code", "knowledge", "business") and ws is not None:
+    if familia_tem(agent.family, "explorar") and ws is not None:
         registry.register_all(
             explorer_tools(
                 workspace=ws,
@@ -361,7 +367,7 @@ def build_engine(
         )
     # Scheduling: knowledge surfaces with a workspace can set up scheduled tasks (origin = this
     # session). Code stays out (it fans out to explorers instead).
-    if task_store is not None and ws is not None and agent.family == "knowledge":
+    if task_store is not None and ws is not None and familia_tem(agent.family, "agendar"):
         origin = {
             "surface": agent.name,
             "session_id": session_id or "",
@@ -371,9 +377,23 @@ def build_engine(
         registry.register_all(
             scheduling_tools(task_store, origin=origin, default_workspace=str(ws))
         )
+    # Guardar o trabalho como fluxo reutilizável. Anda junto do agendamento porque é a mesma
+    # decisão vista de dois ângulos — "isto se repete" —, e porque só as famílias que
+    # configuram a máquina deveriam poder acrescentar item permanente à tela da pessoa.
+    # `ws is not None` não é detalhe: um fluxo guarda um trabalho que aconteceu numa área de
+    # trabalho. Sem essa condição a tool caía também no Chat — que não tem arquivos nem shell,
+    # não teria o que gravar, e ainda pagaria o esquema dela no prefixo de TODO turno. O teste
+    # de teto de prefixo pegou exatamente isso: 3374 tokens contra um teto de 3200.
+    if (
+        fluxo_store is not None
+        and fluxo_inventario is not None
+        and ws is not None
+        and familia_tem(agent.family, "agendar")
+    ):
+        registry.register_all(fluxo_tools(fluxo_store, fluxo_inventario))
     # Self-wake: knowledge surfaces can suspend + schedule their own resumption (timer /
     # on-completion / on-event). The scheduler tick resumes due wakes.
-    if wake_store is not None and session_id and agent.family == "knowledge":
+    if wake_store is not None and session_id and familia_tem(agent.family, "autodespertar"):
         registry.register_all(selfwake_tools(wake_store, session_id))
 
     # Capability #4 — first-class Plan (steps + dependencies). Every surface with a workspace
@@ -388,12 +408,12 @@ def build_engine(
     # Capability #1 — structured verification (run_verify + tracker) for delivery surfaces.
     # The engine nudges once per run of consecutive failures (verify → fix → retest).
     verify_tracker = VerifyTracker()
-    if agent.family in ("code", "business") and executor is not None:
+    if familia_tem(agent.family, "verificar") and executor is not None:
         registry.register_all(verify_tools(executor, tracker=verify_tracker))
 
     # Capability #3 — general-purpose subagents (researcher/writer/verifier) + fan-out, for
     # surfaces that can spawn bounded sub-tasks. Complements the read-only `explore`.
-    if agent.family in ("code", "knowledge", "business") and ws is not None:
+    if familia_tem(agent.family, "delegar") and ws is not None:
         registry.register_all(
             delegate_tools(
                 workspace=ws,

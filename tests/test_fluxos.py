@@ -132,7 +132,11 @@ def test_manager_resolve_contra_a_maquina_de_verdade():
 
     m = SessionManager(workspace=tempfile.mkdtemp())
     probs = m.fluxos_por_problema()
-    assert len(probs) == len(PROBLEMAS)
+    # `>=` e não `==`: a listagem agora inclui os fluxos criados na máquina ("Meus fluxos").
+    # Fixar a contagem quebraria na máquina de quem usa `criar_fluxo` — o teste é sobre os
+    # de fábrica estarem lá e resolvidos, não sobre não existir mais nada.
+    assert len(probs) >= len(PROBLEMAS)
+    assert {p["id"] for p in PROBLEMAS} <= {p["id"] for p in probs}
     for p in probs:
         for f in p["fluxos"]:
             assert "pecas" in f and "pronto" in f
@@ -169,13 +173,15 @@ def test_toda_peca_referenciada_existe_de_verdade():
     m = SessionManager(workspace=tempfile.mkdtemp())
     con_reais = {c["name"] for c in m.list_connectors()}
 
+    # Roda o MESMO validador que `criar_fluxo` usa em runtime, em vez de reimplementar a
+    # regra aqui. Se as duas cópias existissem, elas divergiriam — e a que protege o usuário
+    # é a de runtime, porque um fluxo gerado nunca passa por este teste.
+    from mangaba.fluxos.validacao import Inventario, validar_fluxo
+
+    inventario = Inventario(skills=skills_reais, mcps=mcps_reais, conectores=con_reais)
     for f in FLUXOS.values():
-        for s in f["skills"]:
-            assert s in skills_reais, f"{f['id']}: skill inexistente {s!r}"
-        for x in f["mcps"]:
-            assert x in mcps_reais, f"{f['id']}: mcp inexistente {x!r}"
-        for c in f["conectores"]:
-            assert c in con_reais, f"{f['id']}: conector inexistente {c!r}"
+        erros = validar_fluxo(f, inventario)
+        assert not erros, f"{f['id']}: {erros}"
 
 
 def test_fluxo_local_inicia_na_familia_enxuta():
@@ -342,3 +348,230 @@ def test_prefere_conector_nativo_quando_existe():
             f"{f['id']}: usa MCP {vazou} de serviço que tem conector nativo — "
             "prefira o conector"
         )
+
+
+# -- fluxo semeia um Plan de verdade (não só um parágrafo de prompt) -----------
+def test_todo_fluxo_declara_passos_verificaveis():
+    """Sem passos, o `entrega` do cartão é promessa que nada no runtime confere: a
+    decomposição fica por conta da improvisação do modelo, e um trabalho que não cabe num
+    turno não deixa rastro do que já foi feito."""
+    for f in FLUXOS.values():
+        assert len(f["passos"]) >= 3, f"{f['id']}: precisa de pelo menos 3 passos"
+        for p in f["passos"]:
+            assert p.strip() and p[0].isupper(), f"{f['id']}: passo malformado {p!r}"
+
+
+def test_passos_viram_plano_encadeado():
+    from mangaba.fluxos.plano import plano_do_fluxo
+
+    plano = plano_do_fluxo(["ler", "calcular", "escrever"])
+    assert [p["id"] for p in plano] == ["p1", "p2", "p3"]
+    assert plano[0].get("depends_on") is None, "o primeiro passo não depende de nada"
+    assert plano[2]["depends_on"] == ["p2"]
+    assert all(p["status"] == "pending" for p in plano)
+    assert plano_do_fluxo([]) == [] and plano_do_fluxo(["  "]) == []
+
+
+def test_plano_semeado_e_aceito_pelo_Plan_de_verdade():
+    """A trava que importa: o formato gerado tem de ser exatamente o que `plan_write` come.
+    Um passo que o Plan descarta silenciosamente viraria plano vazio — e o done-gate,
+    que é o ponto de tudo isto, nunca cobraria nada."""
+    from mangaba.fluxos.plano import plano_do_fluxo
+    from mangaba.plan import Plan
+
+    plan = Plan()
+    resumo = plan.replace(plano_do_fluxo(["ler", "calcular", "escrever"]))
+    assert resumo["open"] == 3
+    # p2 depende de p1: não pode entrar em andamento antes de p1 fechar.
+    assert plan.set_status("p2", "in_progress")["ok"] is False
+    plan.set_status("p1", "done")
+    assert plan.set_status("p2", "in_progress")["ok"] is True
+
+
+def test_prompt_do_fluxo_manda_gravar_o_plano():
+    """O prompt resolvido é o que a GUI entrega à conversa — se a instrução não estiver
+    nele, o plano nunca é gravado e nada disto acontece."""
+    ctx = dict(CTX_TUDO_PRONTO)
+    r = resolver_fluxo(fluxo_por_id("cobranca-planilha"), **ctx)
+    assert "plan_write" in r["prompt"]
+    assert "p1." in r["prompt"] and "p2." in r["prompt"]
+    assert r["prompt"].startswith(fluxo_por_id("cobranca-planilha")["prompt"][:40])
+    assert len(r["plano"]) == len(fluxo_por_id("cobranca-planilha")["passos"])
+
+
+# -- roteamento derivado das capacidades (fonte única) -------------------------
+def test_roteamento_sai_do_registro_de_capacidades():
+    """A regra de família era reescrita em estado.py e em agent.py, e só se mantinha em dia
+    por teste. Agora as duas leem `capacidades.py` — e um fluxo GERADO em runtime, que nunca
+    passa pelo CI, é roteado pela mesma regra."""
+    from mangaba.capacidades import familia_para, familia_tem
+
+    assert familia_para([]) == "negocio", "sem exigência, a família mais enxuta"
+    assert familia_para(["agendar"]) == "cowork"
+    assert familia_para(["integracoes"]) == "cowork"
+    assert familia_para(["verificar"]) == "negocio"
+    assert familia_tem("business", "agendar") is False
+    assert familia_tem("knowledge", "agendar") is True
+    assert familia_tem("business", "capacidade-que-nao-existe") is False
+
+
+def test_fluxo_pode_exigir_capacidade_explicita():
+    """`exige` deixa um fluxo pedir uma capacidade que suas peças não implicam — o caminho
+    que um fluxo gerado usa para declarar que precisa de agendamento sem ter conector."""
+    from mangaba.fluxos.estado import resolver_fluxo as _rf
+
+    base = dict(fluxo_por_id("cobranca-planilha"))
+    assert _rf(base, **CTX_TUDO_PRONTO)["agente"] == "negocio"
+    base["exige"] = ["agendar"]
+    assert _rf(base, **CTX_TUDO_PRONTO)["agente"] == "cowork"
+
+
+# -- criar_fluxo: o pedido virando procedimento guardado -----------------------
+def _inventario():
+    from mangaba.fluxos.validacao import Inventario
+
+    return Inventario(
+        skills={"limpeza-planilha", "email-profissional"},
+        mcps={"granola"},
+        conectores={"gmail"},
+    )
+
+
+def _ferramenta(tmp_path):
+    from mangaba.fluxos.store import FluxoStore
+    from mangaba.fluxos.tools import fluxo_tools
+
+    store = FluxoStore(tmp_path / "fluxos.json")
+    (tool,) = fluxo_tools(store, _inventario)
+    return store, tool
+
+
+def test_criar_fluxo_recusa_peca_que_nao_existe(tmp_path):
+    """A regra que só existia no CI, agora em runtime. Gravar um fluxo com skill inexistente
+    produziria um cartão em que a peça conta como faltando PARA SEMPRE — a pessoa fica
+    travada nele sem entender por quê. Recusar e explicar deixa o modelo corrigir."""
+    store, criar = _ferramenta(tmp_path)
+    r = criar(
+        titulo="Da planilha",
+        resumo="limpa e devolve",
+        entrega="planilha limpa mais relatório",
+        prompt="Limpe a planilha anexada.",
+        passos=["Ler a planilha", "Limpar com script", "Escrever o relatório"],
+        skills=["skill-que-nao-existe"],
+    )
+    assert r["ok"] is False
+    assert any("skill-que-nao-existe" in e for e in r["erros"])
+    assert store.listar() == [], "nada pode ser gravado quando a validação falha"
+
+
+def test_criar_fluxo_exige_passos_de_verdade(tmp_path):
+    store, criar = _ferramenta(tmp_path)
+    r = criar(
+        titulo="Qualquer coisa",
+        resumo="faz coisas",
+        entrega="resultado",
+        prompt="Faça.",
+        passos=["Um passo só"],
+    )
+    assert r["ok"] is False and any("passos" in e for e in r["erros"])
+
+
+def test_criar_fluxo_grava_e_aparece_resolvido_como_os_de_fabrica(tmp_path):
+    """Um fluxo gravado é um fluxo: mesma resolução de prontidão, mesmo roteamento de
+    família, mesmo plano semeado no prompt — não um cidadão de segunda classe."""
+    store, criar = _ferramenta(tmp_path)
+    r = criar(
+        titulo="Da planilha, quando eu pedir",
+        resumo="Limpa a planilha e diz o que mudou.",
+        entrega="Planilha limpa mais um relatório do que mudou",
+        prompt="Limpe a planilha que vou anexar e me diga o que foi alterado.",
+        passos=["Ler a planilha anexada", "Limpar com script", "Escrever o relatório"],
+        skills=["limpeza-planilha"],
+    )
+    assert r["ok"] is True and r["passos"] == 3
+    (gravado,) = store.listar()
+
+    resolvido = resolver_fluxo(gravado, **CTX_TUDO_PRONTO)
+    assert resolvido["agente"] == "negocio", "local e sem agenda → família enxuta"
+    assert "plan_write" in resolvido["prompt"]
+    assert len(resolvido["plano"]) == 3
+    assert any(p["tipo"] == "skill" for p in resolvido["pecas"])
+
+
+def test_criar_fluxo_agendado_roteia_para_familia_que_sabe_agendar(tmp_path):
+    store, criar = _ferramenta(tmp_path)
+    r = criar(
+        titulo="Toda segunda de manhã",
+        resumo="Triagem semanal.",
+        entrega="Lista priorizada em rascunho",
+        prompt="Faça a triagem da semana.",
+        passos=["Ler o que chegou", "Priorizar", "Escrever os rascunhos"],
+        conectores=["gmail"],
+        agendado="Segunda-feira, 9h",
+    )
+    assert r["ok"] is True
+    (gravado,) = store.listar()
+    assert resolver_fluxo(gravado, **CTX_TUDO_PRONTO)["agente"] == "cowork"
+
+
+def test_ids_de_fluxo_gravado_nao_colidem(tmp_path):
+    store, criar = _ferramenta(tmp_path)
+    args = dict(
+        titulo="Da planilha",
+        resumo="x",
+        entrega="y",
+        prompt="z",
+        passos=["Ler", "Limpar", "Escrever"],
+    )
+    a = criar(**args)
+    b = criar(**args)
+    assert a["ok"] and b["ok"] and a["id"] != b["id"]
+    assert len(store.listar()) == 2
+
+
+def test_fluxo_criado_aparece_na_tela_junto_dos_de_fabrica(tmp_path):
+    """Ponta a ponta: gravado pelo agente → listado pelo manager → resolvido contra a
+    máquina, no mesmo formato dos de fábrica. Se ficasse fora da listagem, `criar_fluxo`
+    seria escrita em arquivo, não capacidade."""
+    import tempfile
+
+    from mangaba.fluxos.tools import fluxo_tools
+    from mangaba.server.manager import SessionManager
+
+    m = SessionManager(workspace=tempfile.mkdtemp(), data_dir=tmp_path / "data")
+    antes = len(m.fluxos_por_problema())
+
+    (criar,) = fluxo_tools(m.fluxo_store, m.inventario_de_fluxo)
+    r = criar(
+        titulo="Do jeito que eu faço aqui",
+        resumo="Procedimento que já deu certo.",
+        entrega="Arquivo com o resultado",
+        prompt="Refaça o procedimento combinado.",
+        passos=["Ler as entradas", "Processar com script", "Escrever o resultado"],
+    )
+    assert r["ok"] is True, r
+
+    problemas = m.fluxos_por_problema()
+    assert len(problemas) == antes + 1
+    meus = next(p for p in problemas if p["id"] == "meus-fluxos")
+    (f,) = meus["fluxos"]
+    assert f["titulo"] == "Do jeito que eu faço aqui"
+    assert "plan_write" in f["prompt"] and len(f["plano"]) == 3
+    assert f["agente"] == "negocio" and "pronto" in f
+
+
+def test_inventario_recusa_peca_inexistente_contra_a_maquina_real(tmp_path):
+    """O inventário tem de vir da máquina, não de uma lista escrita à mão — senão a
+    validação aprova nomes que não existem aqui."""
+    import tempfile
+
+    from mangaba.fluxos.validacao import validar_fluxo
+    from mangaba.server.manager import SessionManager
+
+    m = SessionManager(workspace=tempfile.mkdtemp(), data_dir=tmp_path / "data")
+    inv = m.inventario_de_fluxo()
+    proposta = {
+        "titulo": "x", "entrega": "y", "prompt": "z",
+        "passos": ["Um", "Dois"], "skills": ["nao-existe-mesmo"],
+    }
+    assert any("nao-existe-mesmo" in e for e in validar_fluxo(proposta, inv))

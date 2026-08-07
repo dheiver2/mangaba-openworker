@@ -496,3 +496,196 @@ async def test_scheduled_run_broadcasts_run_started_event(tmp_path, monkeypatch)
     assert event["data"]["session_id"] == run.session_id
     assert event["data"]["trigger"] == "schedule"
     assert dead not in manager._event_clients  # dropped, not fatal
+
+
+# -- veredito do turno: run truncada não pode ser reportada como sucesso -------
+@pytest.mark.asyncio
+async def test_run_que_estoura_o_teto_de_rodadas_nao_vira_ok(tmp_path, monkeypatch):
+    """A falha mais cara da autonomia: o engine PARA ao bater o teto de rodadas e diz isso
+    em TURN_END (`max_iterations_exceeded`), mas o runner headless descartava todos os
+    eventos e gravava `status="ok"`. O resultado salvo era a última fala do assistente —
+    que, pelo aviso de fechamento em T-2, é justamente um resumo bem-escrito do trabalho
+    pela metade — e com `notify_on_completion` o usuário era avisado de que terminou.
+    Uma automação que entrega metade tem de dizer que entregou metade.
+    """
+    from mangaba.providers import AssistantTurn, ModelCapabilities, ProviderClient
+    from mangaba.providers.base import ToolCall
+    from mangaba.server.manager import SessionManager
+
+    class _NuncaTermina(ProviderClient):
+        """Sempre pede mais uma ferramenta — nunca emite um turno final."""
+
+        def complete(self, *, model, messages, tools=None, **settings):
+            return AssistantTurn(
+                text="",
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        name="todo_write",
+                        arguments={"todos": [{"content": "seguir", "status": "pending"}]},
+                    )
+                ],
+                finish_reason="tool_calls",
+            )
+
+        def capabilities(self, model):
+            return ModelCapabilities()
+
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "config.toml").write_text("max_iterations = 2\n", encoding="utf-8")
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(state))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    manager = SessionManager(data_dir=tmp_path / "data", provider=_NuncaTermina())
+    task = _task(workspace=str(ws), agent="cowork")
+    manager.task_store.save(task)
+
+    run = await manager._run_scheduled_task(task, trigger="schedule")
+
+    assert run.status == "partial", (
+        f"run truncada gravada como {run.status!r} — o usuário seria avisado de um "
+        "sucesso que não houve"
+    )
+    assert run.error and "rodada" in run.error.lower()
+
+
+# -- plano carregado ENTRE execuções ------------------------------------------
+@pytest.mark.asyncio
+async def test_plano_aberto_e_retomado_na_execucao_seguinte(tmp_path, monkeypatch):
+    """Cada disparo nascia numa sessão nova e amnésica: o que não coubesse numa execução
+    recomeçava do zero na seguinte, para sempre. O plano agora vive na TAREFA — a execução
+    que estoura o teto deixa os passos em aberto gravados, e a próxima os recebe semeados
+    no engine e citados na abertura, para não refazer o que já está `done`.
+    """
+    from mangaba.providers import AssistantTurn, ModelCapabilities, ProviderClient
+    from mangaba.providers.base import ToolCall
+    from mangaba.server.manager import SessionManager
+
+    passos = [
+        {"id": "p1", "description": "consolidar planilhas", "status": "done"},
+        {"id": "p2", "description": "calcular indicadores", "status": "pending"},
+    ]
+
+    class _EscrevePlanoESeArrasta(ProviderClient):
+        """Grava o plano na 1ª rodada e depois nunca mais encerra — estoura o teto."""
+
+        def __init__(self):
+            self.primeira = True
+            self.aberturas: list[str] = []
+
+        def complete(self, *, model, messages, tools=None, **settings):
+            if self.primeira:
+                self.primeira = False
+                self.aberturas.append(
+                    next(m["content"] for m in messages if m.get("role") == "user")
+                )
+                return AssistantTurn(
+                    text="",
+                    tool_calls=[
+                        ToolCall(id="c1", name="plan_write", arguments={"steps": passos})
+                    ],
+                    finish_reason="tool_calls",
+                )
+            return AssistantTurn(
+                text="",
+                tool_calls=[
+                    ToolCall(
+                        id="c2",
+                        name="todo_write",
+                        arguments={"todos": [{"content": "x", "status": "pending"}]},
+                    )
+                ],
+                finish_reason="tool_calls",
+            )
+
+        def capabilities(self, model):
+            return ModelCapabilities()
+
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "config.toml").write_text("max_iterations = 2\n", encoding="utf-8")
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(state))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    provider = _EscrevePlanoESeArrasta()
+    manager = SessionManager(data_dir=tmp_path / "data", provider=provider)
+    task = _task(workspace=str(ws), agent="cowork")
+    manager.task_store.save(task)
+
+    primeira = await manager._run_scheduled_task(task, trigger="schedule")
+    assert primeira.status == "partial"
+
+    gravada = manager.task_store.get(task.id)
+    assert [p["id"] for p in gravada.plan] == ["p1", "p2"], (
+        "o plano em aberto tem de sobreviver ao fim da execução, na tarefa"
+    )
+
+    # Segundo disparo: o plano volta semeado E a abertura diz o que já está pronto.
+    provider.primeira = True
+    await manager._run_scheduled_task(gravada, trigger="schedule")
+    abertura = provider.aberturas[-1]
+    assert "p2" in abertura and "calcular indicadores" in abertura
+    assert "não refaça" in abertura.lower() or "nao refaça" in abertura.lower()
+
+
+def test_plano_fechado_nao_vaza_para_a_proxima_execucao():
+    """Plano concluído zera: herdá-lo faria a rodada seguinte abrir com passos de um
+    trabalho que já acabou, e o done-gate cobraria o que ninguém pediu."""
+    from mangaba.plan import Plan
+    from mangaba.server.manager import _plano_pendente
+
+    class _Eng:
+        pass
+
+    eng = _Eng()
+    eng.plan = Plan()
+    eng.plan.replace([{"id": "a", "description": "x", "status": "done"}])
+    assert _plano_pendente(eng) == []
+    eng.plan.replace([{"id": "a", "description": "x", "status": "blocked"}])
+    assert [p["id"] for p in _plano_pendente(eng)] == ["a"]
+
+
+@pytest.mark.asyncio
+async def test_execucao_truncada_deixa_licao_na_memoria(tmp_path, monkeypatch):
+    """O caminho não-supervisionado passa a aprender: sem usuário para corrigir, o sinal é
+    o veredito da própria execução."""
+    from mangaba.memory import Scope
+    from mangaba.providers import AssistantTurn, ModelCapabilities, ProviderClient
+    from mangaba.providers.base import ToolCall
+    from mangaba.server.manager import SessionManager
+
+    class _NuncaTermina(ProviderClient):
+        def complete(self, *, model, messages, tools=None, **settings):
+            return AssistantTurn(
+                text="",
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        name="todo_write",
+                        arguments={"todos": [{"content": "x", "status": "pending"}]},
+                    )
+                ],
+                finish_reason="tool_calls",
+            )
+
+        def capabilities(self, model):
+            return ModelCapabilities()
+
+    state = tmp_path / "state"
+    state.mkdir()
+    (state / "config.toml").write_text("max_iterations = 2\n", encoding="utf-8")
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(state))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    manager = SessionManager(data_dir=tmp_path / "data", provider=_NuncaTermina())
+    task = _task(workspace=str(ws), agent="cowork", title="Fechamento do mês")
+    manager.task_store.save(task)
+
+    await manager._run_scheduled_task(task, trigger="schedule")
+
+    licoes = manager.memory_store.list(scope=Scope.WORKSPACE, workspace=str(ws))
+    assert any("Fechamento do mês" in m.content for m in licoes), (
+        "a execução truncada tem de deixar lição — é o único sinal disponível quando "
+        "não há usuário para corrigir"
+    )

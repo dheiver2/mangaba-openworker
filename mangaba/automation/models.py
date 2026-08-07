@@ -138,6 +138,12 @@ class ScheduledTask:
     # Sidebar unread tracking (UX-023): runs started after this mark count as
     # "unseen"; opening the automation's detail advances it. 0.0 = never opened.
     seen_runs_at: float = 0.0
+    # Plano em andamento, carregado ENTRE execuções (formato `Plan.summary()["steps"]`).
+    # Cada disparo nascia numa sessão nova e amnésica: um trabalho que não coubesse numa
+    # execução recomeçava do zero na seguinte, para sempre. Com o plano na TAREFA (e não na
+    # sessão do disparo), a execução seguinte retoma do primeiro passo em aberto. Zerado
+    # quando o plano fecha, para a próxima rodada começar limpa.
+    plan: list[dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if not self.task_session_id:

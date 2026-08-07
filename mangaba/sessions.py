@@ -37,3 +37,7 @@ class SessionRecord:
     # Auto-compaction state (OPE-27): CompactionState.as_dict(), {} when never compacted.
     # Persisted so a reloaded session keeps its compacted outbound view.
     compaction: dict[str, Any] = field(default_factory=dict)
+    # Plano de execução (passos + dependências). Vivia só em memória no engine, então um
+    # restart apagava o progresso de um trabalho longo e a sessão recomeçava do zero — o
+    # oposto do que o plano existe para dar. Formato: `Plan.summary()["steps"]`.
+    plan: list[dict[str, Any]] = field(default_factory=list)

@@ -100,6 +100,61 @@ def distill_feedback(
     return {"saved": saved, "skipped": skipped, "corrections": len(corrections)}
 
 
+# -- aprendizado sem humano na frente ------------------------------------------------
+#
+# `distill_feedback` aprende de CORREÇÃO do usuário — mensagem curta com marcador de
+# "errado", "corrija", "na verdade". Numa execução agendada não há usuário nenhum, então o
+# efeito prático era o inverso do que a autonomia precisa: quanto mais autônomo o modo,
+# menos ele aprendia. Justamente onde ninguém está olhando é onde o erro se repete todo dia.
+#
+# O sinal aqui não depende de humano nem de heurística de texto: é o veredito objetivo da
+# execução — estourou o teto de rodadas, quebrou com exceção. Uma lição por MOTIVO por
+# automação (a chave carrega o id da tarefa), então uma automação que falha do mesmo jeito
+# por 30 dias deixa uma memória, não trinta.
+
+_LICOES = {
+    "max_iterations_exceeded": (
+        "A automação {titulo!r} não coube em uma execução (parou no teto de rodadas). Ao "
+        "rodá-la, comece pelos passos que produzem o entregável e feche cada passo do plano "
+        "assim que terminar — o que ficar aberto continua na execução seguinte."
+    ),
+    "erro": (
+        "A automação {titulo!r} falhou com: {detalhe}. Verifique essa condição antes de "
+        "repetir os mesmos passos."
+    ),
+}
+
+
+def distill_run(
+    store: MemoryStore,
+    *,
+    task_id: str,
+    titulo: str,
+    motivo: str,
+    workspace: Optional[str] = None,
+    detalhe: str = "",
+) -> Optional[str]:
+    """Grava a lição objetiva de uma execução não-supervisionada. Devolve o texto gravado,
+    ou `None` quando o motivo não ensina nada (execução que deu certo) ou já foi gravado."""
+    molde = _LICOES.get(motivo)
+    if molde is None:
+        return None
+    key = f"run:{task_id}:{motivo}"
+    ja_existe = any(
+        m.key == key for m in store.list(scope=Scope.WORKSPACE, workspace=workspace)
+    ) or any(m.key == key for m in store.list(scope=Scope.GLOBAL))
+    if ja_existe:
+        return None
+    conteudo = molde.format(titulo=titulo, detalhe=(detalhe or "")[:200])
+    store.add(
+        conteudo,
+        scope=Scope.WORKSPACE if workspace else Scope.GLOBAL,
+        key=key,
+        workspace=workspace,
+    )
+    return conteudo
+
+
 def _signature(text: str) -> str:
     import hashlib
 

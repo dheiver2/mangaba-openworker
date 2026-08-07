@@ -13,7 +13,9 @@ from __future__ import annotations
 
 from typing import Any, Callable, Optional
 
+from ..capacidades import familia_para
 from .identidade import conector_equivalente, mcps_equivalentes
+from .plano import plano_do_fluxo, prompt_com_plano
 
 
 def _estado_peca(pronta: bool, rotulo: str, tipo: str, acao: str = "") -> dict[str, Any]:
@@ -85,22 +87,26 @@ def resolver_fluxo(
         )
     )
 
-    # Família de agente que o fluxo inicia. Um fluxo LOCAL (sem MCP e sem conector) roda na
-    # família enxuta "negocio" (~20 ferramentas) em vez da Cowork padrão (~47) — no modelo
-    # local em CPU isso corta o prefill da primeira mensagem em milhares de tokens, que é o
-    # que a pessoa sente como "demora". Fluxo que usa conector/MCP precisa da máquina de
-    # integração e continua em Cowork; não dá para servir os dois com a mesma família porque
-    # `connectors=True` já arrasta os 11 tools de navegador + e-mail.
+    # Família de agente que o fluxo inicia — DERIVADA do que o fluxo exige, não escrita à mão.
     #
-    # Um fluxo AGENDADO também sai de "negocio": quem cria o agendamento é o próprio agente,
-    # chamando `create_scheduled_task` na conversa em que a pessoa ativa o fluxo — e essa tool
-    # só é concedida à família "knowledge" (Cowork), nunca a "business" (negocio). Rotear um
-    # fluxo agendado para negocio deixaria a peça `criar_automacao` impossível de cumprir: o
-    # agente veria a instrução de agendar e não teria a ferramenta. A regra de roteamento aqui
-    # e o gating em agent.py precisam concordar; o teste de invariante prende isso.
-    usa_externo = bool(fluxo.get("mcps") or fluxo.get("conectores"))
-    precisa_agenda = bool(fluxo.get("agendado"))
-    agente = "negocio" if not usa_externo and not precisa_agenda else "cowork"
+    # A regra em si não mudou: um fluxo LOCAL (sem MCP e sem conector) roda na família enxuta
+    # "negocio" (~20 ferramentas) em vez da Cowork padrão (~47), porque no modelo local em CPU
+    # o prefill do esquema de ferramentas é o que a pessoa sente como "demora"; e um fluxo
+    # AGENDADO precisa sair de "negocio", já que quem cria o agendamento é o próprio agente
+    # chamando `create_scheduled_task` — tool que só a família "knowledge" recebe. Rotear um
+    # fluxo agendado para negocio deixaria a peça `criar_automacao` impossível de cumprir.
+    #
+    # O que mudou é de ONDE a regra vem. Antes ela era reescrita aqui e em `agent.py`, e as
+    # duas cópias só se mantinham em dia por um teste que comparava uma com a outra. Agora as
+    # duas leem `capacidades.py`. Com fluxos gerados em runtime isso deixa de ser gosto: um
+    # fluxo gerado não passa pelo CI antes de existir, então a regra tem de ser consultável
+    # por código.
+    exigidas = list(fluxo.get("exige") or ())
+    if fluxo.get("mcps") or fluxo.get("conectores"):
+        exigidas.append("integracoes")
+    if fluxo.get("agendado"):
+        exigidas.append("agendar")
+    agente = familia_para(exigidas)
 
     faltando = [p for p in pecas if not p["pronta"]]
     # A automação não conta como impedimento: o fluxo roda sob demanda enquanto ela não
@@ -113,6 +119,11 @@ def resolver_fluxo(
         "pronto": not bloqueios,
         "faltam": len(bloqueios),
         "agente": agente,
+        # O prompt entregue à conversa já carrega a instrução de gravar o plano. Montado aqui
+        # (e não na GUI) porque o contrato do card é `onIniciarFluxo(prompt, agente)`: a tela
+        # manda o texto e não sabe o que é plano — nem precisa saber.
+        "prompt": prompt_com_plano(fluxo.get("prompt", ""), fluxo.get("passos") or []),
+        "plano": plano_do_fluxo(fluxo.get("passos") or []),
     }
 
 
