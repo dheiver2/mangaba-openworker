@@ -292,7 +292,10 @@ def install(*, preferir_gpu: Optional[bool] = None) -> dict[str, Any]:
             _download(asset["browser_download_url"], dest, _bootstrap)
             if dest.name.endswith(".tar.gz"):
                 with tarfile.open(dest) as tf:
-                    tf.extractall(_state_dir() / "bin")
+                    if hasattr(tarfile, "data_filter"):
+                        tf.extractall(_state_dir() / "bin", filter="data")
+                    else:
+                        tf.extractall(_state_dir() / "bin")
             else:
                 with zipfile.ZipFile(dest) as zf:
                     zf.extractall(_state_dir() / "bin")
