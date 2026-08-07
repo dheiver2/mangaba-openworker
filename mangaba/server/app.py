@@ -740,11 +740,9 @@ def create_app(manager: SessionManager) -> FastAPI:
 
     @app.get("/v1/fluxos/{fluxo_id}")
     def fluxo_detalhe(fluxo_id: str) -> dict[str, Any]:
-        from ..fluxos import fluxo_por_id
-
-        base = fluxo_por_id(fluxo_id)
-        if base is None:
-            return {"ok": False, "error": f"fluxo desconhecido: {fluxo_id}"}
+        # Sem pré-checagem contra o catálogo estático: a listagem resolvida já inclui os
+        # fluxos GRAVADOS na máquina (`criar_fluxo`), e o guard antigo — `fluxo_por_id`,
+        # que só lê o catálogo de fábrica — devolvia 404 exatamente para eles.
         for p in manager.fluxos_por_problema():
             for f in p["fluxos"]:
                 if f["id"] == fluxo_id:

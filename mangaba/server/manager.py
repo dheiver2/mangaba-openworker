@@ -546,6 +546,13 @@ class SessionManager:
         plano_salvo = getattr(record, "plan", None) if record is not None else None
         if plano_salvo and getattr(engine, "plan", None) is not None:
             engine.plan.replace(plano_salvo)
+        elif getattr(engine, "plan", None) is not None and not engine.plan.steps:
+            # Sessão de run de automação ("Rodar agora"): nasce sem histórico próprio, mas a
+            # TAREFA pode carregar um plano em aberto da execução anterior. Semeá-lo aqui é o
+            # que torna verdadeira a promessa do prompt de retomada ("o plano foi restaurado").
+            dono = self.task_store.task_for_run_session(session_id)
+            if dono is not None and dono.plan:
+                engine.plan.replace(dono.plan)
         engine.compaction_settings = self.compaction_settings
         self._engines[session_id] = engine
         if is_new_session:
@@ -3700,10 +3707,15 @@ class SessionManager:
             "agent": task.agent,
             # Same execute-now framing as the headless path — manual runs ride a normal live
             # session whose engine DOES have scheduling tools, so be explicit.
+            # A retomada vale para o "Rodar agora" também: sem ela, a run manual da manhã
+            # refazia do zero o que a execução noturna deixou pela metade — passando por
+            # cima do que a retomada existe para preservar. O plano em si é semeado no
+            # engine quando a sessão da run é construída (get_engine).
             "prompt": (
                 f"⏰ Running automation '{task.title}' now. Carry out these instructions "
                 "immediately and produce the result. The schedule already exists — do not create "
                 f"or modify any scheduled tasks.\n\n{task.instructions}"
+                f"{_retomada_do_plano(task.plan)}"
             ),
         }
 
@@ -3721,11 +3733,22 @@ class SessionManager:
             record = self.session_store.load(run.session_id)
             run.result_text = _last_assistant_text(record.messages) if record else None
             run.artifacts = _recent_files(task.workspace, since=run.started_at)
-            run.status = "ok"
+            # O mesmo veredito do caminho headless. Gravar "ok" às cegas registrava sucesso
+            # numa run manual truncada — a pessoa VIU o aviso ao vivo, mas o histórico da
+            # automação dizia o contrário do que ela viu. O engine da sessão ao vivo guarda
+            # como o turno terminou; sem engine vivo (app fechou entre o turno e o finalize),
+            # assumir "ok" mantém o comportamento de sempre.
+            engine = self._engines.get(run.session_id)
+            veredito = getattr(engine, "last_turn_status", "") if engine else ""
+            run.status, run.error = _veredito_da_run(veredito)
             run.finished_at = _epoch()
             self.task_store.add_run(run)
-            task.last_run, task.last_status = run.finished_at, "ok"
+            task.last_run, task.last_status = run.finished_at, run.status
             task.run_count += 1
+            # A run manual também alimenta a retomada: truncada, deixa o plano para o
+            # próximo disparo (agendado ou manual) continuar de onde parou.
+            if engine is not None:
+                task.plan = _plano_pendente(engine)
             self.task_store.save(task)
         return {"ok": True, "run": run.to_dict()}
 

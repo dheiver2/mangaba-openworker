@@ -689,3 +689,70 @@ async def test_execucao_truncada_deixa_licao_na_memoria(tmp_path, monkeypatch):
         "a execução truncada tem de deixar lição — é o único sinal disponível quando "
         "não há usuário para corrigir"
     )
+
+
+# -- a run MANUAL também para de mentir ----------------------------------------
+def test_run_manual_truncada_nao_vira_ok(tmp_path, monkeypatch):
+    """A mesma promessa do caminho headless, no botão 'Rodar agora': o finalize gravava
+    "ok" às cegas. A pessoa via o aviso de teto ao vivo, mas o histórico da automação
+    registrava o contrário do que ela viu."""
+    from mangaba.plan import Plan
+    from mangaba.server.manager import SessionManager
+
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    manager = SessionManager(data_dir=tmp_path / "data")
+    task = _task(workspace=str(ws), agent="cowork")
+    manager.task_store.save(task)
+
+    prep = manager.prepare_manual_run(task.id)
+    assert prep["ok"] is True
+
+    # Um engine "vivo" cujo último turno estourou o teto e deixou plano em aberto.
+    class _Eng:
+        pass
+
+    eng = _Eng()
+    eng.last_turn_status = "max_iterations_exceeded"
+    eng.plan = Plan()
+    eng.plan.replace([
+        {"id": "p1", "description": "consolidar", "status": "done"},
+        {"id": "p2", "description": "calcular", "status": "pending"},
+    ])
+    manager._engines[prep["session_id"]] = eng
+
+    out = manager.finalize_manual_run(task.id, prep["run_id"])
+    assert out["run"]["status"] == "partial", out["run"]
+    assert out["run"]["error"]
+    gravada = manager.task_store.get(task.id)
+    assert gravada.last_status == "partial"
+    assert [p["id"] for p in gravada.plan] == ["p1", "p2"], (
+        "a run manual truncada também deixa o plano para o próximo disparo"
+    )
+
+
+def test_rodar_agora_herda_o_plano_da_execucao_anterior(tmp_path, monkeypatch):
+    """Cenário real: a execução noturna parou no passo 3 e deixou o plano na tarefa; de
+    manhã a pessoa clica 'Rodar agora'. O prompt precisa citar a retomada — sem isso a
+    run manual refaz do zero exatamente o que a retomada preserva."""
+    from mangaba.server.manager import SessionManager
+
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    manager = SessionManager(data_dir=tmp_path / "data")
+    task = _task(workspace=str(ws), agent="cowork")
+    task.plan = [
+        {"id": "p1", "description": "consolidar planilhas", "status": "done"},
+        {"id": "p2", "description": "calcular indicadores", "status": "pending"},
+    ]
+    manager.task_store.save(task)
+
+    prep = manager.prepare_manual_run(task.id)
+    assert "p2" in prep["prompt"] and "calcular indicadores" in prep["prompt"]
+    assert "não refaça" in prep["prompt"].lower() or "nao refaça" in prep["prompt"].lower()
+
+    # E o engine da sessão da run nasce com o plano semeado (não só citado no texto).
+    engine = manager.get_engine(prep["session_id"], agent=task.agent)
+    assert [s.id for s in engine.plan.steps] == ["p1", "p2"]

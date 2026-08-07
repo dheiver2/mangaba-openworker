@@ -575,3 +575,31 @@ def test_inventario_recusa_peca_inexistente_contra_a_maquina_real(tmp_path):
         "passos": ["Um", "Dois"], "skills": ["nao-existe-mesmo"],
     }
     assert any("nao-existe-mesmo" in e for e in validar_fluxo(proposta, inv))
+
+
+def test_endpoint_de_detalhe_enxerga_fluxo_gravado(tmp_path):
+    """O guard antigo consultava só o catálogo estático — um fluxo criado por `criar_fluxo`
+    dava 404 no próprio endpoint de detalhe. Cidadão de segunda classe, exatamente o que o
+    design prometeu não criar."""
+    import tempfile
+
+    from mangaba.fluxos.tools import fluxo_tools
+    from mangaba.server.app import create_app
+    from mangaba.server.manager import SessionManager
+    from fastapi.testclient import TestClient
+
+    m = SessionManager(workspace=tempfile.mkdtemp(), data_dir=tmp_path / "data")
+    (criar,) = fluxo_tools(m.fluxo_store, m.inventario_de_fluxo)
+    r = criar(
+        titulo="So meu", resumo="r", entrega="e", prompt="p",
+        passos=["Ler entrada", "Processar", "Escrever saida"],
+    )
+    assert r["ok"] is True
+
+    client = TestClient(create_app(m))
+    corpo = client.get(f"/v1/fluxos/{r['id']}").json()
+    assert corpo["ok"] is True, corpo
+    assert corpo["fluxo"]["titulo"] == "So meu"
+    # e os de fábrica continuam respondendo
+    assert client.get("/v1/fluxos/cobranca-planilha").json()["ok"] is True
+    assert client.get("/v1/fluxos/nao-existe").json()["ok"] is False

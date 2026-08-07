@@ -158,6 +158,11 @@ class TurnEngine:
         # Capability #7 — best-effort post-turn learning (feedback distillation). Called at
         # the completed TURN_END; failures must never break the turn.
         self.learning_hook: Optional[Callable[[], None]] = None
+        # Como o ÚLTIMO turno terminou ("completed" | "max_iterations_exceeded" |
+        # "interrupted"). Quem consome os eventos ao vivo já vê isso no TURN_END; o atributo
+        # existe para quem chega DEPOIS do turno — `finalize_manual_run` decide o status da
+        # run manual a partir dele, em vez de gravar "ok" às cegas.
+        self.last_turn_status: str = ""
 
     # -- external controls ------------------------------------------------------
     def request_interrupt(self) -> None:
@@ -496,12 +501,14 @@ class TurnEngine:
         # As cutucadas de orquestração valem por turno — zeram a cada nova mensagem do usuário.
         self._done_nudged = False
         self._wrapup_warned = False
+        self.last_turn_status = ""
         # A compactação proativa pós-turno só age se a compactação NÃO rodou neste turno:
         # quando roda no meio, o call seguinte do modelo já envia (e re-prefilla) a visão
         # compactada — repetir em background só queimaria mais uma rodada de resumidor.
         self._compacted_this_turn = False
         while True:
             if iterations >= self.max_iterations:
+                self.last_turn_status = "max_iterations_exceeded"
                 yield Event(
                     EventType.TURN_END,
                     {"status": "max_iterations_exceeded", "iterations": iterations},
@@ -601,6 +608,7 @@ class TurnEngine:
                 if streamed or streamed_reasoning:
                     self.messages.append(_assistant_message(_partial_turn()))
                 self._append_notice("interrupted")
+                self.last_turn_status = "interrupted"
                 yield Event(EventType.INTERRUPTED, {"iterations": iterations})
                 return
             if turn is None:
@@ -641,6 +649,7 @@ class TurnEngine:
                 # começar com um "Compactando…" de vários segundos + prefill frio.
                 self._schedule_post_turn_compaction()
                 self._run_learning_hook()
+                self.last_turn_status = "completed"
                 yield Event(
                     EventType.TURN_END,
                     {"status": "completed", "iterations": iterations},
@@ -654,6 +663,7 @@ class TurnEngine:
 
             if self._cancel.is_set():
                 self._append_notice("interrupted")
+                self.last_turn_status = "interrupted"
                 yield Event(EventType.INTERRUPTED, {"iterations": iterations})
                 return
             if self._steering:
