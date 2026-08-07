@@ -601,6 +601,10 @@ class TurnEngine:
                 if friendly:
                     payload["raw"] = str(exc)
                 self._append_notice("error", friendly or str(exc))
+                # Terminal SEM TURN_END — sem gravar o veredito aqui, quem lê depois do
+                # turno (runner headless, finalize de run manual) via "" e concluía "ok"
+                # para um turno que morreu no meio.
+                self.last_turn_status = "error"
                 yield Event(EventType.ERROR, payload)
                 return
             if self._cancel.is_set() and turn is None:

@@ -756,3 +756,50 @@ def test_rodar_agora_herda_o_plano_da_execucao_anterior(tmp_path, monkeypatch):
     # E o engine da sessão da run nasce com o plano semeado (não só citado no texto).
     engine = manager.get_engine(prep["session_id"], agent=task.agent)
     assert [s.id for s in engine.plan.steps] == ["p1", "p2"]
+
+
+@pytest.mark.asyncio
+async def test_run_com_erro_de_provedor_nao_vira_ok(tmp_path, monkeypatch):
+    """A brecha que a primeira correção não cobriu: erro de provedor no meio do turno não
+    emite TURN_END — o engine captura a exceção, emite ERROR e retorna. O veredito ficava
+    vazio e a run era gravada como "ok": modelo caiu (rate-limit, chave expirada, gateway
+    fora) e o histórico dizia sucesso."""
+    from mangaba.providers import AssistantTurn, ModelCapabilities, ProviderClient
+    from mangaba.providers.base import ToolCall
+    from mangaba.server.manager import SessionManager
+
+    class _CaiNoMeio(ProviderClient):
+        def __init__(self):
+            self.chamadas = 0
+
+        def complete(self, *, model, messages, tools=None, **settings):
+            self.chamadas += 1
+            if self.chamadas == 1:
+                return AssistantTurn(
+                    text="",
+                    tool_calls=[
+                        ToolCall(
+                            id="c1",
+                            name="todo_write",
+                            arguments={"todos": [{"content": "x", "status": "pending"}]},
+                        )
+                    ],
+                    finish_reason="tool_calls",
+                )
+            raise RuntimeError("gateway fora do ar")
+
+        def capabilities(self, model):
+            return ModelCapabilities()
+
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    manager = SessionManager(data_dir=tmp_path / "data", provider=_CaiNoMeio())
+    task = _task(workspace=str(ws), agent="cowork")
+    manager.task_store.save(task)
+
+    run = await manager._run_scheduled_task(task, trigger="schedule")
+    assert run.status == "error", (
+        f"modelo caiu no meio e a run foi gravada como {run.status!r}"
+    )
+    assert run.error and "gateway" in run.error

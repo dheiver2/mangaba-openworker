@@ -3477,16 +3477,24 @@ class SessionManager:
         # caprichado do trabalho pela metade, o resultado salvo PARECE uma entrega. A TUI e a
         # GUI já tratam esse status; só o caminho headless não tratava. Fora do `try` porque
         # o `finally` o consulta: uma exceção antes da atribuição o deixaria sem valor.
-        veredito = ""
+        veredito, erro_do_turno = "", ""
         try:
             async for _event in engine.run(opening):
                 if _event.type is EventType.TURN_END:
                     veredito = str((_event.data or {}).get("status") or "")
                 elif _event.type is EventType.INTERRUPTED:
                     veredito = "interrupted"
+                elif _event.type is EventType.ERROR:
+                    # Falha de provedor no meio do turno: o engine emite ERROR e retorna
+                    # SEM TURN_END. Sem este ramo o veredito ficava vazio e a run era
+                    # gravada como "ok" — modelo caiu e o histórico dizia sucesso.
+                    veredito = "error"
+                    erro_do_turno = str((_event.data or {}).get("error") or "")
             run.result_text = _last_assistant_text(engine.messages)
             run.artifacts = _recent_files(task.workspace, since=run.started_at)
             run.status, run.error = _veredito_da_run(veredito)
+            if run.status == "error" and erro_do_turno:
+                run.error = erro_do_turno  # a mensagem real vale mais que a genérica
             # Só avisa "terminou" quando terminou de verdade. Uma run parcial aparece no
             # histórico da automação com o motivo — anunciá-la como pronta é a mentira que
             # esta correção existe para evitar.
@@ -4433,8 +4441,13 @@ def _plan_steps_of(engine: TurnEngine) -> list[dict[str, Any]]:
 
 
 def _veredito_da_run(status_do_turno: str) -> tuple[str, Optional[str]]:
-    """Traduz o `status` do TURN_END no status da run. `("ok", None)` só quando o modelo
-    encerrou por vontade própria — qualquer outra saída é entrega parcial, não sucesso."""
+    """Traduz o veredito do turno no status da run. `("ok", None)` só quando o modelo
+    encerrou por vontade própria — qualquer outra saída é entrega parcial ou falha."""
+    if status_do_turno == "error":
+        return "error", (
+            "a execução falhou com um erro de modelo/provedor — abra a conversa da run "
+            "para ver o erro completo."
+        )
     motivo = _TURNOS_PARCIAIS.get(status_do_turno)
     if motivo is not None:
         return "partial", motivo
