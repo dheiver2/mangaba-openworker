@@ -803,3 +803,46 @@ async def test_run_com_erro_de_provedor_nao_vira_ok(tmp_path, monkeypatch):
         f"modelo caiu no meio e a run foi gravada como {run.status!r}"
     )
     assert run.error and "gateway" in run.error
+
+
+def test_run_retomada_apos_restart_e_fechada_no_historico(tmp_path, monkeypatch):
+    """Run agendada parkeou numa aprovação e o servidor reiniciou: o runner original morreu
+    e seu `finally` nunca roda. O durable resume termina o turno — mas o TaskRun ficava
+    "running" para sempre no histórico, e o plano não voltava para a tarefa."""
+    from mangaba.plan import Plan
+    from mangaba.server.manager import SessionManager
+
+    monkeypatch.setenv("MANGABA_STATE_DIR", str(tmp_path / "state"))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    manager = SessionManager(data_dir=tmp_path / "data")
+    task = _task(workspace=str(ws), agent="cowork")
+    manager.task_store.save(task)
+    run = TaskRun(task_id=task.id, trigger="schedule")  # "running", como o restart deixou
+    manager.task_store.add_run(run)
+
+    class _Eng:
+        messages = [{"role": "assistant", "content": "terminei o que dava"}]
+
+    eng = _Eng()
+    eng.last_turn_status = "completed"
+    eng.plan = Plan()
+    eng.plan.replace([
+        {"id": "p1", "description": "a", "status": "done"},
+        {"id": "p2", "description": "b", "status": "pending"},
+    ])
+
+    manager._fechar_run_orfa(run.session_id, eng)
+
+    fechada = manager.task_store.find_run(run.run_id)
+    assert fechada.status == "ok" and fechada.finished_at is not None
+    assert fechada.result_text == "terminei o que dava"
+    gravada = manager.task_store.get(task.id)
+    assert gravada.last_status == "ok" and gravada.run_count == 1
+    assert [p["id"] for p in gravada.plan] == ["p1", "p2"]
+
+    # Sessão que NÃO é run de automação: intocada (nada explode, nada é gravado).
+    manager._fechar_run_orfa("sessao-comum", eng)
+    # E fechar duas vezes não conta duas vezes.
+    manager._fechar_run_orfa(run.session_id, eng)
+    assert manager.task_store.get(task.id).run_count == 1

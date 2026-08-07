@@ -1011,6 +1011,10 @@ class SessionManager:
             async for _event in engine.resume():
                 pass
             self.save(item.session_id, engine)
+            # Se esta sessão é a run de uma automação, o runner original morreu no restart —
+            # ninguém mais vai fechar o TaskRun. Sem isto o histórico mostrava "running"
+            # para sempre, e o plano não voltava para a tarefa.
+            self._fechar_run_orfa(item.session_id, engine)
         finally:
             self.mark_idle(item.session_id)
 
@@ -3726,6 +3730,33 @@ class SessionManager:
                 f"{_retomada_do_plano(task.plan)}"
             ),
         }
+
+    def _fechar_run_orfa(self, session_id: str, engine: TurnEngine) -> None:
+        """Fecha o TaskRun de uma run retomada após restart (durable resume).
+
+        O runner headless original morreu junto com o processo: seu `finally` — que grava o
+        veredito, os artefatos e devolve o plano à tarefa — nunca roda. O turno retomado
+        termina de verdade, mas o histórico da automação ficava "running" para sempre.
+        Mesmo veredito dos outros caminhos; sem notificação (o momento do "terminou" já
+        passou faz tempo, e um aviso atrasado confundiria mais do que informaria).
+        """
+        task = self.task_store.task_for_run_session(session_id)
+        if task is None:
+            return
+        run = self.task_store.find_run(session_id[len("__run__"):])
+        if run is None or run.status != "running":
+            return
+        run.result_text = _last_assistant_text(engine.messages)
+        run.artifacts = _recent_files(task.workspace, since=run.started_at)
+        run.status, run.error = _veredito_da_run(
+            getattr(engine, "last_turn_status", "")
+        )
+        run.finished_at = _epoch()
+        self.task_store.add_run(run)
+        task.last_run, task.last_status = run.finished_at, run.status
+        task.run_count += 1
+        task.plan = _plano_pendente(engine)
+        self.task_store.save(task)
 
     def finalize_manual_run(self, task_id: str, run_id: str) -> dict[str, Any]:
         """Mark a manual run complete once its first turn finished (the WS already saved the
