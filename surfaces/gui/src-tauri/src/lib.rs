@@ -774,6 +774,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building the Mangaba desktop app")
         .run(|app, event| {
+            // Clicking the Dock/taskbar icon of an ALREADY-RUNNING app does not spawn a second
+            // process, so the single-instance hook never fires — macOS just sends Reopen. Without
+            // this, closing the window (which only hides it, to keep the sidecar alive) left the
+            // app permanently unreachable: the icon did nothing, and the only way back was the
+            // tray menu or killing the process. It read as "the app won't open".
+            if let RunEvent::Reopen { .. } = event {
+                show_main(app);
+            }
             // Also on Exit: belt-and-suspenders in case a quit path reaches teardown without
             // a preceding ExitRequested (observed with macOS Cmd+Q under the tray setup).
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
