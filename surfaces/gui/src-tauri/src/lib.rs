@@ -774,12 +774,17 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building the Mangaba desktop app")
         .run(|app, event| {
-            // Clicking the Dock/taskbar icon of an ALREADY-RUNNING app does not spawn a second
-            // process, so the single-instance hook never fires — macOS just sends Reopen. Without
-            // this, closing the window (which only hides it, to keep the sidecar alive) left the
-            // app permanently unreachable: the icon did nothing, and the only way back was the
-            // tray menu or killing the process. It read as "the app won't open".
-            if let RunEvent::Reopen { .. } = event {
+            // Clicking the Dock icon of an ALREADY-RUNNING app does not spawn a second process,
+            // so the single-instance hook never fires — macOS just sends Reopen. Without this,
+            // closing the window (which only hides it, to keep the sidecar alive) left the app
+            // permanently unreachable: the icon did nothing, and the only way back was the tray
+            // menu or killing the process. It read as "the app won't open".
+            //
+            // Reopen is a macOS-only variant of RunEvent — unguarded, this does not compile for
+            // Windows. On Windows the taskbar has no equivalent event: relaunching from the
+            // shortcut goes through the single-instance hook, which already calls show_main.
+            #[cfg(target_os = "macos")]
+            if let RunEvent::Reopen { .. } = &event {
                 show_main(app);
             }
             // Also on Exit: belt-and-suspenders in case a quit path reaches teardown without

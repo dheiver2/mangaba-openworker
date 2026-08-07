@@ -249,11 +249,26 @@ echo "==> [5/6] template NSIS em modo ANSI"
 # nenhum, então não é o tamanho do payload. O modo ANSI funciona, e o instalador
 # do Tauri só usa texto em inglês (ASCII puro), então não há perda de acentuação.
 # O template precisa vir SEM BOM: em modo ANSI o makensis rejeita o BOM na linha 1.
-( cd "$GUI" && npm run tauri build -- --target x86_64-pc-windows-gnu --bundles nsis 2>/dev/null ) || true
+#
+# O `|| true` é esperado: o Tauri GERA o installer.nsi e só depois tenta compilá-lo com o
+# makensis em Unicode, que estoura — quem recompila em ANSI somos nós, mais abaixo. Só o
+# .nsi importa desta passada. O diretório é apagado ANTES por isso: sem apagar, um build
+# que morre cedo (no cargo, por exemplo) deixa o .nsi da versão ANTERIOR no lugar, o script
+# segue achando que deu certo e falha lá na frente com "CheckIfAppIsRunning não encontrada"
+# — que é só o patch já aplicado no arquivo velho, e não diz nada sobre a falha real. O log
+# vai para arquivo em vez de /dev/null pelo mesmo motivo: o erro precisa sobreviver.
+NSI_DIR="$GUI/src-tauri/target/x86_64-pc-windows-gnu/release/nsis"
+NSI_SRC="$NSI_DIR/x64/installer.nsi"
+LOG_TAURI="$TRABALHO/tauri-build-nsis.log"
+rm -rf "$NSI_DIR"
+( cd "$GUI" && npm run tauri build -- --target x86_64-pc-windows-gnu --bundles nsis > "$LOG_TAURI" 2>&1 ) || true
 
-NSI_SRC="$GUI/src-tauri/target/x86_64-pc-windows-gnu/release/nsis/x64/installer.nsi"
 if [ ! -f "$NSI_SRC" ]; then
-    echo "Tauri não gerou o installer.nsi — veja o log acima." >&2
+    echo "Tauri não gerou o installer.nsi — o build quebrou ANTES do empacotamento." >&2
+    echo "--- erros em $LOG_TAURI ---" >&2
+    grep -iE "^error|error\[|panicked|undefined reference|cannot find" "$LOG_TAURI" | tail -20 >&2
+    echo "--- fim do log ---" >&2
+    tail -15 "$LOG_TAURI" >&2
     exit 1
 fi
 rm -rf "$TRABALHO/nsis"
