@@ -87,6 +87,32 @@ class InboxItem:
     data: dict[str, Any] = field(default_factory=dict)
 
 
+def _normalizar_opcoes(options: Any) -> list[str]:
+    """Coage as quick-replies a texto puro.
+
+    Modelos às vezes respondem `ask_user` com objetos ao estilo AskUserQuestion
+    (`{"label": ..., "description": ...}`) em vez de strings. A UI renderiza cada
+    opção como filho de React e usa o próprio valor como `key`, então um objeto aqui
+    derrubava a interface inteira (React #31) e envenenava o inbox de forma durável.
+    """
+    limpas: list[str] = []
+    for opt in options or []:
+        if isinstance(opt, str):
+            texto = opt
+        elif isinstance(opt, dict):
+            rotulo = opt.get("label") or opt.get("title") or opt.get("value") or ""
+            detalhe = opt.get("description") or ""
+            texto = f"{rotulo} — {detalhe}" if rotulo and detalhe else (rotulo or detalhe)
+            if not texto:
+                continue
+        else:
+            texto = str(opt)
+        texto = texto.strip()
+        if texto and texto not in limpas:  # keys de React precisam ser únicas
+            limpas.append(texto)
+    return limpas
+
+
 class InboxStore:
     def __init__(self, path: Optional[str | Path] = None) -> None:
         self.path = Path(path) if path else None
@@ -101,6 +127,9 @@ class InboxStore:
             data = json.loads(self.path.read_text(encoding="utf-8"))
             for raw in data.get("items", []):
                 item = InboxItem(**raw)
+                # Um inbox gravado por uma versão anterior pode carregar opções
+                # não-textuais que quebram a UI; saneia na leitura.
+                item.options = _normalizar_opcoes(item.options)
                 self._items[item.id] = item
 
     def _save(self) -> None:
@@ -143,7 +172,7 @@ class InboxStore:
             inbox=inbox,
             visibility=visibility,
             data=dict(data or {}),
-            options=list(options or []),
+            options=_normalizar_opcoes(options),
             allow_text=bool(allow_text),
             multi=bool(multi),
             tool_call_id=tool_call_id,

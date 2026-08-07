@@ -127,3 +127,56 @@ def test_approval_body_includes_tool_args():
 
     req2 = PermissionRequest("rm", {"path": "/x"}, None, "destructive")
     assert _approval_body(req2).startswith("destructive")  # reason leads when present
+
+
+def test_opcoes_em_objeto_viram_texto(tmp_path):
+    """Um modelo pode responder ask_user com `{label, description}` no lugar de texto.
+
+    A UI usa cada opção como filho de React e como `key` do botão, então um objeto
+    aqui derrubava a janela inteira (React #31 + keys duplicadas) e o item envenenado
+    ficava gravado no inbox, tornando o app impossível de abrir.
+    """
+    store = InboxStore(tmp_path / "inbox.json")
+    item = store.add_question(
+        "s1",
+        "Como seguir?",
+        options=[
+            {"label": "Reenviar", "description": "anexe de novo"},
+            {"label": "Colar texto"},
+            "Cancelar",
+        ],
+    )
+    assert item.options == ["Reenviar — anexe de novo", "Colar texto", "Cancelar"]
+    assert all(isinstance(o, str) for o in item.options)
+
+
+def test_inbox_gravado_com_opcoes_ruins_e_saneado_na_leitura(tmp_path):
+    """Inboxes já no disco carregam o formato ruim; sanear no load destrava o app."""
+    import json
+
+    caminho = tmp_path / "inbox.json"
+    caminho.write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "id": "x1",
+                        "session_id": "s1",
+                        "kind": "question",
+                        "title": "Como seguir?",
+                        "options": [{"label": "A", "description": "faz A"}],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = InboxStore(caminho)
+    assert store.get("x1").options == ["A — faz A"]
+
+
+def test_opcoes_duplicadas_sao_colapsadas(tmp_path):
+    """Opções repetidas viram `key` duplicada de React — colapsa em vez de avisar."""
+    store = InboxStore(tmp_path / "inbox.json")
+    item = store.add_question("s1", "Qual?", options=["Sim", "Sim", " Sim ", "Não"])
+    assert item.options == ["Sim", "Não"]

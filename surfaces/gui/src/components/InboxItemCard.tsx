@@ -9,6 +9,27 @@ import {
   TitleText,
 } from "./ApprovalCard";
 
+// Quick-replies chegam do servidor, então a UI não pode confiar no formato: um modelo pode
+// devolver `{label, description}` no lugar de texto. Sem isto, o objeto virava filho de React
+// (erro #31) e `key` duplicada, derrubando a janela inteira em vez de só este card.
+function normalizarOpcoes(brutas: unknown): string[] {
+  if (!Array.isArray(brutas)) return [];
+  const limpas: string[] = [];
+  for (const bruta of brutas) {
+    let texto: string;
+    if (typeof bruta === "string") texto = bruta;
+    else if (bruta && typeof bruta === "object") {
+      const o = bruta as Record<string, unknown>;
+      const rotulo = String(o.label ?? o.title ?? o.value ?? "");
+      const detalhe = String(o.description ?? "");
+      texto = rotulo && detalhe ? `${rotulo} — ${detalhe}` : rotulo || detalhe;
+    } else texto = String(bruta ?? "");
+    texto = texto.trim();
+    if (texto && !limpas.includes(texto)) limpas.push(texto); // keys precisam ser únicas
+  }
+  return limpas;
+}
+
 // One Inbox item, rendered identically in the Inbox list and inline in its own session view
 // (answer-in-context). Resolving either place hits the same item id — first responder wins.
 // Questions (ask_user) mirror Claude Code's AskUserQuestion: optional quick-reply options + an
@@ -44,7 +65,9 @@ export function InboxItemCard({
 }) {
   const [answer, setAnswer] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const options = item.options || [];
+  // Cada opção vira filho de React e `key` do botão. Um objeto aqui (modelos às vezes
+  // devolvem `{label, description}`) derrubava a UI inteira, então coagimos a texto.
+  const options = normalizarOpcoes(item.options);
   const multi = !!item.multi;
   const allowText = item.allow_text !== false;
 
