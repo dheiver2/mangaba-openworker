@@ -88,10 +88,27 @@ def _obter_motor() -> Any:
 
 
 def empacotado() -> bool:
-    """Estamos rodando dentro do sidecar congelado (PyInstaller) do app de desktop?"""
-    import sys
+    """Estamos dentro do sidecar do app de desktop (onde não existe pip)?
 
-    return bool(getattr(sys, "frozen", False))
+    São DOIS empacotamentos diferentes, e checar só o do macOS é um bug real: no macOS o
+    sidecar é um bundle PyInstaller, que marca `sys.frozen`; no Windows é o runtime Python
+    *embeddable* mais um shim em C — `sys.frozen` NÃO existe ali, mas também não existe pip
+    (o `._pth` do embeddable nem site-packages gravável tem). Detectando só o congelado, o
+    usuário do instalador do Windows recebia "rode pip install", que é impossível de seguir
+    — exatamente o que `como_instalar` existe para evitar.
+
+    O embeddable é reconhecido pelo `python<tag>._pth` ao lado do executável: é a marca
+    canônica dessa distribuição e não aparece num Python instalado normalmente.
+    """
+    import sys
+    from pathlib import Path
+
+    if bool(getattr(sys, "frozen", False)):
+        return True
+    try:
+        return any(Path(sys.executable).resolve().parent.glob("python*._pth"))
+    except OSError:
+        return False
 
 
 def como_instalar() -> str:

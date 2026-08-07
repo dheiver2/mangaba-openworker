@@ -59,9 +59,24 @@ def environment_context(workspace: str | Path) -> str:
     ws = Path(workspace).expanduser().resolve()
     mac = _platform.mac_ver()[0]
     os_name = f"macOS {mac}" if mac else f"{_platform.system()} {_platform.release()}"
+    # O shell e os exemplos precisam ser os DA PLATAFORMA. O bloco falava de find/ls/grep e
+    # justificava a regra com o prompt de permissão do macOS — no Windows os comandos são
+    # outros e esse prompt nem existe, então a instrução chegava como ruído e o modelo ficava
+    # sem saber em que shell escrever. Ver a descrição de run_shell, que declara o mesmo.
+    windows = sys.platform == "win32"
+    shell = "PowerShell" if windows else "bash"
+    exemplos = "Get-ChildItem/Select-String" if windows else "find/ls/grep"
+    motivo = (
+        "Those folders are outside what the user granted, and sweeping them is a privacy "
+        "breach they never asked for."
+        if windows
+        else "On macOS every such touch fires an OS permission prompt the user can't "
+        "connect to any action they took."
+    )
     lines = [
         f"Workspace: {ws}",
         f"Platform: {sys.platform} ({os_name})",
+        f"Shell: run_shell runs {shell}",
         f"Today's date: {date.today().isoformat()}",
         *_git_snapshot(ws),
     ]
@@ -71,7 +86,6 @@ def environment_context(workspace: str | Path) -> str:
         f"state):\n<environment>\n{body}\n</environment>\n"
         "Folder scope: work inside the workspace and any folders the user has granted. Do not "
         "read or list other locations (home directory sweeps, ~/Desktop, ~/Downloads, photo "
-        "libraries, etc.) — not even via shell commands like find/ls/grep. On macOS every such "
-        "touch fires an OS permission prompt the user can't connect to any action they took. "
+        f"libraries, etc.) — not even via shell commands like {exemplos}. {motivo} "
         "If a task needs files elsewhere, ask first with request_directory."
     )

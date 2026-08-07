@@ -38,6 +38,10 @@ import aisuite as ai
 
 _IS_WINDOWS = sys.platform == "win32"
 
+# Como o shell se apresenta ao MODELO (ver a descrição de run_shell mais abaixo).
+_NOME_DO_SHELL = "PowerShell" if _IS_WINDOWS else "bash"
+_SINTAXE_DO_SHELL = "PowerShell (Windows)" if _IS_WINDOWS else "POSIX shell"
+
 # Foreground timeout bounds: long enough for installs/builds/test runs by default, capped so
 # a model-requested timeout can't wedge the turn for more than ten minutes.
 _DEFAULT_TIMEOUT = 120.0
@@ -451,11 +455,19 @@ _RUN_SHELL_SCHEMA = {
     "type": "function",
     "function": {
         "name": "run_shell",
+        # O NOME do shell entra na descrição de propósito. A implementação sempre foi
+        # OS-nativa (bash no POSIX, PowerShell no Windows), mas isso nunca chegava ao
+        # modelo: a descrição não citava shell nenhum, e nenhum prompt do sistema citava
+        # PowerShell. No macOS o modelo assume bash e acerta; no Windows ele escrevia
+        # sintaxe bash (`export`, `&&`, `grep`, `rm -rf`, `$(...)`) dentro do PowerShell,
+        # onde parte falha e parte funciona por acidente de alias. Era uma diferença real
+        # de capacidade agêntica entre as duas plataformas, invisível numa comparação de
+        # features.
         "description": (
-            "Run a shell command in the persistent session (cwd and env persist across "
-            "calls). Output longer than the limit keeps the END (where test/build verdicts "
-            "are). Set run_in_background for long-running processes like dev servers, then "
-            "poll with shell_task_output."
+            f"Run a command in the persistent {_NOME_DO_SHELL} session (cwd and env persist "
+            f"across calls). Write {_SINTAXE_DO_SHELL} syntax. Output longer than the limit "
+            "keeps the END (where test/build verdicts are). Set run_in_background for "
+            "long-running processes like dev servers, then poll with shell_task_output."
         ),
         "parameters": {
             "type": "object",

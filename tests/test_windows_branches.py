@@ -320,3 +320,90 @@ def test_shell_windows_usa_powershell_e_novo_grupo(monkeypatch):
     assert "start_new_session" not in capturado["kwargs"], (
         "start_new_session é POSIX; no Windows o Popen rejeita"
     )
+
+
+# --- paridade Windows/macOS: o que o MODELO sabe da plataforma -------------------------
+# A implementação já era OS-nativa; o que faltava era isso chegar ao modelo. Sem os testes
+# abaixo, a descrição volta a ser escrita "para bash" sem ninguém perceber no Mac.
+
+
+def test_run_shell_declara_powershell_no_windows(monkeypatch):
+    """No Windows a descrição da tool precisa dizer PowerShell, não silêncio.
+
+    Calada, o modelo assume bash e escreve `export`/`&&`/`grep` num PowerShell — no macOS
+    ele acerta por padrão e no Windows erra por padrão, uma diferença real de capacidade.
+    """
+    import importlib
+
+    import mangaba.tools.shell as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    recarregado = importlib.reload(mod)
+    try:
+        descricao = recarregado._RUN_SHELL_SCHEMA["function"]["description"]
+        assert "PowerShell" in descricao
+        assert "bash" not in descricao.lower()
+    finally:
+        monkeypatch.undo()
+        importlib.reload(mod)
+
+
+def test_run_shell_declara_bash_no_posix():
+    import mangaba.tools.shell as mod
+
+    descricao = mod._RUN_SHELL_SCHEMA["function"]["description"]
+    assert "bash" in descricao
+    assert "PowerShell" not in descricao
+
+
+def test_environment_context_no_windows_nao_fala_de_macos(monkeypatch, tmp_path):
+    """O bloco justificava a regra de pastas com o prompt de permissão do macOS."""
+    import mangaba.environment as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "win32")
+    texto = mod.environment_context(tmp_path)
+    assert "run_shell runs PowerShell" in texto
+    assert "On macOS" not in texto
+    assert "find/ls/grep" not in texto
+
+
+def test_environment_context_no_mac_mantem_o_texto_de_sempre(monkeypatch, tmp_path):
+    import mangaba.environment as mod
+
+    monkeypatch.setattr(mod.sys, "platform", "darwin")
+    texto = mod.environment_context(tmp_path)
+    assert "run_shell runs bash" in texto
+    assert "On macOS" in texto
+
+
+def test_ocr_reconhece_o_sidecar_embeddable_do_windows(monkeypatch, tmp_path):
+    """O sidecar do Windows é o Python embeddable, não PyInstaller: `sys.frozen` é falso.
+
+    Detectando só o congelado, quem instalou pelo .exe recebia "rode pip install" — e não
+    existe pip nenhum dentro do embeddable.
+    """
+    import mangaba.ocr as mod
+
+    (tmp_path / "python311._pth").write_text("", encoding="utf-8")
+    falso_exe = tmp_path / "python.exe"
+    falso_exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr(mod_sys := __import__("sys"), "executable", str(falso_exe))
+    monkeypatch.delattr(mod_sys, "frozen", raising=False)
+
+    assert mod.empacotado() is True
+    assert "pip install" not in mod.como_instalar()
+
+
+def test_ocr_fora_de_bundle_ainda_sugere_pip(monkeypatch, tmp_path):
+    """Instalação por código-fonte continua recebendo a instrução que de fato funciona."""
+    import sys as mod_sys
+
+    import mangaba.ocr as mod
+
+    falso_exe = tmp_path / "python"
+    falso_exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr(mod_sys, "executable", str(falso_exe))
+    monkeypatch.delattr(mod_sys, "frozen", raising=False)
+
+    assert mod.empacotado() is False
+    assert "pip install" in mod.como_instalar()
