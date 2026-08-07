@@ -1429,6 +1429,19 @@ def create_app(manager: SessionManager) -> FastAPI:
         await ws.accept(subprotocol="mangaba" if api_token else None)
         agent = ws.query_params.get("agent") or "code"
 
+        async def _safe_send(payload: dict) -> None:
+            # `manager.broadcast_session` already drops a dead socket on send failure (see
+            # manager.py) — but the four sends below talk to THIS socket directly, from
+            # engine-driven callbacks (question_asker, the initial ready/error handshake,
+            # reject_input) that can run after the client has gone away mid-turn. Without this
+            # guard a client closing/reloading the app mid-turn surfaced as an unhandled
+            # `websockets.exceptions.InvalidState: connection is closing` — a full ASGI
+            # traceback in the server log for something as ordinary as closing the window.
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                pass
+
         # All four interactive prompts (approval / question / directory / plan) are parked as Inbox
         # items and awaited via inbox.wait — so they survive a dropped socket (redelivered on
         # reconnect) and can be resolved from any surface. `visibility` decides where they SHOW:
@@ -1499,7 +1512,7 @@ def create_app(manager: SessionManager) -> FastAPI:
                 if item.visibility == VIS_INBOX:
                     await _mirror(item)
                 else:
-                    await ws.send_json(
+                    await _safe_send(
                         {
                             "type": "question_requested",
                             "data": {
@@ -1626,7 +1639,7 @@ def create_app(manager: SessionManager) -> FastAPI:
             question_asker=question_asker,
         )
         if engine is None:
-            await ws.send_json(
+            await _safe_send(
                 {
                     "type": "error",
                     "data": {
@@ -1640,7 +1653,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         # perguntada Tentar/Aparar — execuções não atendidas auto-aparam
         # (política em engine._compact_now).
         engine.is_attended = lambda: _visibility() == VIS_INLINE
-        await ws.send_json(
+        await _safe_send(
             {
                 "type": "ready",
                 "data": {
@@ -1705,7 +1718,7 @@ def create_app(manager: SessionManager) -> FastAPI:
         async def reject_input(reason: str) -> None:
             # Input validation failures are not provider failures and must not offer "Retry"
             # or flush an in-progress assistant stream in the GUI.
-            await ws.send_json({"type": "input_rejected", "data": {"error": reason}})
+            await _safe_send({"type": "input_rejected", "data": {"error": reason}})
 
         async def claim_turn(*, retry: bool = False, content=None, display=None) -> None:
             if not manager.try_mark_running(session_id):

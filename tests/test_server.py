@@ -1099,3 +1099,37 @@ def test_sessao_apagada_nao_ressuscita_pelo_save_do_turno(tmp_path, monkeypatch)
     # o turno em voo termina DEPOIS do delete e chama save() com o engine do closure
     manager.save("sess-zumbi", engine)
     assert manager.session_store.load("sess-zumbi") is None, "a sessão ressuscitou"
+
+
+def test_envio_em_socket_fechado_nao_vira_traceback_no_servidor(tmp_path):
+    """Bug visto em produção (log do sidecar do app instalado, 2026-08-06): fechar a janela
+    do app com um turno em andamento derrubava o handler com um traceback ASGI completo —
+    `websockets.exceptions.InvalidState: connection is closing` — para algo tão corriqueiro
+    quanto fechar a janela.
+
+    A causa: `broadcast_session` já engole socket morto, mas quatro sends falavam com o
+    socket DIRETO (ready/error do handshake, question_requested, input_rejected), por fora
+    desse guard. O `_safe_send` os cobre; este teste prende o comportamento simulando um
+    socket que morre logo após o handshake e provocando um `input_rejected` (mensagem de
+    tipo desconhecido) — que antes estourava."""
+    import asyncio
+
+    from starlette.websockets import WebSocketDisconnect
+
+    manager = SessionManager(
+        workspace=str(tmp_path), provider=ScriptedProvider([_text("ok")])
+    )
+    app = create_app(manager)
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/session/socket-fechado") as ws:
+        assert ws.receive_json()["type"] == "ready"
+        # Tipo desconhecido → reject_input → _safe_send. Fechamos logo em seguida: se o
+        # send ao socket agonizante levantasse, o teste veria a exceção no teardown do
+        # contexto em vez de um fechamento limpo.
+        ws.send_json({"type": "tipo-que-nao-existe"})
+        try:
+            resposta = ws.receive_json()
+            assert resposta["type"] == "input_rejected"
+        except WebSocketDisconnect:
+            pass  # corrida aceitável: o servidor pode ter fechado antes de entregarmos

@@ -113,6 +113,30 @@ class TelegramAdapter(BasePlatformAdapter):
         self._app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, _on_update)
         )
+
+        async def _on_error(_update, context) -> None:
+            # Conflict = OUTRA instância está fazendo getUpdates com o mesmo token — duas
+            # cópias do app (dev + instalado, reinstalação com órfão…). O comportamento
+            # padrão do python-telegram-bot é tentar de novo para sempre, despejando um
+            # traceback completo no log A CADA POLL (visto ao vivo no sidecar do app
+            # instalado em 2026-08-06: dezenas por minuto, afogando qualquer erro real).
+            # Ceder a vez é a única saída correta: quem chegou depois para de brigar, e a
+            # instância dona do token segue recebendo as mensagens.
+            from telegram.error import Conflict
+
+            if isinstance(context.error, Conflict):
+                logger.warning(
+                    "telegram: outra instância do app já está conectada a este bot — "
+                    "este adaptador vai parar de escutar (mensagens seguem chegando na "
+                    "outra instância)"
+                )
+                import asyncio as _asyncio
+
+                _asyncio.get_running_loop().create_task(self.disconnect())
+                return
+            logger.error("telegram adapter error: %r", context.error)
+
+        self._app.add_error_handler(_on_error)
         await self._app.initialize()
         await self._app.start()
         await self._app.updater.start_polling(drop_pending_updates=True)

@@ -31,6 +31,30 @@ from ..secrets import SecretStore
 
 logger = logging.getLogger(__name__)
 
+
+class _SemTracebackDeAuthEsperada(logging.Filter):
+    """Cala o traceback "OAuth flow error" do SDK quando a causa é a NOSSA recusa.
+
+    Numa sessão não-atendida, `_refuse_browser` levanta `InteractiveAuthRequired` de
+    propósito — é o desenho: rodada headless não abre navegador, e a GUI mostra
+    "reconecte este servidor na página dele". O SDK do MCP, porém, trata qualquer exceção
+    do fluxo como falha e despeja `logger.exception("OAuth flow error")` com stack
+    completa (visto no log do sidecar do app instalado em 2026-08-06). Fluxo esperado não
+    pode parecer crash: o filtro suprime SÓ esse caso — qualquer outro erro de OAuth
+    continua aparecendo inteiro."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        exc = record.exc_info[1] if record.exc_info else None
+        while exc is not None:
+            if isinstance(exc, InteractiveAuthRequired):
+                return False
+            exc = exc.__cause__ or exc.__context__
+        return True
+
+
+logging.getLogger("mcp.client.auth").addFilter(_SemTracebackDeAuthEsperada())
+logging.getLogger("mcp.client.auth.oauth2").addFilter(_SemTracebackDeAuthEsperada())
+
 PROFILE_PREFIX = "mcp-oauth:"
 CALLBACK_PATH = "/mcp/oauth/callback"
 # How long the connect waits for the user to finish the browser sign-in.

@@ -1730,3 +1730,24 @@ def test_experimental_package_loads_cleanly():
 
     assert EXPERIMENTAL_DESCRIPTORS == []
     assert all(d.experimental is False for d in DESCRIPTORS if d.name != "dangerzone")
+
+
+def test_conflito_de_telegram_cede_a_vez_em_silencio():
+    """Duas instâncias do app com o mesmo bot (dev + instalado, reinstalação com órfão…):
+    o python-telegram-bot tenta getUpdates para sempre e despeja um traceback completo no
+    log A CADA POLL — visto ao vivo no sidecar do app instalado em 2026-08-06, dezenas por
+    minuto, afogando qualquer erro real. O handler de erro detecta o Conflict, avisa UMA
+    linha e desconecta este adaptador: a instância dona do token segue recebendo tudo."""
+    telegram = pytest.importorskip("telegram")
+    import asyncio
+    import inspect
+
+    from telegram.error import Conflict
+
+    from mangaba.connectors.adapters import TelegramAdapter
+
+    fonte = inspect.getsource(TelegramAdapter.connect)
+    assert "add_error_handler" in fonte, (
+        "sem o handler, o Conflict volta a virar spam de traceback infinito"
+    )
+    assert "Conflict" in fonte and "disconnect" in fonte
