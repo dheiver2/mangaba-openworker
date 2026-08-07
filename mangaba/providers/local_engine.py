@@ -189,15 +189,64 @@ def find_binary() -> Optional[str]:
     return str(cand) if cand.exists() else None
 
 
-def _pick_asset(assets: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
-    """O zip certo para esta plataforma, dentre os assets da release do llama.cpp."""
+def _gpu_disponivel_windows() -> bool:
+    """Há uma GPU de verdade nesta máquina Windows (não só o adaptador de software do SO)?
+
+    Best-effort: consulta os controladores de vídeo via PowerShell/WMI e descarta os nomes
+    que são puro software (o "Microsoft Basic Render/Display Driver" aparece em toda VM sem
+    passthrough de GPU). Nunca levanta — detecção incerta tem de degradar para "sem GPU",
+    que é o lado seguro: builda CPU sempre funciona, Vulkan sem driver não sobe."""
+    if os.environ.get("MANGABA_LOCAL_ENGINE_GPU") == "1":
+        return True  # escape hatch para testar o caminho Vulkan sem GPU real
+    if os.environ.get("MANGABA_LOCAL_ENGINE_GPU") == "0":
+        return False
+    try:
+        # creationflags é Windows-only (POSIX levanta ValueError se receber a kwarg) — só
+        # entra quando de fato vamos rodar no Windows, para a função continuar chamável em
+        # teste/monkeypatch fora dele.
+        kwargs: dict[str, Any] = {}
+        if platform.system() == "Windows":
+            kwargs["creationflags"] = 0x08000000  # CREATE_NO_WINDOW
+        out = subprocess.run(
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                "(Get-CimInstance Win32_VideoController).Name -join ';'",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            **kwargs,
+        )
+        nomes = [n.strip().lower() for n in (out.stdout or "").split(";") if n.strip()]
+        software = ("microsoft basic render driver", "microsoft basic display adapter")
+        return any(n not in software for n in nomes)
+    except Exception:
+        return False
+
+
+def _pick_asset(
+    assets: list[dict[str, Any]], *, preferir_gpu: Optional[bool] = None
+) -> Optional[dict[str, Any]]:
+    """O zip certo para esta plataforma, dentre os assets da release do llama.cpp.
+
+    `preferir_gpu` (None = decidir sozinho): no Windows, com GPU real detectada, tenta a
+    build Vulkan primeiro — cobre AMD/Intel/NVIDIA sem exigir CUDA Toolkit. Os tokens de CPU
+    continuam na MESMA lista como fallback: se a release não tiver mais `win-vulkan-x64` (o
+    nome pode mudar), a busca cai para CPU sozinha, nunca para "nenhum asset". No macOS a
+    build `macos-arm64` já embute Metal — não há variante para escolher."""
     system = platform.system()
     names = [(a.get("name") or "", a) for a in assets]
     if system == "Darwin":
         want = ["macos-arm64"] if platform.machine() == "arm64" else ["macos-x64"]
     elif system == "Windows":
-        # CPU cobre toda máquina; quem tem GPU ganha depois (Vulkan exigiria testar driver).
-        want = ["win-cpu-x64", "win-avx2-x64", "win-x64"]
+        quer_gpu = _gpu_disponivel_windows() if preferir_gpu is None else preferir_gpu
+        want = (["win-vulkan-x64"] if quer_gpu else []) + [
+            "win-cpu-x64",
+            "win-avx2-x64",
+            "win-x64",
+        ]
     else:
         want = ["ubuntu-x64", "linux-x64"]
     for token in want:
@@ -208,9 +257,26 @@ def _pick_asset(assets: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
     return None
 
 
-def install() -> dict[str, Any]:
+def _flavor_path() -> Path:
+    return _state_dir() / "bin" / ".flavor"
+
+
+def instalado_com_gpu() -> bool:
+    """A build hoje instalada é a Vulkan (Windows+GPU), ou a padrão (CPU/Metal)?
+    Ausência do marcador (instalação de antes desta mudança) conta como CPU/Metal —
+    o lado que nunca precisa de fallback."""
+    try:
+        return _flavor_path().read_text().strip() == "vulkan"
+    except OSError:
+        return False
+
+
+def install(*, preferir_gpu: Optional[bool] = None) -> dict[str, Any]:
     """Baixa a release oficial do llama.cpp e deixa o `llama-server` pronto na pasta do app.
-    Nunca levanta: a UI mostra o erro ao lado do botão que o causou."""
+    Nunca levanta: a UI mostra o erro ao lado do botão que o causou.
+
+    `preferir_gpu` repassado a `_pick_asset` — None deixa a própria detecção decidir
+    (ver `_gpu_disponivel_windows`); `reinstalar_forcando_cpu` passa False explícito."""
     with _install_lock:
         if find_binary():
             return {"ok": True}
@@ -218,7 +284,7 @@ def install() -> dict[str, Any]:
             with _state_lock:
                 _bootstrap.update(phase="installing", progress=0.0, error=None)
             rel = httpx.get(_RELEASES_LATEST, timeout=20, follow_redirects=True).json()
-            asset = _pick_asset(rel.get("assets") or [])
+            asset = _pick_asset(rel.get("assets") or [], preferir_gpu=preferir_gpu)
             if not asset:
                 raise RuntimeError("release do llama.cpp sem binário para esta plataforma")
             name = asset.get("name") or "engine.zip"
@@ -241,6 +307,9 @@ def install() -> dict[str, Any]:
                     os.replace(f, root / f.name)  # rename falha no Windows se dest existe
             binary = root / _binary_name()
             binary.chmod(binary.stat().st_mode | stat.S_IEXEC)
+            # Marca a build instalada — é o que permite `ensure_running` saber, sem
+            # adivinhar, se um fracasso de subida vale a pena tentar cair para CPU.
+            _flavor_path().write_text("vulkan" if "vulkan" in name else "cpu")
             with _state_lock:
                 _bootstrap.update(phase="idle", progress=1.0, error=None)
             return {"ok": True}
@@ -248,6 +317,28 @@ def install() -> dict[str, Any]:
             with _state_lock:
                 _bootstrap.update(phase="error", error=str(exc))
             return {"ok": False, "error": f"Não consegui baixar o motor local ({exc})."}
+
+
+def reinstalar_forcando_cpu() -> dict[str, Any]:
+    """Escape hatch: apaga a build atual e reinstala pedindo CPU explicitamente.
+
+    Existe para o caso em que a detecção de GPU (best-effort, sem hardware real para
+    testar) erra para o lado otimista — Vulkan escolhido, mas sem driver compatível, e o
+    motor nunca sobe. `ensure_running` chama isto automaticamente uma vez antes de desistir
+    (ver ali); também fica exposto para um botão futuro de Configurações."""
+    root = _state_dir() / "bin"
+    if root.exists():
+        for item in root.iterdir():
+            try:
+                if item.is_dir():
+                    import shutil
+
+                    shutil.rmtree(item, ignore_errors=True)
+                else:
+                    item.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return install(preferir_gpu=False)
 
 
 # -- modelos -------------------------------------------------------------------
@@ -383,7 +474,16 @@ def ensure_running(tag: Optional[str] = None, wait_s: float = 120.0) -> bool:
         if is_serving():
             return True
         if proc.poll() is not None:
-            return False  # morreu no load — o engine.log conta o porquê
+            # Morreu no load. Se a build instalada é a Vulkan preferencial, a causa mais
+            # provável é "GPU sem driver compatível" — a detecção por software (best-effort,
+            # sem hardware real para validar) pode ter errado para o lado otimista. Uma
+            # tentativa de cair para CPU, e só uma: sem isto o provedor Mangaba Local ficaria
+            # morto para sempre numa máquina assim, do mesmo jeito que o `-fa` sem valor o
+            # deixou morto por três releases — o objetivo aqui é nunca repetir esse silêncio.
+            if platform.system() == "Windows" and instalado_com_gpu():
+                if reinstalar_forcando_cpu().get("ok"):
+                    return ensure_running(tag, wait_s=wait_s)
+            return False  # já em CPU (ou o fallback também falhou) — o engine.log conta o porquê
         time.sleep(0.5)
     return False
 

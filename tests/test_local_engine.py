@@ -251,3 +251,238 @@ def test_primeiro_uso_escolhe_o_menor_modelo_e_nao_o_recomendado(tmp_path, monke
             break
         time.sleep(0.05)
     assert baixados and "Qwen3-4B" in baixados[0], baixados
+
+
+# -- Windows: GPU (Vulkan) com fallback seguro para CPU (plano de paridade Win/macOS) -------
+
+
+_ASSETS_WIN_COM_VULKAN = [
+    {"name": "llama-b1-bin-macos-arm64.tar.gz"},
+    {"name": "llama-b1-bin-win-cpu-x64.zip"},
+    {"name": "llama-b1-bin-win-vulkan-x64.zip"},
+]
+
+
+def test_pick_asset_prefere_vulkan_no_windows_com_gpu(monkeypatch):
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+    escolhido = local_engine._pick_asset(_ASSETS_WIN_COM_VULKAN, preferir_gpu=True)
+    assert "vulkan" in escolhido["name"]
+
+
+def test_pick_asset_fica_em_cpu_no_windows_sem_gpu(monkeypatch):
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+    escolhido = local_engine._pick_asset(_ASSETS_WIN_COM_VULKAN, preferir_gpu=False)
+    assert "vulkan" not in escolhido["name"] and "win-cpu-x64" in escolhido["name"]
+
+
+def test_pick_asset_cai_pra_cpu_se_a_release_nao_tiver_vulkan(monkeypatch):
+    """A busca por Vulkan e a de CPU vivem na MESMA lista de tokens: se uma release futura
+    renomear ou remover o asset Vulkan, a escolha cai para CPU sozinha — nunca para
+    'nenhum asset', que derrubaria o download inteiro por causa de uma preferência."""
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+    sem_vulkan = [a for a in _ASSETS_WIN_COM_VULKAN if "vulkan" not in a["name"]]
+    escolhido = local_engine._pick_asset(sem_vulkan, preferir_gpu=True)
+    assert escolhido is not None and "win-cpu-x64" in escolhido["name"]
+
+
+def test_pick_asset_no_windows_sem_gpu_explicita_nao_chama_powershell(monkeypatch):
+    """`preferir_gpu=False` explícito não pode disparar a sondagem de hardware — só o modo
+    'decidir sozinho' (None) precisa perguntar ao Windows o que existe."""
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+
+    def _explode(*a, **k):
+        raise AssertionError("não deveria sondar GPU quando preferir_gpu já foi decidido")
+
+    monkeypatch.setattr(local_engine.subprocess, "run", _explode)
+    local_engine._pick_asset(_ASSETS_WIN_COM_VULKAN, preferir_gpu=False)
+
+
+def test_deteccao_de_gpu_ignora_adaptador_de_software(monkeypatch):
+    """Toda VM sem passthrough de GPU tem um 'Microsoft Basic Render/Display Driver' — se a
+    detecção contasse isso como GPU, toda VM Windows tentaria (e falharia) rodar Vulkan."""
+    import subprocess as _subprocess
+
+    class _Saida:
+        stdout = "Microsoft Basic Render Driver"
+
+    monkeypatch.delenv("MANGABA_LOCAL_ENGINE_GPU", raising=False)
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(local_engine.subprocess, "run", lambda *a, **k: _Saida())
+    assert local_engine._gpu_disponivel_windows() is False
+
+
+def test_deteccao_de_gpu_reconhece_gpu_de_verdade(monkeypatch):
+    class _Saida:
+        stdout = "NVIDIA GeForce RTX 4060"
+
+    monkeypatch.delenv("MANGABA_LOCAL_ENGINE_GPU", raising=False)
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(local_engine.subprocess, "run", lambda *a, **k: _Saida())
+    assert local_engine._gpu_disponivel_windows() is True
+
+
+def test_deteccao_de_gpu_nunca_levanta(monkeypatch):
+    """Best-effort de verdade: PowerShell ausente, timeout, WMI bloqueado por política —
+    nada disso pode derrubar a instalação do motor. Degrada para 'sem GPU', o lado seguro."""
+
+    def _explode(*a, **k):
+        raise TimeoutError("powershell não respondeu")
+
+    monkeypatch.delenv("MANGABA_LOCAL_ENGINE_GPU", raising=False)
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(local_engine.subprocess, "run", _explode)
+    assert local_engine._gpu_disponivel_windows() is False
+
+
+def test_variavel_de_ambiente_forca_a_decisao_sem_tocar_hardware():
+    """Escape hatch para testar o caminho Vulkan (ou negá-lo) numa máquina de
+    desenvolvimento sem GPU real — inclusive fora do Windows, já que o CI roda em Mac/Linux."""
+    import os as _os
+
+    _os.environ["MANGABA_LOCAL_ENGINE_GPU"] = "1"
+    try:
+        assert local_engine._gpu_disponivel_windows() is True
+    finally:
+        _os.environ.pop("MANGABA_LOCAL_ENGINE_GPU", None)
+    _os.environ["MANGABA_LOCAL_ENGINE_GPU"] = "0"
+    try:
+        assert local_engine._gpu_disponivel_windows() is False
+    finally:
+        _os.environ.pop("MANGABA_LOCAL_ENGINE_GPU", None)
+
+
+def test_marcador_de_flavor_reflete_o_asset_instalado(tmp_path, monkeypatch):
+    """`install()` grava qual build entrou (vulkan/cpu) — é o que permite ao fallback em
+    tempo de execução saber, sem adivinhar, se vale a pena tentar reinstalar em CPU."""
+    monkeypatch.setattr(local_engine, "_state_dir", lambda: tmp_path)
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+
+    class _Resposta:
+        def json(self):
+            return {
+                "assets": [
+                    {
+                        "name": "llama-b1-bin-win-vulkan-x64.zip",
+                        "browser_download_url": "https://exemplo/vulkan.zip",
+                    }
+                ]
+            }
+
+    monkeypatch.setattr(local_engine.httpx, "get", lambda *a, **k: _Resposta())
+
+    def _baixar_falso(url, dest, state):
+        import zipfile as _zipfile
+
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        with _zipfile.ZipFile(dest, "w") as zf:
+            zf.writestr(local_engine._binary_name(), "binario falso")
+
+    monkeypatch.setattr(local_engine, "_download", _baixar_falso)
+
+    assert local_engine.instalado_com_gpu() is False  # sem instalação ainda: CPU por padrão
+    resultado = local_engine.install(preferir_gpu=True)
+    assert resultado["ok"] is True
+    assert local_engine.instalado_com_gpu() is True
+
+
+def test_ausencia_do_marcador_conta_como_cpu(tmp_path, monkeypatch):
+    """Instalação de antes desta mudança não tem o arquivo .flavor — tem de degradar para
+    'CPU', o lado que nunca dispara o fallback (que reinstalaria à toa)."""
+    monkeypatch.setattr(local_engine, "_state_dir", lambda: tmp_path)
+    (tmp_path / "bin").mkdir()
+    assert local_engine.instalado_com_gpu() is False
+
+
+def test_ensure_running_cai_para_cpu_quando_vulkan_nao_sobe(tmp_path, monkeypatch):
+    """A prova de ponta a ponta do fallback: build Vulkan instalada, processo morre no
+    arranque (sem driver compatível) — em vez de o provedor Local ficar morto para sempre
+    (o que já aconteceu de verdade com o `-fa` sem valor), reinstala em CPU e tenta de novo."""
+    monkeypatch.setattr(local_engine, "_state_dir", lambda: tmp_path)
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / local_engine._binary_name()).write_text("binario falso")
+    local_engine._flavor_path().write_text("vulkan")
+    monkeypatch.setattr(local_engine, "downloaded_tags", lambda: ["qwen3-4b"])
+    monkeypatch.setattr(local_engine, "model_path", lambda tag: tmp_path / "modelo.gguf")
+    monkeypatch.setattr(local_engine, "is_serving", lambda *a, **k: False)
+    monkeypatch.setattr(local_engine, "_kill_stale_process", lambda: None)
+    monkeypatch.setattr(local_engine, "_esperar_porta_livre", lambda *a, **k: True)
+    monkeypatch.setattr(local_engine, "_write_pidfile", lambda pid: None)
+
+    chamadas_de_reinstalacao = []
+
+    def _reinstalar_falso():
+        chamadas_de_reinstalacao.append(True)
+        # simula a reinstalação bem-sucedida em CPU: apaga o marcador de GPU
+        local_engine._flavor_path().write_text("cpu")
+        return {"ok": True}
+
+    monkeypatch.setattr(local_engine, "reinstalar_forcando_cpu", _reinstalar_falso)
+
+    class _ProcessoMorto:
+        def poll(self):
+            return 1  # já morreu — simula o crash no arranque
+
+        pid = 4242
+
+    monkeypatch.setattr(
+        local_engine.subprocess, "Popen", lambda *a, **k: _ProcessoMorto()
+    )
+
+    assert local_engine.ensure_running("qwen3-4b", wait_s=1.0) is False
+    # reinstalou em CPU exatamente uma vez — não entrou num laço de tentativas
+    assert chamadas_de_reinstalacao == [True]
+
+
+def test_ensure_running_nao_reinstala_quando_ja_esta_em_cpu(tmp_path, monkeypatch):
+    """Sem o marcador Vulkan, uma falha de arranque é outra coisa (binário corrompido,
+    porta ocupada por outro processo) — reinstalar não ajudaria, só perderia tempo."""
+    monkeypatch.setattr(local_engine, "_state_dir", lambda: tmp_path)
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / local_engine._binary_name()).write_text("binario falso")
+    local_engine._flavor_path().write_text("cpu")
+    monkeypatch.setattr(local_engine, "downloaded_tags", lambda: ["qwen3-4b"])
+    monkeypatch.setattr(local_engine, "model_path", lambda tag: tmp_path / "modelo.gguf")
+    monkeypatch.setattr(local_engine, "is_serving", lambda *a, **k: False)
+    monkeypatch.setattr(local_engine, "_kill_stale_process", lambda: None)
+    monkeypatch.setattr(local_engine, "_esperar_porta_livre", lambda *a, **k: True)
+    monkeypatch.setattr(local_engine, "_write_pidfile", lambda pid: None)
+
+    def _nao_deveria_chamar():
+        raise AssertionError("não deveria reinstalar quando já está em CPU")
+
+    monkeypatch.setattr(local_engine, "reinstalar_forcando_cpu", _nao_deveria_chamar)
+
+    class _ProcessoMorto:
+        def poll(self):
+            return 1
+
+        pid = 4242
+
+    monkeypatch.setattr(
+        local_engine.subprocess, "Popen", lambda *a, **k: _ProcessoMorto()
+    )
+
+    assert local_engine.ensure_running("qwen3-4b", wait_s=1.0) is False
+
+
+def test_reinstalar_forcando_cpu_pede_asset_sem_gpu(tmp_path, monkeypatch):
+    monkeypatch.setattr(local_engine, "_state_dir", lambda: tmp_path)
+    monkeypatch.setattr(local_engine.platform, "system", lambda: "Windows")
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / local_engine._binary_name()).write_text("build vulkan antiga")
+    local_engine._flavor_path().write_text("vulkan")
+
+    pedido = {}
+
+    def _install_falso(*, preferir_gpu=None):
+        pedido["preferir_gpu"] = preferir_gpu
+        return {"ok": True}
+
+    monkeypatch.setattr(local_engine, "install", _install_falso)
+    resultado = local_engine.reinstalar_forcando_cpu()
+    assert resultado["ok"] is True
+    assert pedido["preferir_gpu"] is False
+    # o binário antigo foi removido antes de pedir a reinstalação
+    assert not (tmp_path / "bin" / local_engine._binary_name()).exists()
