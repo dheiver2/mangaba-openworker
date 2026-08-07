@@ -1922,6 +1922,15 @@ def create_app(manager: SessionManager) -> FastAPI:
                     await reject_input(f"Unknown WebSocket message type: {kind}.")
         except WebSocketDisconnect:
             pass
+        except RuntimeError as exc:
+            # `receive_json` numa conexão já encerrada levanta RuntimeError
+            # ("WebSocket is not connected"), NÃO WebSocketDisconnect — e isso ficou
+            # alcançável quando o `_safe_send` passou a engolir a falha de envio: sem ele,
+            # um send no socket morto abortava o handler ali mesmo; com ele, o fluxo seguia
+            # até o receive e estourava aqui. Trocar um traceback por outro não era o
+            # objetivo. Só o desconectado é engolido — qualquer outro RuntimeError sobe.
+            if "not connected" not in str(exc).lower():
+                raise
         finally:
             manager.unregister_session_client(session_id, ws.send_json)
 

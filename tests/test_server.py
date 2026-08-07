@@ -1133,3 +1133,22 @@ def test_envio_em_socket_fechado_nao_vira_traceback_no_servidor(tmp_path):
             assert resposta["type"] == "input_rejected"
         except WebSocketDisconnect:
             pass  # corrida aceitável: o servidor pode ter fechado antes de entregarmos
+
+
+def test_socket_morto_no_receive_nao_vira_traceback(tmp_path):
+    """Regressão do meu próprio conserto: o `_safe_send` da 0.1.41 passou a engolir a falha
+    de envio num socket morto — e com isso o handler, em vez de abortar no send, seguia até
+    o `receive_json`, que numa conexão encerrada levanta `RuntimeError: WebSocket is not
+    connected` (NÃO `WebSocketDisconnect`). Resultado visto no log do app instalado: um
+    traceback trocado por outro. O handler passa a engolir só o caso 'not connected'."""
+    import inspect
+
+    from mangaba.server import app as app_mod
+
+    fonte = inspect.getsource(app_mod.create_app)
+    assert "except RuntimeError as exc:" in fonte, (
+        "sem isto, fechar a janela volta a estourar RuntimeError no receive"
+    )
+    assert '"not connected" not in str(exc).lower()' in fonte, (
+        "engolir RuntimeError genérico mascararia bugs de verdade"
+    )
