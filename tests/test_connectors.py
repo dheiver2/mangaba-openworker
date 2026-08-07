@@ -1736,18 +1736,24 @@ def test_conflito_de_telegram_cede_a_vez_em_silencio():
     """Duas instâncias do app com o mesmo bot (dev + instalado, reinstalação com órfão…):
     o python-telegram-bot tenta getUpdates para sempre e despeja um traceback completo no
     log A CADA POLL — visto ao vivo no sidecar do app instalado em 2026-08-06, dezenas por
-    minuto, afogando qualquer erro real. O handler de erro detecta o Conflict, avisa UMA
-    linha e desconecta este adaptador: a instância dona do token segue recebendo tudo."""
-    telegram = pytest.importorskip("telegram")
-    import asyncio
-    import inspect
+    minuto, afogando qualquer erro real.
 
-    from telegram.error import Conflict
+    O CAMINHO importa, e este teste existe porque a primeira correção errou o caminho:
+    erro de POLLING vai para o `error_callback` do `start_polling` — `add_error_handler`
+    só vê erros de processamento de update, então o spam continuou intacto no app
+    instalado até a segunda tentativa. O callback detecta o Conflict, avisa UMA linha e
+    desconecta este adaptador: a instância dona do token segue recebendo tudo."""
+    telegram = pytest.importorskip("telegram")
+    import inspect
 
     from mangaba.connectors.adapters import TelegramAdapter
 
     fonte = inspect.getsource(TelegramAdapter.connect)
-    assert "add_error_handler" in fonte, (
-        "sem o handler, o Conflict volta a virar spam de traceback infinito"
+    assert "error_callback=" in fonte, (
+        "o Conflict de polling SÓ chega pelo error_callback do start_polling — "
+        "add_error_handler não o vê e o spam infinito volta"
     )
     assert "Conflict" in fonte and "disconnect" in fonte
+    assert "self._app.add_error_handler" not in fonte, (
+        "handler de update não resolve isto e dá falsa sensação de cobertura"
+    )
