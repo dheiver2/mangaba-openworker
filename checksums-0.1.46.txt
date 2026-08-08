@@ -1,0 +1,2 @@
+27a80b55cc6b473c114b1bb91ac66796bc574494e44e27ff1836f3dbbe69e8cf  Mangaba_0.1.46_aarch64.dmg
+a8ddb7a8a062313cf648790056105ab27ced8431d0df9a6ddf52cb25ab1af9c9  Mangaba_0.1.46_x64-setup.exe
