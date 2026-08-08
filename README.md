@@ -34,6 +34,12 @@ prende a nenhum modelo — traga a sua chave da OpenAI, Anthropic, Google, DeepS
 modelo e pelas
 integrações que **você** escolher.
 
+**Por que ele, e não mais um agente de nuvem:**
+
+- **Sem créditos.** Nada de medidor que evapora no meio da tarefa — modelo local grátis, ou a sua chave, com o custo na sua mão.
+- **Seguro por desenho.** Servidor fechado em localhost com token; toda ação de risco pede a sua aprovação. Agente exposto na internet é o problema dos outros.
+- **Honesto.** Automação que entregou pela metade é registrada como parcial, com o motivo — nunca como sucesso. Testado de verdade: cada release instala e executa em uma máquina Windows real antes de ser anunciada.
+
 [![Como o Mangaba funciona](docs/assets/how-it-works.png)](https://mangaba-downloads.vercel.app)
 
 ## Instalar
