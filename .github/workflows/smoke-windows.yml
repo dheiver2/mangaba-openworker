@@ -60,7 +60,7 @@ jobs:
                   Write-Host "registro: $($props.DisplayName) -> [$($props.InstallLocation)]"
                   $loc = "$($props.InstallLocation)".Trim()
                   if ($loc) {
-                    $cand = [IO.Path]::Combine($loc, "Mangaba.exe")
+                    $cand = [IO.Path]::Combine($loc, "mangaba-desktop.exe")
                     if (Test-Path $cand) { return $cand }
                   }
                 }
@@ -71,7 +71,7 @@ jobs:
               [IO.Path]::Combine($env:LOCALAPPDATA, "Programs", "Mangaba"),
               [IO.Path]::Combine($env:ProgramFiles, "Mangaba")
             )) {
-              $cand = [IO.Path]::Combine($dir, "Mangaba.exe")
+              $cand = [IO.Path]::Combine($dir, "mangaba-desktop.exe")
               if (Test-Path $cand) { return $cand }
             }
             return $null
@@ -100,10 +100,10 @@ jobs:
             Write-Host "--- LOCALAPPDATA (topo) ---"
             Get-ChildItem $env:LOCALAPPDATA -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
             Write-Host "--- busca ampla por Mangaba.exe ---"
-            $found = Get-ChildItem -Path $env:LOCALAPPDATA,$env:APPDATA,$env:ProgramFiles -Recurse -Filter "Mangaba.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            $found = Get-ChildItem -Path $env:LOCALAPPDATA,$env:APPDATA,$env:ProgramFiles -Recurse -Filter "mangaba-desktop.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($found) { $exe = $found.FullName } else { Write-Host "(nenhum)" }
           }
-          if (-not $exe) { throw "Mangaba.exe nao encontrado apos a instalacao — ver diagnostico acima" }
+          if (-not $exe) { throw "mangaba-desktop.exe nao encontrado apos a instalacao — ver diagnostico acima" }
           Write-Host "Instalado em: $exe"
           "EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append
 
@@ -160,7 +160,7 @@ jobs:
         if: always()
         shell: pwsh
         run: |
-          Get-Process -Name "Mangaba" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Get-Process -Name "mangaba-desktop" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
           $log = Join-Path $env:APPDATA "mangaba\logs\mangaba-server.log"
           if (Test-Path $log) { Copy-Item $log "$env:GITHUB_WORKSPACE\mangaba-server.log" }
 
