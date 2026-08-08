@@ -47,40 +47,55 @@ jobs:
       - name: Instalar silencioso (NSIS /S)
         shell: pwsh
         run: |
+          $ErrorActionPreference = "Continue"  # descoberta nao pode morrer num Join-Path vazio
           $p = Start-Process -FilePath $env:SETUP -ArgumentList "/S" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "instalador saiu com codigo $($p.ExitCode)" }
-          # O NSIS /S pode devolver antes de terminar de copiar (processo filho) e o
-          # destino varia por template — NAO adivinhe o caminho: pergunte ao REGISTRO,
-          # que e onde o proprio instalador declara o InstallLocation, e de folga de
-          # ate 90s para a copia acabar.
-          $exe = $null
-          $deadline = (Get-Date).AddSeconds(90)
-          while ((Get-Date) -lt $deadline -and -not $exe) {
+
+          function Acha-Exe {
             foreach ($hive in "HKCU:","HKLM:") {
-              $keys = Get-ChildItem "$hive\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue
-              foreach ($k in $keys) {
+              $base = "$hive\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+              foreach ($k in (Get-ChildItem $base -ErrorAction SilentlyContinue)) {
                 $props = Get-ItemProperty $k.PSPath -ErrorAction SilentlyContinue
-                if ($props.DisplayName -like "Mangaba*") {
-                  $loc = $props.InstallLocation
-                  if ($loc -and (Test-Path (Join-Path $loc "Mangaba.exe"))) { $exe = Join-Path $loc "Mangaba.exe" }
-                  Write-Host "registro: $($props.DisplayName) -> $loc"
+                if ($props -and $props.DisplayName -like "Mangaba*") {
+                  Write-Host "registro: $($props.DisplayName) -> [$($props.InstallLocation)]"
+                  $loc = "$($props.InstallLocation)".Trim()
+                  if ($loc) {
+                    $cand = [IO.Path]::Combine($loc, "Mangaba.exe")
+                    if (Test-Path $cand) { return $cand }
+                  }
                 }
               }
             }
-            if (-not $exe) {
-              foreach ($base in @((Join-Path $env:LOCALAPPDATA "Mangaba"), (Join-Path $env:LOCALAPPDATA "Programs\Mangaba"), (Join-Path $env:ProgramFiles "Mangaba"))) {
-                $cand = Join-Path $base "Mangaba.exe"
-                if (Test-Path $cand) { $exe = $cand }
-              }
+            foreach ($dir in @(
+              [IO.Path]::Combine($env:LOCALAPPDATA, "Mangaba"),
+              [IO.Path]::Combine($env:LOCALAPPDATA, "Programs", "Mangaba"),
+              [IO.Path]::Combine($env:ProgramFiles, "Mangaba")
+            )) {
+              $cand = [IO.Path]::Combine($dir, "Mangaba.exe")
+              if (Test-Path $cand) { return $cand }
             }
+            return $null
+          }
+
+          $exe = $null
+          $deadline = (Get-Date).AddSeconds(90)
+          while ((Get-Date) -lt $deadline -and -not $exe) {
+            $exe = Acha-Exe
             if (-not $exe) { Start-Sleep -Seconds 5 }
           }
           if (-not $exe) {
-            Write-Host "Busca ampla (ultima cartada)..."
+            Write-Host "=== DIAGNOSTICO: o instalador saiu com 0 e nada apareceu ==="
+            Write-Host "--- registro (HKCU Uninstall, todos) ---"
+            Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
+              ForEach-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName } |
+              Where-Object { $_ } | Sort-Object | Select-Object -First 40
+            Write-Host "--- LOCALAPPDATA (topo) ---"
+            Get-ChildItem $env:LOCALAPPDATA -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name
+            Write-Host "--- busca ampla por Mangaba.exe ---"
             $found = Get-ChildItem -Path $env:LOCALAPPDATA,$env:APPDATA,$env:ProgramFiles -Recurse -Filter "Mangaba.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($found) { $exe = $found.FullName }
+            if ($found) { $exe = $found.FullName } else { Write-Host "(nenhum)" }
           }
-          if (-not $exe) { throw "Mangaba.exe nao encontrado apos a instalacao" }
+          if (-not $exe) { throw "Mangaba.exe nao encontrado apos a instalacao — ver diagnostico acima" }
           Write-Host "Instalado em: $exe"
           "EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append
 
