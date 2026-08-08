@@ -281,9 +281,24 @@ elif [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
     # DMG that greets users with the "Move to Trash" malware dialog.
     spctl -a -t open --context context:primary-signature "$DMG"
     echo "    Gatekeeper: accepted (notarized + stapled)"
+  elif [ -n "${NOTARYTOOL_APPLE_ID:-}" ] && [ -n "${NOTARYTOOL_PASSWORD:-}" ] \
+       && [ -n "${NOTARYTOOL_TEAM_ID:-}" ]; then
+    # Caminho alternativo: Apple ID + senha de app + team id. Existe porque o App Store
+    # Connect de uma assinatura RECEM-FEITA pode levar dias para ativar (INVALIDITCUSER)
+    # — e sem ASC nao ha como emitir a chave da API. A senha de app se cria em
+    # account.apple.com sem depender do ASC, entao a notarizacao destrava no dia 1.
+    xcrun notarytool submit "$DMG" \
+      --apple-id "$NOTARYTOOL_APPLE_ID" \
+      --password "$NOTARYTOOL_PASSWORD" \
+      --team-id "$NOTARYTOOL_TEAM_ID" \
+      --wait
+    xcrun stapler staple "$DMG"
+    spctl -a -t open --context context:primary-signature "$DMG"
+    echo "    Gatekeeper: accepted (notarized + stapled, via Apple ID)"
   else
     echo "    WARNING: DMG is signed but NOT notarized — public downloads will see the"
     echo "    'Move to Trash' dialog. Provide NOTARYTOOL_API_KEY_PATH/_KEY_ID/_ISSUER_ID"
+    echo "    or NOTARYTOOL_APPLE_ID/_PASSWORD/_TEAM_ID"
     echo "    (env, \$OCW_NOTARY_ENV, or $NOTARY_ENV)."
   fi
 else
