@@ -373,3 +373,33 @@ def test_estimate_tokens_ainda_conta_texto_normal():
 
     msgs = [{"role": "user", "content": "x" * 4_000}]
     assert 900 < estimate_tokens(msgs) < 1_200
+
+
+# -- estouro do llama.cpp reconhecido pelo resgate reativo ----------------------
+def test_overflow_do_llama_cpp_e_reconhecido():
+    """O caso de campo: 21.691 tokens numa janela de 16.384 no motor local. O llama.cpp
+    lança 'exceed_context_size' / 'exceeds the available context size' — errors.py já
+    conhecia esses textos (a mensagem amigável aparecia), mas o resgate reativo da
+    compactação NÃO: a sessão morria estourada em vez de compactar e seguir."""
+    from mangaba.compaction import is_context_overflow
+
+    assert is_context_overflow(
+        RuntimeError(
+            '{"error":{"code":400,"message":"the request exceeds the available '
+            'context size (21691 tokens) vs (16384 tokens)","type":'
+            '"exceed_context_size_error"}}'
+        )
+    )
+    assert is_context_overflow(RuntimeError("exceed_context_size_error"))
+    assert not is_context_overflow(RuntimeError("rate limit exceeded"))
+
+
+def test_medidor_de_contexto_usa_a_janela_real_do_motor_local():
+    """`_model_window` devolvia 128k para local:* (sem entrada no catálogo) — o medidor
+    dizia ao modelo que havia 6x mais espaço do que os 16.384 reais do llama-server."""
+    from mangaba.agent import _model_window
+    from mangaba.providers.local_engine import CTX_SIZE
+
+    assert _model_window("local:qwen3-14b") == CTX_SIZE
+    assert _model_window("local:qualquer-tag-baixada") == CTX_SIZE
+    assert _model_window("modelo-desconhecido-sem-catalogo") == 128_000

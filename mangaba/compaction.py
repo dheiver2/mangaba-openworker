@@ -582,6 +582,12 @@ def apply_to_outbound(
 # -- overflow detection -------------------------------------------------------
 
 _OVERFLOW_MARKERS = (
+    # llama.cpp (motor local e gateways próprios). Sem estes dois, o resgate reativo —
+    # desenhado exatamente para quando a estimativa proativa erra — nunca disparava no
+    # modelo local: o erro caía no terminal de ERRO com a mensagem amigável, e a sessão
+    # morria estourada em vez de compactar e seguir (visto em campo: 21.691/16.384).
+    "exceed_context_size",
+    "exceeds the available context size",
     "context_length_exceeded",
     "maximum context length",
     "context window",

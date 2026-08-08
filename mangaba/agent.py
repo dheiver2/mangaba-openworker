@@ -205,7 +205,17 @@ def _model_window(model: str) -> int:
     try:
         from .providers.matrix import model_context_windows
 
-        return model_context_windows().get(model) or _compaction_default_window()
+        window = model_context_windows().get(model)
+        if window:
+            return window
+        # O motor local não tem entrada no catálogo (os tags dependem do que foi baixado).
+        # Sem isto o medidor de contexto dizia 128k para uma janela real de 16k — e o
+        # modelo, lendo o medidor, achava que tinha 6x mais espaço do que tinha.
+        if str(model).startswith("local:"):
+            from .providers.local_engine import CTX_SIZE
+
+            return CTX_SIZE
+        return _compaction_default_window()
     except Exception:
         return _compaction_default_window()
 
