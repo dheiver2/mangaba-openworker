@@ -48,9 +48,26 @@ integrações que **você** escolher.
 Abra o app e peça algo de verdade — com a sua chave de API ou com o Mangaba Local
 (veja abaixo).
 
-> **Instaladores ainda não assinados.** No macOS: Ajustes do Sistema ▸ Privacidade e
-> Segurança ▸ "Abrir Mesmo Assim" na primeira execução. No Windows: SmartScreen ▸ "Mais
-> informações" ▸ "Executar assim mesmo". Confira o SHA-256 no arquivo de checksums da release.
+### O aviso de "app inseguro" na primeira instalação
+
+Na primeira execução, o sistema mostra um aviso de segurança. **Não é vírus nem defeito**:
+macOS e Windows mostram esse aviso para qualquer app que ainda não pagou os certificados
+de reputação deles — é o "não conheço este publicador", padrão em software novo e
+independente. O que cada release realmente contém é publicado com [checksums SHA-256 e
+assinatura minisign](https://github.com/dheiver2/mangaba-openworker/releases/latest), e o
+instalador do Windows é testado automaticamente numa máquina Windows real a cada versão.
+
+**Windows** — na janela "O Windows protegeu o computador":
+clique em **Mais informações** → **Executar assim mesmo**. (Só na primeira vez.)
+
+**macOS** — se aparecer "Não foi possível verificar":
+clique com o **botão direito** no app → **Abrir** → **Abrir**. Ou: Ajustes do Sistema ▸
+Privacidade e Segurança ▸ **"Abrir Mesmo Assim"**. (Só na primeira vez; desde a v0.1.49 o
+app é assinado com Developer ID, e a notarização da Apple — que elimina o aviso de vez —
+está a caminho.)
+
+Desconfie do contrário: só baixe o Mangaba [das releases oficiais deste repositório](https://github.com/dheiver2/mangaba-openworker/releases) — um instalador vindo de
+qualquer outro lugar é que merece o alerta.
 
 ### Atualizações automáticas
 
