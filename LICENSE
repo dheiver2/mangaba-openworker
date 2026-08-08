@@ -1,0 +1,29 @@
+Licença de Software Mangaba — Todos os Direitos Reservados
+
+Copyright (c) 2026 Dheiver Santos. Todos os direitos reservados.
+
+A partir da versão 0.1.51, o código-fonte do Mangaba e suas modificações são
+proprietários. É PROIBIDO, sem autorização prévia e por escrito do titular:
+
+  1. copiar, redistribuir ou republicar este código-fonte, no todo ou em parte;
+  2. criar trabalhos derivados, forks ou versões modificadas;
+  3. usar este código, no todo ou em parte, em outros produtos ou serviços;
+  4. sublicenciar, vender, alugar ou ceder o código a terceiros.
+
+O uso do APLICATIVO Mangaba (binários oficiais distribuídos em
+https://github.com/dheiver2/mangaba-openworker/releases) é livre e gratuito para
+uso pessoal e comercial, nas condições acima.
+
+ESTE SOFTWARE É FORNECIDO "COMO ESTÁ", SEM GARANTIAS DE QUALQUER TIPO, EXPRESSAS
+OU IMPLÍCITAS. EM NENHUMA HIPÓTESE O TITULAR SERÁ RESPONSÁVEL POR QUALQUER
+RECLAMAÇÃO, DANO OU OUTRA RESPONSABILIDADE DECORRENTE DO USO DO SOFTWARE.
+
+---
+
+CÓDIGO HERDADO (atribuição obrigatória)
+
+Este produto é derivado do OpenWorker (https://github.com/andrewyng/openworker),
+Copyright (c) 2024 Andrew Ng, licenciado sob MIT. O texto integral da licença MIT
+do código herdado está em LICENSES/openworker-MIT.txt e permanece válido para as
+porções herdadas, conforme exigido pela própria licença. As versões do Mangaba
+até a 0.1.50, publicadas sob MIT, permanecem sob MIT.
