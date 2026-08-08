@@ -57,7 +57,7 @@ const PROBLEMAS: Problema[] = [
 
 vi.mock("../api", async () => {
   const real = await vi.importActual<typeof import("../api")>("../api");
-  return { ...real, getFluxos: vi.fn(async () => PROBLEMAS) };
+  return { ...real, getFluxos: vi.fn(async () => PROBLEMAS), deleteFluxo: vi.fn(async () => true) };
 });
 
 import { FluxosView } from "./FluxosView";
@@ -98,5 +98,68 @@ describe("tela de fluxos por problema", () => {
   it("o resumo diz quantos problemas já dão para usar", async () => {
     render(<FluxosView onIniciarFluxo={() => {}} onAbrirConfig={() => {}} />);
     await waitFor(() => expect(screen.getByText(/1 de 1/)).toBeTruthy());
+  });
+});
+
+// -- remover: só em "Meus fluxos" ---------------------------------------------------
+describe("remover fluxo", () => {
+  afterEach(cleanup);
+  const MEUS: Problema[] = [
+    ...PROBLEMAS,
+    {
+      id: "meus-fluxos",
+      titulo: "Meus fluxos",
+      dor: "Procedimentos que você montou aqui, a partir do que pediu.",
+      area: "Meus",
+      tem_pronto: true,
+      fluxos: [
+        {
+          id: "meu-proprio",
+          titulo: "Do meu jeito",
+          resumo: "r",
+          entrega: "e",
+          agendado: null,
+          modelo: "qualquer",
+          aprovacao: true,
+          prompt: "p",
+          pronto: true,
+          faltam: 0,
+          problema_id: "meus-fluxos",
+          problema: "Meus fluxos",
+          agente: "negocio",
+          pecas: [{ rotulo: "Modelo", tipo: "modelo", pronta: true, acao: "" }],
+        },
+      ],
+    },
+  ];
+
+  it("mostra o botão de remover só nos fluxos gravados, e apaga após confirmar", async () => {
+    const api = await import("../api");
+    (api.getFluxos as ReturnType<typeof vi.fn>).mockResolvedValue(MEUS);
+    const confirmar = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const { FluxosView } = await import("./FluxosView");
+    render(<FluxosView onIniciarFluxo={() => {}} onAbrirConfig={() => {}} />);
+    await screen.findByTestId("fluxo-meu-proprio");
+
+    // Fluxo de fábrica NÃO tem o botão — o servidor recusaria de qualquer jeito.
+    expect(screen.queryByTestId("apagar-cobranca-planilha")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("apagar-meu-proprio"));
+    expect(confirmar).toHaveBeenCalled();
+    await waitFor(() => expect(api.deleteFluxo).toHaveBeenCalledWith("meu-proprio"));
+    confirmar.mockRestore();
+  });
+
+  it("não apaga quando a pessoa cancela a confirmação", async () => {
+    const api = await import("../api");
+    (api.getFluxos as ReturnType<typeof vi.fn>).mockResolvedValue(MEUS);
+    (api.deleteFluxo as ReturnType<typeof vi.fn>).mockClear();
+    const confirmar = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { FluxosView } = await import("./FluxosView");
+    render(<FluxosView onIniciarFluxo={() => {}} onAbrirConfig={() => {}} />);
+    await screen.findByTestId("fluxo-meu-proprio");
+    fireEvent.click(screen.getByTestId("apagar-meu-proprio"));
+    expect(api.deleteFluxo).not.toHaveBeenCalled();
+    confirmar.mockRestore();
   });
 });

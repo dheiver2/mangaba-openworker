@@ -339,6 +339,15 @@ export async function getFluxos(): Promise<Problema[]> {
   return body.problemas || [];
 }
 
+/** Apaga um fluxo GRAVADO ("Meus fluxos") — o servidor recusa os de fábrica. */
+export async function deleteFluxo(id: string): Promise<boolean> {
+  const res = await fetch(`${httpBase()}/v1/fluxos/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+  const body = await res.json().catch(() => ({}));
+  return body.ok === true;
+}
+
 export async function getMcpCatalog(): Promise<McpCatalogItem[]> {
   const res = await fetch(`${httpBase()}/v1/mcp/catalogo`);
   const body = await res.json().catch(() => ({}));

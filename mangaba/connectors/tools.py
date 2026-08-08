@@ -128,6 +128,13 @@ def _resolve_token(secrets: SecretStore, platform: str, chat_id: str) -> Optiona
             per_team = secrets.get(f"slack:team:{team}") or {}
             return per_team.get("bot_token")
     creds = secrets.get(f"{platform}:default") or {}
+    if platform == "whatsapp":
+        # A Cloud API precisa de dois dados (endpoint = phone_number_id, header = access
+        # token) e o contrato de Sender carrega um só — vai o composto, que o sender
+        # separa. "|" não ocorre em nenhum dos dois valores.
+        pid = creds.get("phone_number_id")
+        tok = creds.get("access_token")
+        return f"{pid}|{tok}" if pid and tok else None
     return creds.get("bot_token")
 
 

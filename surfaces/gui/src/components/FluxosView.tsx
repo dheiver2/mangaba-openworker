@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { getFluxos, type Fluxo, type Problema } from "../api";
+import { deleteFluxo, getFluxos, type Fluxo, type Problema } from "../api";
 import { Icon } from "./Icon";
 
 // A porta de entrada por PROBLEMA, não por mecanismo. A pessoa escolhe a dor do dia a dia
@@ -59,9 +59,13 @@ function SeloModelo({ modelo }: { modelo: Fluxo["modelo"] }) {
 function CartaoFluxo({
   fluxo,
   onUsar,
+  onApagar,
 }: {
   fluxo: Fluxo;
   onUsar: (f: Fluxo) => void;
+  // Só os fluxos GRAVADOS ("Meus fluxos") recebem o handler — os de fábrica vêm do
+  // código e o servidor recusaria o delete de qualquer jeito.
+  onApagar?: (f: Fluxo) => void;
 }) {
   const faltando = fluxo.pecas.filter((p) => !p.pronta && p.acao);
   return (
@@ -71,13 +75,26 @@ function CartaoFluxo({
           {fluxo.titulo}
           <SeloModelo modelo={fluxo.modelo} />
         </div>
-        {fluxo.pronto ? (
-          <span className="fluxo-selo fluxo-selo-ok">pronto</span>
-        ) : (
-          <span className="fluxo-selo fluxo-selo-falta">
-            falta {fluxo.faltam}
-          </span>
-        )}
+        <span className="fluxo-head-dir">
+          {fluxo.pronto ? (
+            <span className="fluxo-selo fluxo-selo-ok">pronto</span>
+          ) : (
+            <span className="fluxo-selo fluxo-selo-falta">
+              falta {fluxo.faltam}
+            </span>
+          )}
+          {onApagar && (
+            <button
+              className="fluxo-apagar"
+              title="Remover este fluxo"
+              aria-label={`Remover o fluxo ${fluxo.titulo}`}
+              data-testid={`apagar-${fluxo.id}`}
+              onClick={() => onApagar(fluxo)}
+            >
+              <Icon name="trash" size={13} />
+            </button>
+          )}
+        </span>
       </div>
 
       <p className="fluxo-resumo">{fluxo.resumo}</p>
@@ -155,6 +172,15 @@ export function FluxosView({
     return area === "Todas" ? problemas : problemas.filter((p) => p.area === area);
   }, [problemas, area]);
 
+  // Apagar só existe para "Meus fluxos" (gravados na máquina); confirmação nativa basta
+  // — é um item de catálogo, não dado de trabalho, e recriá-lo custa um pedido ao agente.
+  const apagar = (f: Fluxo) => {
+    if (!window.confirm(`Remover o fluxo "${f.titulo}"?`)) return;
+    deleteFluxo(f.id).then((ok) => {
+      if (ok) getFluxos().then(setProblemas).catch(() => {});
+    });
+  };
+
   const usar = (f: Fluxo) => {
     if (f.pronto) {
       onIniciarFluxo(f.prompt, f.agente);
@@ -229,7 +255,12 @@ export function FluxosView({
             </div>
             <div className="problema-fluxos">
               {p.fluxos.map((f) => (
-                <CartaoFluxo key={f.id} fluxo={f} onUsar={usar} />
+                <CartaoFluxo
+                  key={f.id}
+                  fluxo={f}
+                  onUsar={usar}
+                  onApagar={p.id === "meus-fluxos" ? apagar : undefined}
+                />
               ))}
             </div>
           </section>

@@ -1757,3 +1757,103 @@ def test_conflito_de_telegram_cede_a_vez_em_silencio():
     assert "self._app.add_error_handler" not in fonte, (
         "handler de update não resolve isto e dá falsa sensação de cobertura"
     )
+
+
+# -- WhatsApp (Cloud API, somente envio) ---------------------------------------
+class _FakeGraph:
+    """Servidor local fingindo a Graph API — o teste vê o payload real enviado."""
+
+    def __init__(self):
+        self.requests = []
+
+    def handler(self, request):
+        import json as _json
+
+        self.requests.append(
+            {
+                "url": str(request.url),
+                "auth": request.headers.get("authorization"),
+                "body": _json.loads(request.content),
+            }
+        )
+        return {"messages": [{"id": "wamid.ABC123"}]}
+
+
+def test_whatsapp_sender_envia_pela_cloud_api(monkeypatch, tmp_path):
+    """O composto phone_number_id|access_token vira endpoint + header, e o corpo segue o
+    formato da Cloud API. Sem rede: httpx.post é interceptado."""
+    import mangaba.connectors.senders as snd
+
+    capturado = {}
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        capturado.update(url=url, headers=headers, json=json)
+
+        class R:
+            def json(self):
+                return {"messages": [{"id": "wamid.ABC123"}]}
+
+        return R()
+
+    monkeypatch.setattr("httpx.post", fake_post)
+    r = snd._send_whatsapp("123456|EAAtoken", "5582999998888", "Olá!", None)
+    assert r.ok and r.message_id == "wamid.ABC123"
+    assert "/123456/messages" in capturado["url"]
+    assert capturado["headers"]["Authorization"] == "Bearer EAAtoken"
+    assert capturado["json"] == {
+        "messaging_product": "whatsapp",
+        "to": "5582999998888",
+        "type": "text",
+        "text": {"body": "Olá!"},
+    }
+
+
+def test_whatsapp_janela_de_24h_vira_erro_explicado(monkeypatch):
+    """O erro 131047 da Meta é críptico; quem cobra por WhatsApp precisa saber POR QUE a
+    mensagem não saiu e o que fazer (template aprovado)."""
+    import mangaba.connectors.senders as snd
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        class R:
+            def json(self):
+                return {"error": {"message": "Re-engagement message", "code": 131047}}
+
+        return R()
+
+    monkeypatch.setattr("httpx.post", fake_post)
+    r = snd._send_whatsapp("123|tok", "5582999998888", "oi", None)
+    assert r.ok is False and "24h" in r.error and "template" in r.error.lower()
+
+
+def test_whatsapp_token_composto_vem_das_credenciais(tmp_path):
+    """`send_message` com target whatsapp resolve phone_number_id + access_token do perfil
+    conectado — e recusa com erro claro quando falta um dos dois."""
+    from mangaba.connectors.tools import _resolve_token
+    from mangaba.secrets import SecretStore
+
+    secrets = SecretStore(path=tmp_path / "s.json")
+    assert _resolve_token(secrets, "whatsapp", "5582999998888") is None
+    secrets.put("whatsapp:default", {"access_token": "EAAtok", "phone_number_id": "1099"})
+    assert _resolve_token(secrets, "whatsapp", "5582999998888") == "1099|EAAtok"
+
+
+def test_send_message_por_whatsapp_ponta_a_ponta(tmp_path, monkeypatch):
+    from mangaba.connectors.tools import make_send_message_tool
+    from mangaba.secrets import SecretStore
+
+    secrets = SecretStore(path=tmp_path / "s.json")
+    secrets.put("whatsapp:default", {"access_token": "EAAtok", "phone_number_id": "1099"})
+    enviados = []
+
+    def fake_sender(token, chat_id, text, thread_id=None):
+        from mangaba.connectors.base import SendResult
+
+        enviados.append((token, chat_id, text))
+        return SendResult(True, message_id="wamid.X")
+
+    tool = make_send_message_tool(
+        secrets, senders={"whatsapp": fake_sender}
+    )
+    out = tool(target="whatsapp:5582999998888", text="Sua fatura vence amanhã.")
+    assert out.get("ok") is True, out
+    assert enviados == [("1099|EAAtok", "5582999998888", "Sua fatura vence amanhã.")]

@@ -138,9 +138,61 @@ def _send_slack_interactive(
     return SendResult(False, error=data.get("error") or "slack send failed")
 
 
+def _whatsapp_api_base() -> str:
+    """Graph API base. `WHATSAPP_API_URL` redireciona para um fake local nos testes."""
+    return os.environ.get("WHATSAPP_API_URL", "https://graph.facebook.com/v21.0/")
+
+
+def _send_whatsapp(
+    token: str, chat_id: str, text: str, thread_id: Optional[str] = None
+) -> SendResult:
+    """Cloud API oficial da Meta (somente envio — o descriptor é `two_way=False`).
+
+    O contrato de Sender carrega UM token, mas a Cloud API precisa de dois dados: o
+    endpoint é `/{phone_number_id}/messages` e o header leva o access token. O
+    `_resolve_token` monta o composto "phone_number_id|access_token" (o "|" não ocorre em
+    nenhum dos dois) — mesmo espírito do desvio por plataforma que o Slack já tem lá.
+    `thread_id` é ignorado: WhatsApp não tem threads.
+    """
+    import httpx
+
+    phone_number_id, _, access_token = token.partition("|")
+    if not phone_number_id or not access_token:
+        return SendResult(False, error="credenciais do WhatsApp incompletas")
+    try:
+        resp = httpx.post(
+            f"{_whatsapp_api_base()}{phone_number_id}/messages",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={
+                "messaging_product": "whatsapp",
+                "to": chat_id,
+                "type": "text",
+                "text": {"body": text},
+            },
+            timeout=_TIMEOUT,
+        )
+        data = resp.json()
+    except Exception as exc:  # network / decode
+        return SendResult(False, error=str(exc))
+    messages = data.get("messages") or []
+    if messages:
+        return SendResult(True, message_id=str(messages[0].get("id")))
+    err = (data.get("error") or {}).get("message") or "whatsapp send failed"
+    # O tropeço mais comum da Cloud API merece explicação, não só código de erro: fora da
+    # janela de 24h desde a última mensagem DO cliente, só template aprovado entrega.
+    if "131047" in str(data.get("error") or {}) or "re-engagement" in err.lower():
+        err = (
+            "fora da janela de 24h — o WhatsApp só entrega mensagem livre a quem escreveu "
+            "para o seu número nas últimas 24 horas; fora disso, apenas modelos "
+            "(templates) aprovados pela Meta"
+        )
+    return SendResult(False, error=err)
+
+
 DEFAULT_SENDERS: dict[str, Sender] = {
     "telegram": _send_telegram,
     "slack": _send_slack,
+    "whatsapp": _send_whatsapp,
 }
 
 

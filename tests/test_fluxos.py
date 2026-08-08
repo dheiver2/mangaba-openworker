@@ -603,3 +603,33 @@ def test_endpoint_de_detalhe_enxerga_fluxo_gravado(tmp_path):
     # e os de fábrica continuam respondendo
     assert client.get("/v1/fluxos/cobranca-planilha").json()["ok"] is True
     assert client.get("/v1/fluxos/nao-existe").json()["ok"] is False
+
+
+def test_apagar_fluxo_gravado_mas_nunca_um_de_fabrica(tmp_path):
+    """Sem delete, o primeiro fluxo mal-criado vira lixo permanente na tela — e mina a
+    confiança no criar_fluxo inteiro. Fábrica é recusada: vem do código, e um delete que
+    'funciona' mas reaparece no boot seguinte é pior que um erro claro."""
+    import tempfile
+
+    from fastapi.testclient import TestClient
+
+    from mangaba.fluxos.tools import fluxo_tools
+    from mangaba.server.app import create_app
+    from mangaba.server.manager import SessionManager
+
+    m = SessionManager(workspace=tempfile.mkdtemp(), data_dir=tmp_path / "data")
+    (criar,) = fluxo_tools(m.fluxo_store, m.inventario_de_fluxo)
+    r = criar(titulo="Descartavel", resumo="r", entrega="e", prompt="p",
+              passos=["Ler", "Fazer", "Entregar"])
+    assert r["ok"] is True
+
+    client = TestClient(create_app(m))
+    assert client.delete(f"/v1/fluxos/{r['id']}").json()["ok"] is True
+    assert m.fluxo_store.listar() == []
+    # apagado some da listagem e do detalhe
+    assert client.get(f"/v1/fluxos/{r['id']}").json()["ok"] is False
+    # fábrica: recusado com o motivo
+    neg = client.delete("/v1/fluxos/cobranca-planilha").json()
+    assert neg["ok"] is False and "fábrica" in neg["error"]
+    # inexistente
+    assert client.delete("/v1/fluxos/nao-existe").json()["ok"] is False

@@ -749,6 +749,20 @@ def create_app(manager: SessionManager) -> FastAPI:
                     return {"ok": True, "fluxo": f}
         return {"ok": False, "error": f"fluxo desconhecido: {fluxo_id}"}
 
+    @app.delete("/v1/fluxos/{fluxo_id}")
+    def fluxo_apagar(fluxo_id: str) -> dict[str, Any]:
+        """Apaga um fluxo GRAVADO ('Meus fluxos'). Os de fábrica são recusados: eles vêm
+        do código, e um delete que 'funciona' mas reaparece no próximo boot é pior que um
+        erro claro. Sem isto, o primeiro fluxo mal-criado virava lixo permanente na tela —
+        e minava a confiança no `criar_fluxo` inteiro."""
+        from ..fluxos import fluxo_por_id
+
+        if fluxo_por_id(fluxo_id) is not None:
+            return {"ok": False, "error": "fluxo de fábrica não pode ser apagado"}
+        if not manager.fluxo_store.apagar(fluxo_id):
+            return {"ok": False, "error": f"fluxo desconhecido: {fluxo_id}"}
+        return {"ok": True, "id": fluxo_id}
+
     @app.get("/v1/mcp/catalogo")
     def mcp_catalogo() -> dict[str, Any]:
         """Galeria de servidores prontos. A aba nascia vazia e só aceitava JSON digitado
