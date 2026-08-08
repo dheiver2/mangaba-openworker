@@ -85,6 +85,14 @@ jobs:
           }
           if (-not $exe) {
             Write-Host "=== DIAGNOSTICO: o instalador saiu com 0 e nada apareceu ==="
+            Write-Host "--- conteudo do InstallLocation declarado ---"
+            $loc = [IO.Path]::Combine($env:LOCALAPPDATA, "Mangaba")
+            if (Test-Path $loc) {
+              Get-ChildItem $loc -Recurse -ErrorAction SilentlyContinue | Select-Object -First 40 -ExpandProperty FullName
+            } else { Write-Host "(a pasta declarada no registro NAO existe)" }
+            Write-Host "--- Defender: ameacas detectadas ---"
+            try { Get-MpThreat | Format-List ThreatName,Resources | Out-String | Write-Host } catch { Write-Host "(Get-MpThreat indisponivel: $_)" }
+            try { Get-MpThreatDetection | Format-List ThreatID,Resources,InitialDetectionTime | Out-String | Write-Host } catch { Write-Host "(Get-MpThreatDetection indisponivel)" }
             Write-Host "--- registro (HKCU Uninstall, todos) ---"
             Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue |
               ForEach-Object { (Get-ItemProperty $_.PSPath -ErrorAction SilentlyContinue).DisplayName } |
