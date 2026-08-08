@@ -1,0 +1,126 @@
+# Smoke test do instalador do Windows em Windows DE VERDADE.
+#
+# A ressalva de todas as releases era "cross-compilado no Mac, nunca executado em
+# Windows real". Este workflow fecha a metade mais arriscada dela: a cada release
+# publicada, uma VM Windows baixa o setup.exe REAL publicado, instala silencioso,
+# abre o app e exige prova de vida do stack inteiro — o sidecar Python de pé
+# (uvicorn no log), o /v1/health respondendo na porta dinâmica, e o frontend
+# conversando com o backend (linhas GET /v1/ no log, o mesmo sinal confiável usado
+# na verificação manual do macOS; contagem de janelas é falso negativo lá, e aqui
+# nem há tela para olhar).
+#
+# O que isto NÃO cobre, dito com todas as letras: renderização visual da UI e
+# interação de usuário. Cobre as classes de defeito que já nos morderam de fato —
+# DLL faltando, python311._pth errado, launcher quebrado, sidecar que não sobe.
+name: smoke-windows
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release (ex.: v0.1.48); vazio = a mais recente"
+        required: false
+        default: ""
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Baixar o instalador da release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.event.inputs.tag }}"
+          if (-not $tag) { $tag = "${{ github.event.release.tag_name }}" }
+          if (-not $tag) { $tag = (gh release view --repo $env:GITHUB_REPOSITORY --json tagName -q .tagName) }
+          Write-Host "Release sob teste: $tag"
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern "*x64-setup.exe" --dir .
+          $setup = Get-ChildItem -Filter "*x64-setup.exe" | Select-Object -First 1
+          if (-not $setup) { throw "setup.exe nao encontrado na release $tag" }
+          "SETUP=$($setup.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Instalar silencioso (NSIS /S)
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath $env:SETUP -ArgumentList "/S" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "instalador saiu com codigo $($p.ExitCode)" }
+          # installMode currentUser → %LOCALAPPDATA%\Mangaba
+          $exe = Join-Path $env:LOCALAPPDATA "Mangaba\Mangaba.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Host "Nao esta no caminho padrao; procurando..."
+            $found = Get-ChildItem -Path $env:LOCALAPPDATA,$env:ProgramFiles -Recurse -Filter "Mangaba.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $found) { throw "Mangaba.exe nao encontrado apos a instalacao" }
+            $exe = $found.FullName
+          }
+          Write-Host "Instalado em: $exe"
+          "EXE=$exe" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Abrir o app e esperar o sidecar subir
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:APPDATA "mangaba\logs\mangaba-server.log"
+          Start-Process -FilePath $env:EXE
+          # O primeiro boot descompacta o runtime Python embeddable — da folga.
+          $deadline = (Get-Date).AddMinutes(8)
+          while ((Get-Date) -lt $deadline) {
+            if ((Test-Path $log) -and (Select-String -Path $log -Pattern "Uvicorn running on" -Quiet)) { break }
+            Start-Sleep -Seconds 5
+          }
+          if (-not (Test-Path $log)) { throw "log do sidecar nunca apareceu em $log — o launcher nao subiu o Python" }
+          if (-not (Select-String -Path $log -Pattern "Uvicorn running on" -Quiet)) {
+            Write-Host "=== log do sidecar (fim) ==="; Get-Content $log -Tail 40
+            throw "sidecar nao terminou de subir dentro do prazo"
+          }
+          Write-Host "sidecar de pe."
+
+      - name: Prova de vida — /v1/health na porta dinamica
+        shell: pwsh
+        run: |
+          $log = Join-Path $env:APPDATA "mangaba\logs\mangaba-server.log"
+          $m = Select-String -Path $log -Pattern "Uvicorn running on http://127\.0\.0\.1:(\d+)" | Select-Object -Last 1
+          if (-not $m) { throw "porta do sidecar nao encontrada no log" }
+          $port = $m.Matches[0].Groups[1].Value
+          Write-Host "porta do sidecar: $port"
+          $r = Invoke-WebRequest -Uri "http://127.0.0.1:$port/v1/health" -UseBasicParsing -TimeoutSec 15
+          if ($r.StatusCode -ne 200) { throw "/v1/health devolveu $($r.StatusCode)" }
+          Write-Host "health ok: $($r.Content)"
+
+      - name: Prova de vida — frontend conversando com o backend
+        shell: pwsh
+        run: |
+          # O mesmo sinal confiavel da verificacao manual no macOS: linhas GET /v1/ no
+          # log so existem se o WebView2 carregou o frontend e ele falou com o sidecar.
+          $log = Join-Path $env:APPDATA "mangaba\logs\mangaba-server.log"
+          $deadline = (Get-Date).AddMinutes(3)
+          $linhas = 0
+          while ((Get-Date) -lt $deadline) {
+            $linhas = (Select-String -Path $log -Pattern '"GET /v1/').Count
+            if ($linhas -ge 3) { break }
+            Start-Sleep -Seconds 5
+          }
+          Write-Host "requisicoes frontend->backend: $linhas"
+          if ($linhas -lt 3) {
+            Write-Host "=== log do sidecar (fim) ==="; Get-Content $log -Tail 60
+            throw "frontend nao conversou com o backend — WebView2 nao carregou ou o app morreu"
+          }
+
+      - name: Encerrar e anexar o log como artefato
+        if: always()
+        shell: pwsh
+        run: |
+          Get-Process -Name "Mangaba" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          $log = Join-Path $env:APPDATA "mangaba\logs\mangaba-server.log"
+          if (Test-Path $log) { Copy-Item $log "$env:GITHUB_WORKSPACE\mangaba-server.log" }
+
+      - name: Upload do log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sidecar-log-${{ env.TAG }}
+          path: mangaba-server.log
+          if-no-files-found: ignore
